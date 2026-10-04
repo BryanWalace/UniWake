@@ -207,3 +207,68 @@ describe('RealtimeProvider reconnects after the stream is closed', () => {
     expect(screen.getByText('open')).toBeInTheDocument();
   });
 });
+
+describe('R-M4-02: hidden tabs release their stream', () => {
+  function setVisibility(v: 'hidden' | 'visible') {
+    Object.defineProperty(document, 'visibilityState', { value: v, configurable: true });
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+  }
+  afterEach(() => setVisibility('visible'));
+
+  it('closes after 30 s hidden and reconnects (refetching) when shown again', () => {
+    vi.useFakeTimers();
+    const qc = new QueryClient();
+    const spy = vi.spyOn(qc, 'invalidateQueries');
+    render(
+      <QueryClientProvider client={qc}>
+        <RealtimeProvider factory={(url) => new FakeEventSource(url)}>
+          <p>app</p>
+        </RealtimeProvider>
+      </QueryClientProvider>,
+    );
+    const first = FakeEventSource.latest();
+    first.open();
+    setVisibility('hidden');
+    act(() => {
+      vi.advanceTimersByTime(29_999);
+    });
+    expect(first.closed).toBe(false);
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(first.closed).toBe(true);
+
+    setVisibility('visible');
+    expect(FakeEventSource.instances).toHaveLength(2);
+    spy.mockClear();
+    FakeEventSource.latest().open();
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(spy).toHaveBeenCalledWith({ queryKey: keys.dashboard });
+  });
+
+  it('a short trip to another tab keeps the stream', () => {
+    vi.useFakeTimers();
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <RealtimeProvider factory={(url) => new FakeEventSource(url)}>
+          <p>app</p>
+        </RealtimeProvider>
+      </QueryClientProvider>,
+    );
+    FakeEventSource.latest().open();
+    setVisibility('hidden');
+    act(() => {
+      vi.advanceTimersByTime(10_000);
+    });
+    setVisibility('visible');
+    act(() => {
+      vi.advanceTimersByTime(60_000);
+    });
+    expect(FakeEventSource.instances).toHaveLength(1);
+    expect(FakeEventSource.latest().closed).toBe(false);
+  });
+});

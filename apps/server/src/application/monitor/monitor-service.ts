@@ -308,7 +308,7 @@ export class MonitorService {
 
     const report: SweepReport = {
       startedAt,
-      durationMs: this.d.clock.now() - startedAt,
+      durationMs: Math.max(0, this.d.clock.now() - startedAt), // a backwards clock jump (R-M4-03)
       probed: addresses.length,
       online: counts.online,
       offline: counts.offline,

@@ -185,6 +185,19 @@ export class SqliteDashboardRepo implements DashboardRepo {
     return new Map(rows.map((r) => [`${r.device_id}|${r.day}`, r.online_ms]));
   }
 
+  dailyUptimeTotals(
+    deviceIds: readonly number[],
+    fromDay: string,
+    toDay: string,
+  ): Map<string, { ms: number; n: number }> {
+    const rows = this.db.all<{ day: string; ms: number; n: number }>(
+      `SELECT day, SUM(online_ms) AS ms, COUNT(*) AS n FROM daily_uptime
+       WHERE day >= ? AND day <= ? AND ${ids('device_id')} GROUP BY day`,
+      [fromDay, toDay, ...idParams(deviceIds)],
+    );
+    return new Map(rows.map((r) => [r.day, { ms: r.ms, n: r.n }]));
+  }
+
   upsertDailyUptime(rows: readonly { deviceId: number; day: string; onlineMs: number }[]): void {
     for (const r of rows) {
       this.db.run(

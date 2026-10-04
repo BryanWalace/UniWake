@@ -3,6 +3,7 @@
  * message is already pt-BR and can be shown to the operator as-is.
  */
 import type { ApiError, ErrorCode } from '@uniwake/shared';
+import { IDLE_HEADER, isUserIdle } from '../lib/activity';
 
 export class ApiRequestError extends Error {
   constructor(
@@ -49,7 +50,10 @@ export async function request<T>(
     res = await fetch(buildUrl(path, opts.query), {
       method,
       credentials: 'same-origin',
-      headers: body !== undefined ? { 'content-type': 'application/json' } : {},
+      headers: {
+        ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
+        ...(isUserIdle() ? { [IDLE_HEADER]: '1' } : {}),
+      },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
       ...(opts.signal ? { signal: opts.signal } : {}),
     });

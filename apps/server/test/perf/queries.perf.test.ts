@@ -66,3 +66,25 @@ describe('query budgets with 500 devices (NFR-01)', () => {
     expect(time(() => h.services.dashboard.counters())).toBeLessThan(20);
   });
 });
+
+describe('uptime budget (NFR-01)', () => {
+  it('a 500-device room over 180 rolled-up days in under 150 ms', () => {
+    const db = h.services.db;
+    const room = h.services.rooms.create({ name: 'Sala Grande' }, ACTOR).id;
+    db.run('UPDATE devices SET room_id = ?', [room]);
+    db.transaction(() => {
+      const ids = db.all<{ id: number }>('SELECT id FROM devices').map((r) => r.id);
+      for (let d = 1; d <= 180; d++) {
+        const day = new Date(Date.UTC(2026, 9, 5) - d * 86_400_000).toISOString().slice(0, 10);
+        for (const id of ids) {
+          db.run('INSERT INTO daily_uptime (device_id, day, online_ms) VALUES (?, ?, ?)', [
+            id,
+            day,
+            3_600_000,
+          ]);
+        }
+      }
+    });
+    expect(time(() => h.services.dashboard.uptime({ roomId: room, days: 180 }))).toBeLessThan(150);
+  });
+});

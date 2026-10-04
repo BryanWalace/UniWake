@@ -70,6 +70,12 @@ export interface DashboardRepo {
     deviceIds?: readonly number[],
   ): Map<number, StatusChange[]>;
   dailyUptime(deviceIds: readonly number[], fromDay: string, toDay: string): Map<string, number>;
+  /** Per day: total online ms and number of stored device rows. */
+  dailyUptimeTotals(
+    deviceIds: readonly number[],
+    fromDay: string,
+    toDay: string,
+  ): Map<string, { ms: number; n: number }>;
   upsertDailyUptime(rows: readonly { deviceId: number; day: string; onlineMs: number }[]): void;
   latestRolledDay(): string | null;
   /** Newest first: `at < before` (limited), or every row with `at = exactly`. */
@@ -205,13 +211,22 @@ export class DashboardService {
     );
     const devices = this.d.repo.devicesFor(q);
     const ids = devices.map((x) => x.id);
-    const stored = this.d.repo.dailyUptime(ids, first, today);
+    // R-M4-05: per-day totals come from SQL; per-device rows only for a day whose rollup is short.
+    const totals = this.d.repo.dailyUptimeTotals(ids, first, today);
 
     const days: UptimeSeries['days'] = [];
     for (let day = first; day <= today; day = addDays(day, 1)) {
       const { start, end: dayEnd } = dayRange(day, tz);
       const end = Math.min(dayEnd, now);
       const alive = day < oldestKept ? [] : devices.filter((x) => x.createdAt < end);
+      const total = totals.get(day);
+      if (day !== today && alive.length > 0 && total && total.n === alive.length) {
+        // The mean of the devices' ratios is the total online time over n device-days.
+        days.push({ day, ratio: total.ms / (alive.length * (end - start)) });
+        continue;
+      }
+      const stored =
+        day === today ? new Map<string, number>() : this.d.repo.dailyUptime(ids, day, day);
       const missing = alive.filter((x) => day === today || !stored.has(`${x.id}|${day}`));
       const live =
         missing.length > 0

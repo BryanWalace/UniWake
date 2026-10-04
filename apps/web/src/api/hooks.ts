@@ -63,8 +63,9 @@ export function useDevice(id: number) {
   });
 }
 
-export function useDevices(params: DeviceQueryParams) {
+export function useDevices(params: DeviceQueryParams, opts: { enabled?: boolean } = {}) {
   return useQuery({
+    enabled: opts.enabled ?? true,
     queryKey: keys.devices(params),
     queryFn: () =>
       api.get<Page<Device>>('/api/devices', {

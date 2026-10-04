@@ -66,7 +66,10 @@ export async function registerSessionAuth(app: FastifyInstance, auth: AuthServic
   app.addHook('onRequest', async (req, reply) => {
     const level = req.routeOptions.config.auth;
     if (level !== 'operator' && level !== 'admin') return; // public / enrollment handled by routes
-    const me = auth.authenticate(req.cookies[SESSION_COOKIE]);
+    // Requests the panel sends while its user is inactive (polling, live refetches) are not
+    // activity: they must not keep an unattended session alive (R-M4-01).
+    const idle = req.headers['x-uniwake-idle'] === '1';
+    const me = auth.authenticate(req.cookies[SESSION_COOKIE], { touch: !idle });
     if (!me) {
       if (req.cookies[SESSION_COOKIE]) clearSessionCookie(req, reply);
       throw new AppError('UNAUTHENTICATED');

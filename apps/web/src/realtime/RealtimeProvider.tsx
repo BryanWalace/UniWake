@@ -25,6 +25,11 @@ export type EventSourceFactory = (url: string) => EventSourceLike;
 const CLOSED = 2;
 const INVALIDATE_DELAY_MS = 300;
 const RECONNECT_DELAYS_MS = [3_000, 10_000, 30_000];
+/**
+ * Browsers allow ~6 HTTP/1.1 connections per host; every open stream holds one. A hidden tab lets
+ * its stream go after this grace period and reconnects (with a refetch) when shown (R-M4-02).
+ */
+export const HIDDEN_GRACE_MS = 30_000;
 
 const Ctx = createContext<RealtimeState>('closed');
 
@@ -92,8 +97,16 @@ export function RealtimeProvider({
     let retry: ReturnType<typeof setTimeout> | null = null;
     const pending = createInvalidator(qc);
 
+    const hidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden';
+    let hiddenTimer: ReturnType<typeof setTimeout> | null = null;
+
     const connect = () => {
-      if (disposed) return;
+      retry = null;
+      if (disposed || es !== null) return;
+      if (hidden()) {
+        setState('closed'); // connects when the tab is shown
+        return;
+      }
       const source = make('/api/events');
       es = source;
       setState('connecting');
@@ -108,6 +121,7 @@ export function RealtimeProvider({
           return;
         }
         // Closed for good (e.g. 401): retry with backoff and re-check the session meanwhile.
+        es = null;
         setState('closed');
         void qc.invalidateQueries({ queryKey: keys.me });
         const delay = RECONNECT_DELAYS_MS[Math.min(attempt++, RECONNECT_DELAYS_MS.length - 1)]!;
@@ -130,6 +144,7 @@ export function RealtimeProvider({
       source.addEventListener('session.expired', () => {
         disposed = true;
         source.close();
+        es = null;
         setState('closed');
         // Order matters: the auth observer must see null (RequireAuth then shows the login page);
         // other users' data must not survive on a shared lab PC.
@@ -137,10 +152,29 @@ export function RealtimeProvider({
         qc.removeQueries({ predicate: (q) => q.queryKey[0] !== 'auth' });
       });
     };
+    const onVisibility = () => {
+      if (hidden()) {
+        hiddenTimer ??= setTimeout(() => {
+          hiddenTimer = null;
+          if (es && hidden()) {
+            es.close();
+            es = null;
+            setState('closed');
+          }
+        }, HIDDEN_GRACE_MS);
+      } else {
+        if (hiddenTimer) clearTimeout(hiddenTimer);
+        hiddenTimer = null;
+        if (es === null && retry === null) connect();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
     connect();
     return () => {
       disposed = true;
+      document.removeEventListener('visibilitychange', onVisibility);
       if (retry) clearTimeout(retry);
+      if (hiddenTimer) clearTimeout(hiddenTimer);
       pending.dispose();
       es?.close();
     };

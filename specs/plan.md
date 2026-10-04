@@ -175,7 +175,8 @@ Times: epoch ms UTC `INTEGER`; booleans `INTEGER 0/1`; JSON as `TEXT`. Migration
 
 ### 5.1 Database performance rules (synchronous driver)
 - No query on a request or tick path may exceed 50 ms at 500 devices / 180 days of history;
-  a benchmark test guards the dashboard and device-list queries.
+  a benchmark test guards the dashboard and device-list queries (`apps/server/test/perf`, run by
+  `npm run test:perf` inside `verify`: sequential and without coverage instrumentation).
 - Sweep results are written in **one transaction per sweep**; job progress in one transaction per
   verification round.
 - Aggregates are precomputed (`daily_uptime` nightly at 00:10 local).

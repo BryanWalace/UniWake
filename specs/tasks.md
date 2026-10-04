@@ -152,6 +152,8 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M4-F7 | MINOR: history/uptime for an unknown device returned the bulk code DEVICE_NOT_FOUND (422) whose pt-BR message showed a raw `{ids}` placeholder. They return NOT_FOUND (404). | constitution §8 | breakit malformed-input probe | — |
 | [x] M4-F8 | MINOR: a sweep resolved every hostname at once (500 concurrent DNS queries). Lookups run at most 32 at a time. | FR-004.3 | breakit DNS-load probe | — |
 | [x] M4-F9 | MINOR (demo): the simulated network re-read the inventory for every single-address probe; it caches it for 1 s. | FR-015 | demo tests | — |
+| [x] M4-R | Code review → `specs/reviews/M4-review.md` (R-M4-01 idle timeout vs polling, R-M4-02 SSE connection slots, R-M4-03..05 fixed). | §9 DoD | m4-review-fixes, realtime, activity, perf tests | no open CRITICAL/MAJOR |
+| [x] M4-A | Architect conformance → `specs/reviews/M4-architect.md`; ADR-027 amended; plan §5.1 perf pass. | phase 4 | — | M5 may start |
 
 ## M5 — Scheduler
 | ID | Task | Refs | Tests | Done when |

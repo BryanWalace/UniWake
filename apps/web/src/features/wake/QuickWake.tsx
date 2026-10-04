@@ -75,7 +75,7 @@ function QuickWakeBody({
   const q = useDebounced(query.trim(), 200);
   const rooms = useRooms();
   const tags = useTags();
-  const devices = useDevices({ q, page: 1, pageSize: MAX_PER_KIND });
+  const devices = useDevices({ q, page: 1, pageSize: MAX_PER_KIND }, { enabled: q !== '' });
 
   const options: Option[] = [
     ...(rooms.data ?? [])

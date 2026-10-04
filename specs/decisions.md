@@ -279,6 +279,10 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
   - Room uptime = average of its *current* devices' known days (AC-004-16).
   - SSE heartbeats validate the session without touching `last_seen_at`: an open dashboard alone
     does not defeat the idle timeout.
+  - Amended in M4-R (R-M4-01): requests the panel sends after 60 s without user input (polling,
+    live-update refetches) carry `X-UniWake-Idle: 1` and do not touch the session either.
+  - Amended in M4-R (R-M4-02): a tab hidden for 30 s closes its stream (HTTP/1.1 allows ~6
+    connections per host) and reconnects with a refetch when shown.
 - **Consequences:** Moving a device between rooms changes historical room averages (acceptable;
   the device's own history is unchanged). A wall-display dashboard is logged out after
   `security.sessionIdleHours` without interaction.
