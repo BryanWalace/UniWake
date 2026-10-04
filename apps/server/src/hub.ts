@@ -2,10 +2,12 @@
  * Hub composition (plan §2.1): wires config, logger, database and both HTTP listeners.
  * `main.ts` adds process concerns (CLI, signals, exit codes); tests drive `createHub` directly.
  */
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import { createFileLogger } from './adapters/logger';
 import { OsDnsResolver } from './adapters/dns-resolver';
+import { CompositeProber, PingExeIcmp, powershellSpawner, PsHelperIcmp } from './adapters/icmp';
 import { OsNetworkInterfaces } from './adapters/network-interfaces';
 import { NodeProcessRunner } from './adapters/process-runner';
 import { RecordingPacketSender } from './adapters/recording-packet-sender';
@@ -41,6 +43,8 @@ export interface HubOptions {
   clock?: Clock;
   /** Built web panel to serve (null/undefined = API only). */
   webDir?: string | null;
+  /** probe-helper.ps1 location (Windows ICMP, ADR-019); null = TCP probes only. */
+  helperPath?: string | null;
   /** Port overrides (tests); defaults to the real adapters. */
   ports?: ServicePorts;
 }
@@ -76,6 +80,15 @@ function openDatabase(dbPath: string, backupsDir: string): Db {
   }
 }
 
+/** probe-helper.ps1 next to the bundle (installed, plan §9) or in apps/server/helper (source). */
+export function resolveHelperPath(bundleDir: string): string | null {
+  const candidates = [
+    join(bundleDir, 'helper', 'probe-helper.ps1'),
+    join(bundleDir, '..', 'helper', 'probe-helper.ps1'),
+  ];
+  return candidates.find((c) => existsSync(c)) ?? null;
+}
+
 function panelHosts(): ReadonlySet<string> {
   return new Set<string>(LOOPBACK_HOSTS);
 }
@@ -101,14 +114,30 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
 
   // Demo mode never constructs the real sender (AC-015-01): no packet can leave the machine.
   const sender = config.demo ? new RecordingPacketSender() : new UdpPacketSender();
+  const runner = new NodeProcessRunner();
+  const icmpHelper =
+    process.platform === 'win32' && opts.helperPath && !opts.ports
+      ? new PsHelperIcmp(
+          powershellSpawner(opts.helperPath),
+          clock,
+          logger.child({ module: 'probe-helper' }),
+        )
+      : null;
+  const settingsConcurrency = () => services.settings.get('monitor.concurrency');
+  const prober = new CompositeProber(
+    new TcpProber(settingsConcurrency),
+    icmpHelper,
+    process.platform === 'win32' ? new PingExeIcmp(runner) : null,
+    settingsConcurrency,
+  );
   const services = createServices(
     db,
     clock,
     opts.ports ?? {
-      interfaces: new OsNetworkInterfaces(new NodeProcessRunner()),
+      interfaces: new OsNetworkInterfaces(runner),
       sender,
       dryRunSender: new RecordingPacketSender(),
-      prober: new TcpProber(),
+      prober,
       dns: new OsDnsResolver(),
       logger,
     },
@@ -191,6 +220,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       services.runner.stop();
       await Promise.allSettled([panel.close(), agent.close()]);
       await sender.close();
+      icmpHelper?.close();
       db.close();
       if (started) logger.info({}, 'UniWake hub stopped');
       started = false;
