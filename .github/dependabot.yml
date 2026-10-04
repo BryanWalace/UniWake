@@ -8,6 +8,14 @@ updates:
     groups:
       dev-tooling:
         dependency-type: development
+    # Toolchain pins (ADR-024): typescript-eslint supports TypeScript < 6.1, and @types/node must
+    # match the Node 24 runtime shipped in the installer. Majors need a new ADR.
+    ignore:
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major', 'version-update:semver-minor']
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+      - dependency-name: eslint-plugin-react
   - package-ecosystem: github-actions
     directory: /
     schedule:
