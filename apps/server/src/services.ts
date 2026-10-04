@@ -7,6 +7,8 @@ import { AuthService } from './application/auth/auth-service';
 import { CsvImportService } from './application/devices/csv-import-service';
 import { DevicesService } from './application/devices/devices-service';
 import { EventsBus } from './application/events-bus';
+import { MonitorService } from './application/monitor/monitor-service';
+import { ProbeQueue } from './application/monitor/probe-queue';
 import type {
   Clock,
   DnsResolver,
@@ -27,6 +29,7 @@ import { SqliteAuditRepo } from './db/repositories/audit-repo';
 import { SqliteSessionsRepo, SqliteUsersRepo } from './db/repositories/auth-repos';
 import { SqliteDevicesRepo } from './db/repositories/devices-repo';
 import { SqliteJobsRepo } from './db/repositories/jobs-repo';
+import { SqliteMonitorRepo } from './db/repositories/monitor-repo';
 import { SqliteRoomsRepo } from './db/repositories/rooms-repo';
 import { SqliteSettingsRepo } from './db/repositories/settings-repo';
 import { SqliteTagsRepo } from './db/repositories/tags-repo';
@@ -52,6 +55,8 @@ export interface Services extends HttpServices {
   clock: Clock;
   events: EventsBus;
   runner: JobRunner;
+  monitor: MonitorService;
+  probes: ProbeQueue;
 }
 
 export function createServices(
@@ -83,6 +88,19 @@ export function createServices(
   const devices = new DevicesService(devicesRepo, audit, clock, tx);
   const csv = new CsvImportService(devicesRepo, roomsRepo, tagsRepo, audit, clock, tx);
 
+  // One probe pool: wake verification jumps ahead of monitoring sweeps (AC-004-13).
+  const probes = new ProbeQueue(ports.prober, () => settings.get('monitor.concurrency'));
+  const monitor = new MonitorService({
+    repo: new SqliteMonitorRepo(db),
+    prober: probes.at('low'),
+    dns: ports.dns,
+    settings,
+    clock,
+    events,
+    logger: ports.logger.child({ module: 'monitor' }),
+    transaction: tx,
+  });
+
   const runner = new JobRunner({
     jobs: jobsRepo,
     rooms: roomsRepo,
@@ -91,7 +109,7 @@ export function createServices(
     interfaces: ports.interfaces,
     sender: ports.sender,
     dryRunSender: ports.dryRunSender,
-    verifier: new ProberVerifier(ports.prober, ports.dns, settings),
+    verifier: new ProberVerifier(probes.at('high'), ports.dns, settings),
     audit,
     events,
     logger: ports.logger.child({ module: 'wake' }),
@@ -122,5 +140,20 @@ export function createServices(
     forceDryRun: opts.demo === true,
   });
 
-  return { db, clock, audit, settings, auth, rooms, tags, devices, csv, wake, events, runner };
+  return {
+    db,
+    clock,
+    audit,
+    settings,
+    auth,
+    rooms,
+    tags,
+    devices,
+    csv,
+    wake,
+    events,
+    runner,
+    monitor,
+    probes,
+  };
 }

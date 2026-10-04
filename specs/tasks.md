@@ -126,12 +126,12 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 ## M4 — Monitoring hub, realtime, history
 | ID | Task | Refs | Tests | Done when |
 |---|---|---|---|---|
-| [~] M4-T01 | `domain/status.ts` state machine (debounce, ever_online, desconhecido). | FR-004.1; ADR-014 | AC-004-01, AC-004-02, AC-004-03, AC-004-04, AC-004-05, AC-004-11, AC-004-12 | — |
+| [x] M4-T01 | `domain/status.ts` state machine (debounce, ever_online, desconhecido). | FR-004.1; ADR-014 | AC-004-01, AC-004-02, AC-004-03, AC-004-04, AC-004-05, AC-004-11, AC-004-12 | — |
 | [x] M4-T02 | `adapters/tcp-prober` (timeout, refused = alive). | FR-004.1 | loopback open/closed ports | — |
 | [x] M4-T03 | `probe-helper.ps1` + `ps-helper-icmp` adapter (JSON lines, deadlines, restart). | ADR-019 | fake process tests; Windows loopback contract test + 10 000-request soak | — |
 | [x] M4-T04 | `ping-exe-icmp` fallback + composite prober switch rule. | ADR-019 | localized output fixtures (pt-BR, en-US); switch after 3 restarts in 5 min | — |
-| [ ] M4-T05 | `probe-queue` with priorities and concurrency. | FR-004.2 | AC-004-13 | — |
-| [ ] M4-T06 | `monitor-service` sweep: DNS cache, IP drift, one-tx writes, events, SSE emits. | FR-004.2, FR-004.3; NFR-01 | AC-004-06, AC-004-07; **faults**: helper deadline, DNS timeout, DB busy | — |
+| [x] M4-T05 | `probe-queue` with priorities and concurrency. | FR-004.2 | AC-004-13 | — |
+| [x] M4-T06 | `monitor-service` sweep: DNS cache, IP drift, one-tx writes, events, SSE emits. | FR-004.2, FR-004.3; NFR-01 | AC-004-06, AC-004-07; **faults**: helper deadline, DNS timeout, DB busy | — |
 | [ ] M4-T07 | Events bus + SSE route (heartbeat, session expiry, buffer cap). | FR-004.4; ADR-020 | AC-004-14 (server side) | — |
 | [ ] M4-T08 | Dashboard API, `domain/uptime.ts`, nightly rollup, uptime API. | FR-004.5, FR-004.6 | AC-004-10, AC-004-16 | — |
 | [ ] M4-T09 | Simulated prober + demo seed + `--demo` guard. | FR-015 | AC-015-01 | `npm run dev` lively |
