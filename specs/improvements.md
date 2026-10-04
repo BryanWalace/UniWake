@@ -26,3 +26,8 @@ Accepted items receive FR/NFR IDs in `spec.md` during Phase 1.
 | IMP-018 | Reviewer | PowerShell script untested yet runs on hundreds of PCs. | PSScriptAnalyzer + Pester in CI, `-WhatIf`, transcript. | Reliability | S | accepted (constitution §4.2) |
 | IMP-019 | Architect | Operator's real 7:00 question, "what didn't come up?", has no direct answer. | "Resultado da manhã": per-room summary of non-responders after each scheduled run, pinned until acknowledged. | Productivity | S–M | accepted (FR id in Phase 1) |
 | IMP-020 | Architect | A forgotten global pause leaves labs off silently. | Pause requires reason, optional auto-resume date, red banner, skipped runs logged as "pulado (pausa)". | Safety | S | accepted (FR id in Phase 1) |
+| IMP-021 | Debug | Firewalled PCs look offline; verification reports false "não respondeu". | prepare-target enables the built-in ICMPv4 echo rule (Domain/Private), `-NoFirewallChange` to skip. | Reliability | S | accepted (FR-007.1 step 5) |
+| IMP-022 | Debug | Windows Update reboots the controller near the morning run. | Health warnings: pending reboot, active hours not covering 05:00–08:00. | Reliability | S | accepted (FR-012) |
+| IMP-023 | Reviewer | Enrollment token travels in clear on the LAN. | TLS on agent listener with thumbprint pinned in the command. | Security | M | roadmap (RM-5, ADR-013) |
+| IMP-024 | Fullstack | UI can't show the confirmation count before the server resolves the target. | `POST /api/wake/preview` for every wake; summary always shown. | Productivity, safety | S | accepted (FR-003.3) |
+| IMP-025 | Fullstack | Getting the script onto each PC needs a USB stick. | Agent listener serves the script; panel shows a hash-pinned one-liner. | Productivity | S | accepted (FR-007.3, ADR-011) |

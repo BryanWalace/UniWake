@@ -1,7 +1,8 @@
 # UniWake — Constitution
 
-Version: **1.0** · Date: 2026-10-04 · Owner: Architect
-History: v0.1 draft → reviewed in `specs/reviews/phase-0-*.md` → consolidated as v1.0.
+Version: **1.1** · Date: 2026-10-04 · Owner: Architect
+History: v0.1 draft → reviewed in `specs/reviews/phase-0-*.md` → consolidated as v1.0 →
+v1.1 amended by ADR-011 (§2.6), ADR-012 (§6.1), ADR-016 (§4.1, §6.7) in Phase 1.
 
 This document holds the rules every role must follow for the life of the project. It is
 binding: code, specs and reviews are judged against it. "MUST" is mandatory, "SHOULD" needs a
@@ -77,8 +78,9 @@ written reason to skip. Changes require an ADR that names the section changed (�
 - The sender binds one socket per selected interface's local IPv4 and sends to both the limited
   broadcast and that interface's subnet-directed broadcast, on UDP 9 and 7.
 - Every packet attempt is recorded in the packet log (P4).
-- LAN surfaces (ADR-005): the **panel listener** (loopback by default) serves UI + full API; the
-  **agent listener** (LAN) serves only enrollment and health.
+- LAN surfaces (ADR-005, ADR-011): the **panel listener** (loopback by default) serves UI + full
+  API; the **agent listener** (LAN) serves exactly: minimal health, enrollment, and the
+  `prepare-target.ps1` download (whose SHA-256 is pinned in the command shown by the panel).
 
 ## 3. Repository layout and tooling
 ```
@@ -113,6 +115,7 @@ specs/            SDD documents
 - English identifiers; pt-BR only in the message catalog and the web UI.
 - A file over ~400 lines must be justified in review.
 - No `TODO` without a task ID (`TODO(M3-T04): ...`).
+- React: `dangerouslySetInnerHTML` is forbidden (`react/no-danger` = error) (ADR-016).
 
 ### 4.2 PowerShell (`scripts/*.ps1`)
 - Compatible with Windows PowerShell **5.1** (no `??`, ternary, `ForEach-Object -Parallel`).
@@ -143,8 +146,9 @@ specs/            SDD documents
 ## 6. Security rules
 
 ### 6.1 Network exposure
-- Panel listener binds `127.0.0.1` by default; LAN panel access is an admin setting, audited.
-- Agent listener exposes only enrollment and health (ADR-005).
+- Panel listener binds `127.0.0.1` by default; LAN panel access is an admin setting, audited,
+  and served **over HTTPS only** with `Secure` cookies (ADR-012).
+- Agent listener exposes only health (status only), enrollment and the script download (ADR-011).
 - **Host header allowlist** on every request (loopback names + configured LAN names/IPs) to
   block DNS rebinding.
 - Security headers: CSP `default-src 'self'`, `frame-ancestors 'none'`, `nosniff`,
@@ -186,6 +190,11 @@ specs/            SDD documents
 ### 6.6 Audit
 - Audit log for authentication, wake, schedule, settings, user, enrollment and update events.
 - Append-only through the application (no update/delete routes); retention configurable.
+
+### 6.7 Untrusted data (ADR-016)
+- Data from targets (enrollment) and imported files is untrusted: every string has a max length
+  in the shared schema, it is never rendered as HTML, and CSV exports neutralize cells starting
+  with `=`, `+`, `-`, `@`, tab or CR.
 
 ## 7. Reliability rules
 - **Scheduler:** tick-based (≤ 30 s), never one long timer. **Claim-then-execute:** insert
