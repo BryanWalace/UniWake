@@ -272,3 +272,20 @@ describe('M3 review fixes (web)', () => {
     ).toBeInTheDocument();
   });
 });
+
+describe('job progress links (FR-009)', () => {
+  it('non-responders link to their diagnostics', async () => {
+    loggedInApi().on('GET', '/api/jobs/11', {
+      body: {
+        ...JOB,
+        job: { ...JOB.job, id: 11, state: 'concluido' },
+        devices: JOB.devices.map((d) => (d.deviceId === 2 ? { ...d, result: 'nao_respondeu' } : d)),
+      },
+    });
+    renderApp('/historico/jobs/11');
+    expect(await screen.findByRole('link', { name: 'PC-02' })).toHaveAttribute(
+      'href',
+      '/dispositivos/2#diagnostico',
+    );
+  });
+});

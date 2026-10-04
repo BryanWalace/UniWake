@@ -1,18 +1,5 @@
 import type { Page } from '@playwright/test';
-import { SimulatedNetwork } from '../apps/server/src/adapters/simulated-network';
-import { expect, expectAccessible, randomMac, test, uniq } from './fixtures';
-
-/** A MAC the simulated network wakes and answers over ICMP (no randomness in the test). */
-function wakeableMac(): string {
-  for (;;) {
-    const mac = randomMac();
-    if (!SimulatedNetwork.neverWakes(mac) && !SimulatedNetwork.blocksIcmp(mac)) return mac;
-  }
-}
-
-let octet = 10;
-/** A fresh address in the demo subnet (10.20.0.0/16), unique within this run. */
-const demoIp = () => `10.20.${200 + Math.floor(octet / 250)}.${(octet++ % 250) + 2}`;
+import { demoIp, expect, expectAccessible, randomMac, test, uniq, wakeableMac } from './fixtures';
 
 const roomCard = (page: Page, name: string) =>
   page

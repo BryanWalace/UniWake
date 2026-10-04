@@ -83,7 +83,13 @@ export function JobProgress({
           <ul className="mt-1 space-y-1 text-sm">
             {noResponse.map((d) => (
               <li key={d.deviceId}>
-                {d.name} — {DEVICE_RESULT_LABEL[d.result]}
+                <Link
+                  to={`/dispositivos/${d.deviceId}#diagnostico`}
+                  className="text-blue-800 underline"
+                >
+                  {d.name}
+                </Link>{' '}
+                — {DEVICE_RESULT_LABEL[d.result]}
               </li>
             ))}
           </ul>

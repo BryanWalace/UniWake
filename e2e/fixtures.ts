@@ -4,6 +4,7 @@
  */
 import AxeBuilder from '@axe-core/playwright';
 import { type APIRequestContext, expect, type Page, test as base } from '@playwright/test';
+import { SimulatedNetwork } from '../apps/server/src/adapters/simulated-network';
 
 export const ADMIN = { username: 'admin', password: 'senha-e2e-12345' };
 
@@ -84,4 +85,19 @@ export function randomMac(): string {
   const bytes = Array.from({ length: 6 }, () => Math.floor(Math.random() * 256));
   bytes[0] = bytes[0]! & 0xfc;
   return bytes.map((b) => b.toString(16).padStart(2, '0').toUpperCase()).join(':');
+}
+
+/** A MAC the simulated demo network wakes and answers over ICMP (no randomness in tests). */
+export function wakeableMac(): string {
+  for (;;) {
+    const mac = randomMac();
+    if (!SimulatedNetwork.neverWakes(mac) && !SimulatedNetwork.blocksIcmp(mac)) return mac;
+  }
+}
+
+let octet = Math.floor(Math.random() * 10_000);
+/** A fresh address in the demo subnet (10.20.0.0/16). */
+export function demoIp(): string {
+  const n = octet++;
+  return `10.20.${200 + (Math.floor(n / 250) % 50)}.${(n % 250) + 2}`;
 }
