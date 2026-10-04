@@ -9,6 +9,7 @@ import { BulkBar } from '../devices/BulkBar';
 import { DeviceFormDialog } from '../devices/DeviceFormDialog';
 import { DevicesTable } from '../devices/DevicesTable';
 import { noticeFromSave, SaveNotice, useSelection } from '../devices/DevicesPage';
+import { useWakeUi } from '../wake/WakeProvider';
 import { RoomFormDialog } from './RoomFormDialog';
 
 /** Bookmarkable room page `/salas/:id` (FR-008.3). Wake buttons arrive in M3. */
@@ -19,6 +20,7 @@ export function RoomPage() {
   const tags = useTags();
   const devices = useDevices({ roomId: id, page: 1, pageSize: 200 });
   const selection = useSelection();
+  const { requestWake } = useWakeUi();
   const [editing, setEditing] = useState<Device | undefined>(undefined);
   const [deviceFormOpen, setDeviceFormOpen] = useState(false);
   const [roomFormOpen, setRoomFormOpen] = useState(false);
@@ -52,9 +54,30 @@ export function RoomPage() {
         title={r.name}
         actions={
           <>
-            <Button onClick={() => setRoomFormOpen(true)}>Editar sala</Button>
             <Button
               variant="primary"
+              onClick={() =>
+                requestWake({
+                  title: `Ligar sala ${r.name}`,
+                  target: { type: 'rooms', roomIds: [id], includeNoRoom: false },
+                })
+              }
+            >
+              Ligar sala
+            </Button>
+            <Button
+              onClick={() =>
+                requestWake({
+                  title: `Ligar só os desligados — ${r.name}`,
+                  target: { type: 'rooms', roomIds: [id], includeNoRoom: false },
+                  onlyOffline: true,
+                })
+              }
+            >
+              Ligar só os desligados
+            </Button>
+            <Button onClick={() => setRoomFormOpen(true)}>Editar sala</Button>
+            <Button
               onClick={() => {
                 setEditing(undefined);
                 setDeviceFormOpen(true);

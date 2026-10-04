@@ -99,7 +99,8 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
     throw databaseError(paths.db, paths.backups, e);
   }
 
-  const sender = new UdpPacketSender();
+  // Demo mode never constructs the real sender (AC-015-01): no packet can leave the machine.
+  const sender = config.demo ? new RecordingPacketSender() : new UdpPacketSender();
   const services = createServices(
     db,
     clock,

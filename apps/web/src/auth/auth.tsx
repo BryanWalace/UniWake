@@ -4,6 +4,7 @@ import type { Me } from '@uniwake/shared';
 import { api, ApiRequestError } from '../api/client';
 import { ErrorState, LoadingState } from '../components/Banner';
 import { t } from '../i18n/pt-BR';
+import { WakeProvider } from '../features/wake/WakeProvider';
 import { Layout } from '../routes/Layout';
 
 export const meQueryKey = ['auth', 'me'] as const;
@@ -84,7 +85,11 @@ export function RequireAuth() {
       <Navigate to={`/login${next !== '/' ? `?next=${encodeURIComponent(next)}` : ''}`} replace />
     );
   }
-  return <Layout userMenu={<UserMenu me={me.data} />} />;
+  return (
+    <WakeProvider>
+      <Layout userMenu={<UserMenu me={me.data} />} />
+    </WakeProvider>
+  );
 }
 
 /** Only allow same-app relative paths as redirect targets (no open redirect). */

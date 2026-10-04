@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ApiRequestError } from '../../api/client';
 import { type RoomWithCount, type TagWithCount, useBulkDevices } from '../../api/hooks';
 import { Button, ConfirmDialog } from '../../components/ui';
+import { useWakeUi } from '../wake/WakeProvider';
 
 /** Bulk actions for the selected devices (FR-002.2). Delete asks for confirmation with the count. */
 export function BulkBar({
@@ -16,6 +17,7 @@ export function BulkBar({
   onDone: (message: string) => void;
 }) {
   const bulk = useBulkDevices();
+  const { requestWake } = useWakeUi();
   const [roomId, setRoomId] = useState('');
   const [tagId, setTagId] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -40,6 +42,17 @@ export function BulkBar({
     >
       <div className="flex flex-wrap items-end gap-3">
         <p className="font-semibold text-blue-950">{n} selecionado(s)</p>
+        <Button
+          variant="primary"
+          onClick={() =>
+            requestWake({
+              title: `Ligar ${n} dispositivo(s) selecionado(s)`,
+              target: { type: 'devices', deviceIds: selected },
+            })
+          }
+        >
+          Ligar selecionados
+        </Button>
         <div className="flex items-end gap-2">
           <label className="text-sm">
             <span className="block font-medium">Mover para</span>

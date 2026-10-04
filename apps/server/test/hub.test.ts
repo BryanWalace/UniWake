@@ -113,3 +113,21 @@ describe('CLI', () => {
     }
   });
 });
+
+describe('demo mode safety (AC-015-01)', () => {
+  it('every wake started by a demo hub is a dry run', async () => {
+    const hub = await createHub({ config: testConfig({ demo: true }), logger: silent });
+    hubs.push(hub);
+    const s = hub.services;
+    const room = s.rooms.create({ name: 'Lab Demo' }, { id: null, label: 't' });
+    s.devices.create(
+      { name: 'PC', mac: '00:11:22:33:44:55', roomId: room.id },
+      { id: null, label: 't' },
+    );
+    const { jobId } = s.wake.start(
+      { target: { type: 'rooms', roomIds: [room.id], includeNoRoom: false }, onlyOffline: false },
+      { id: null, label: 't' },
+    );
+    expect(s.wake.job(jobId).job.dryRun).toBe(true);
+  });
+});

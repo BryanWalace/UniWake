@@ -111,8 +111,8 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M3-T08 | `job-runner`: lifecycle, stagger (fake clock), packet log, dry-run, no-interface handling. | FR-003.4, FR-003.5, FR-003.6, FR-003.7; NFR-02 | AC-003-04, AC-003-12, AC-003-13, AC-003-16; **faults**: send error on one interface, interface vanishes mid-job, DB busy | — |
 | [x] M3-T09 | Verification loop via Prober port; restart recovery. | FR-003.5; NFR-02 | AC-003-11, AC-003-17 | — |
 | [x] M3-T10 | Wake/jobs/packets routes. | FR-003.3, FR-003.6, FR-009 | 409/422/429 paths [API] | — |
-| [ ] M3-T11 | Web: wake buttons → preview summary → confirmation dialog; advanced options (per-job stagger). | FR-003.3, FR-003.4 | component tests | — |
-| [ ] M3-T12 | Web: job progress drawer, jobs history, job detail + packet log. | FR-009, FR-003.6 | component tests | — |
+| [x] M3-T11 | Web: wake buttons → preview summary → confirmation dialog; advanced options (per-job stagger). | FR-003.3, FR-003.4 | component tests | — |
+| [x] M3-T12 | Web: job progress drawer, jobs history, job detail + packet log. | FR-009, FR-003.6 | component tests | — |
 
 ## M4 — Monitoring hub, realtime, history
 | ID | Task | Refs | Tests | Done when |

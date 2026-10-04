@@ -3,6 +3,7 @@ import { RequireAuth } from './auth/auth';
 import { DevicesPage } from './features/devices/DevicesPage';
 import { ImportPage } from './features/devices/ImportPage';
 import { RoomPage } from './features/rooms/RoomPage';
+import { HistoryPage, JobPage } from './features/wake/HistoryPage';
 import { RoomsPage } from './features/rooms/RoomsPage';
 import { t } from './i18n/pt-BR';
 import { LoginPage } from './routes/LoginPage';
@@ -23,7 +24,8 @@ export const routes: RouteObject[] = [
       { path: 'salas', element: <RoomsPage /> },
       { path: 'salas/:id', element: <RoomPage /> },
       { path: 'agendamentos', element: <Placeholder title={t.nav.schedules} /> },
-      { path: 'historico', element: <Placeholder title={t.nav.history} /> },
+      { path: 'historico', element: <HistoryPage /> },
+      { path: 'historico/jobs/:id', element: <JobPage /> },
       { path: 'preparar', element: <Placeholder title={t.nav.prepare} /> },
       { path: 'configuracoes', element: <Placeholder title={t.nav.settings} /> },
       { path: 'saude', element: <Placeholder title={t.nav.health} /> },
