@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import pino from 'pino';
@@ -18,6 +18,8 @@ let operatorCookie: string;
 
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), 'uniwake-authz-'));
+  // Production surface includes the static panel route.
+  writeFileSync(join(dir, 'index.html'), '<!doctype html>');
   hub = await createHub({
     config: {
       ...CONFIG_DEFAULTS,
@@ -29,6 +31,7 @@ beforeAll(async () => {
     },
     logger: pino({ level: 'silent' }),
     clock: new FakeClock(T0),
+    webDir: dir,
   });
   new SqliteUsersRepo(hub.db).create({
     username: 'op',
@@ -72,7 +75,7 @@ describe('route-table authorization (IMP-014, constitution §5)', () => {
         'GET /api/auth/setup-status',
         'POST /api/auth/setup',
         'POST /api/auth/login',
-        // M1-T18+: 'GET /*' SPA static files
+        'GET /*', // SPA static files (only when a web dir is configured)
       ].sort(),
     );
   });

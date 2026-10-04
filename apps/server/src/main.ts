@@ -5,6 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { ConfigError, dataPaths, resolveConfig } from './config';
 import { createHub, EXIT_CONFIG_ERROR, HubStartError } from './hub';
+import { resolveWebDir } from './http/static';
 import { APP_VERSION } from './version';
 
 export interface CliArgs {
@@ -57,7 +58,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       dataDir: probe.dataDir,
       demo: args.demo || probe.demo,
     });
-    const hub = await createHub({ config });
+    const hub = await createHub({ config, webDir: resolveWebDir(env, import.meta.dirname) });
     await hub.start();
 
     await new Promise<void>((resolve) => {

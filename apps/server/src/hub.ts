@@ -13,6 +13,7 @@ import { migrate } from './db/migrate';
 import { buildApp } from './http/app';
 import { registerAgentRoutes, registerPanelRoutes } from './http/panel';
 import { LOOPBACK_HOSTS } from './http/security';
+import { registerStatic } from './http/static';
 import { createServices, type Services } from './services';
 import { APP_VERSION } from './version';
 
@@ -32,6 +33,8 @@ export interface HubOptions {
   /** Logger override (tests); defaults to the rotating file logger in the data dir. */
   logger?: FastifyBaseLogger;
   clock?: Clock;
+  /** Built web panel to serve (null/undefined = API only). */
+  webDir?: string | null;
 }
 
 export interface Hub {
@@ -97,7 +100,10 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       kind: 'panel',
       logger: logger.child({ listener: 'panel' }),
       hosts: panelHosts,
-      register: (app) => registerPanelRoutes(app, services),
+      register: async (app) => {
+        await registerPanelRoutes(app, services);
+        if (opts.webDir) await registerStatic(app, opts.webDir);
+      },
     });
     agent = await buildApp({
       kind: 'agent',
