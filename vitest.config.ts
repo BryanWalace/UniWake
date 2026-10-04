@@ -27,6 +27,16 @@ export default defineConfig({
           name: 'server',
           root: 'apps/server',
           include: ['test/**/*.test.ts'],
+          exclude: ['test/**/*.perf.test.ts'],
+          setupFiles: ['test/setup/network-guard.ts'],
+        },
+      },
+      {
+        // Wall-clock budgets: run alone, sequentially and uninstrumented (npm run test:perf).
+        test: {
+          name: 'perf',
+          root: 'apps/server',
+          include: ['test/**/*.perf.test.ts'],
           setupFiles: ['test/setup/network-guard.ts'],
         },
       },

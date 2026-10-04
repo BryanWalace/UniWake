@@ -31,7 +31,8 @@ export interface DeviceEvent {
 }
 
 export interface MonitorRepo {
-  targets(): ProbeTarget[];
+  /** Every device, or only the given ones. */
+  targets(deviceIds?: readonly number[]): ProbeTarget[];
   saveStates(updates: readonly StatusUpdate[]): void;
   insertEvents(events: readonly DeviceEvent[]): void;
   updateIp(deviceId: number, ip: string, now: number): void;
@@ -65,6 +66,8 @@ export class MonitorService {
   private current: Promise<SweepReport> | null = null;
   private stopped = true;
   private readonly dnsCache = new Map<string, { ip: string | null; at: number }>();
+  /** Positive verification probes, so a sweep running meanwhile does not undo them. */
+  private readonly aliveAt = new Map<number, number>();
   lastSweep: SweepReport | null = null;
 
   constructor(private readonly d: MonitorDeps) {}
@@ -118,6 +121,51 @@ export class MonitorService {
     this.dnsCache.set(key, { ip, at: now });
     if (this.dnsCache.size > 10_000) this.dnsCache.clear();
     return ip;
+  }
+
+  /**
+   * Wake verification saw these devices answer: they are online now (FR-004.1 "positive probe in
+   * the latest sweep or verification"), without waiting for the next sweep.
+   */
+  recordAlive(deviceIds: readonly number[]): void {
+    if (deviceIds.length === 0) return;
+    const now = this.d.clock.now();
+    for (const id of deviceIds) this.aliveAt.set(id, now);
+    const offlineAfter = this.d.settings.get('monitor.offlineAfter');
+    const changes: { t: ProbeTarget; next: StatusState }[] = [];
+    this.d.transaction(() => {
+      const targets = this.d.repo.targets(deviceIds).filter((t) => t.enabled);
+      const updates: StatusUpdate[] = [];
+      for (const t of targets) {
+        const { next, changed } = nextStatus(
+          t.state,
+          { kind: 'alive', latencyMs: t.state.latencyMs },
+          now,
+          offlineAfter,
+        );
+        updates.push({ deviceId: t.deviceId, state: next });
+        if (changed) changes.push({ t, next });
+      }
+      this.d.repo.saveStates(updates);
+      this.d.repo.insertEvents(
+        changes.map(({ t, next }) => ({
+          deviceId: t.deviceId,
+          at: now,
+          type: 'status' as const,
+          data: { from: t.state.status, to: next.status, via: 'verification' },
+        })),
+      );
+    });
+    for (const { t, next } of changes) {
+      this.d.events.publish({
+        type: 'device.status',
+        deviceId: t.deviceId,
+        status: next.status,
+        latencyMs: next.latencyMs,
+        lastSeenAt: next.lastSeenAt,
+      });
+    }
+    if (changes.length > 0) this.d.events.publish({ type: 'counters' });
   }
 
   /** One full sweep (also used directly by tests and the health page). */
@@ -175,11 +223,13 @@ export class MonitorService {
       }
       const address = addressOf.get(t.deviceId) ?? null;
       const r = address ? results.get(address) : undefined;
-      const outcome: ProbeOutcome =
-        address === null
-          ? { kind: 'no_address' }
-          : r?.alive
-            ? { kind: 'alive', latencyMs: r.latencyMs }
+      const seenByVerification = (this.aliveAt.get(t.deviceId) ?? 0) >= startedAt;
+      const outcome: ProbeOutcome = r?.alive
+        ? { kind: 'alive', latencyMs: r.latencyMs }
+        : seenByVerification
+          ? { kind: 'alive', latencyMs: t.state.latencyMs }
+          : address === null
+            ? { kind: 'no_address' }
             : { kind: 'dead' };
       const { next, changed } = nextStatus(t.state, outcome, now, offlineAfter);
       updates.push({ deviceId: t.deviceId, state: next });
@@ -232,6 +282,7 @@ export class MonitorService {
       changed: events.length,
     };
     this.lastSweep = report;
+    for (const [id, at] of this.aliveAt) if (at < startedAt) this.aliveAt.delete(id);
     if (report.durationMs > 30_000)
       this.d.logger.warn({ ...report }, 'sweep slower than the 30 s target (NFR-01)');
     return report;

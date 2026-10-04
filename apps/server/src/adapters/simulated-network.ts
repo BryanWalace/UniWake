@@ -1,7 +1,7 @@
 /**
  * Simulated LAN for demo mode (FR-015, constitution §2.5). Nothing here touches the network:
  * magic packets are only recorded, and a woken device "boots" after a random delay (≈ 10% never
- * do). Devices also switch on and off by themselves now and then, so the panel looks alive.
+ * do). Seeded devices also switch on and off by themselves now and then, so the panel looks alive.
  */
 import { MAGIC_PACKET_LENGTH, macOfPacket } from '../domain/magic-packet';
 import type {
@@ -47,6 +47,8 @@ export const DEMO_INTERFACE: NetInterface = {
 interface SimState {
   on: boolean;
   bootAt: number | null;
+  /** Seeded machines switch on and off by themselves; ones the user adds stay predictable. */
+  lively: boolean;
 }
 
 /** Stable per-device traits from the MAC, so the same machines misbehave across restarts. */
@@ -76,7 +78,7 @@ export class SimulatedNetwork {
   }
 
   setPower(mac: string, on: boolean): void {
-    this.state.set(mac.toUpperCase(), { on, bootAt: null });
+    this.state.set(mac.toUpperCase(), { on, bootAt: null, lively: true });
   }
 
   isOn(mac: string): boolean {
@@ -87,7 +89,7 @@ export class SimulatedNetwork {
   private stateOf(mac: string): SimState {
     let s = this.state.get(mac);
     if (!s) {
-      s = { on: this.random() < 0.5, bootAt: null };
+      s = { on: false, bootAt: null, lively: false }; // a newly added machine starts switched off
       this.state.set(mac, s);
     }
     if (!s.on && s.bootAt !== null && this.o.clock.now() >= s.bootAt) {
@@ -131,7 +133,7 @@ export class SimulatedNetwork {
           continue;
         }
         const s = this.stateOf(mac);
-        if (s.bootAt === null && this.random() < drift) {
+        if (s.lively && s.bootAt === null && this.random() < drift) {
           // Someone shut a machine down, or switched one on by hand.
           s.on = s.on ? false : !SimulatedNetwork.neverWakes(mac);
         }

@@ -24,13 +24,16 @@ interface Row {
 export class SqliteMonitorRepo implements MonitorRepo {
   constructor(private readonly db: Db) {}
 
-  targets(): ProbeTarget[] {
+  targets(deviceIds?: readonly number[]): ProbeTarget[] {
+    const ids = deviceIds ? JSON.stringify(deviceIds) : null;
     return this.db
       .all<Row>(
         `SELECT d.id, d.ip, d.hostname, d.enabled, s.status, s.latency_ms, s.last_seen_at, s.online_since,
            s.last_probe_at, s.consecutive_failures, s.ever_online
          FROM devices d LEFT JOIN device_state s ON s.device_id = d.id
+         WHERE (? IS NULL OR d.id IN (SELECT value FROM json_each(?)))
          ORDER BY d.id`,
+        [ids, ids],
       )
       .map((r) => ({
         deviceId: r.id,

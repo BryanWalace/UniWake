@@ -123,7 +123,7 @@ describe('SimulatedNetwork (FR-015)', () => {
     expect(await sim.interfaces.list()).toEqual([DEMO_INTERFACE]);
   });
 
-  it('machines switch on and off by themselves now and then (lively panel)', async () => {
+  it('seeded machines switch on and off by themselves now and then (lively panel)', async () => {
     const clock = new FakeClock(T0);
     const devices = Array.from({ length: 50 }, (_, i) => ({
       mac: macWhere(
@@ -140,6 +140,7 @@ describe('SimulatedNetwork (FR-015)', () => {
       random: rng(7),
       driftPerProbe: 0.05,
     });
+    devices.forEach((d, i) => sim.setPower(d.mac, i % 2 === 0)); // seeded = lively
     const ips = devices.map((d) => d.ip);
     const first = [...(await sim.prober.probe(ips, OPTS)).values()].map((r) => r.alive);
     let changed = 0;

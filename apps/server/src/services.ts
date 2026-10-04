@@ -9,6 +9,7 @@ import { DashboardService } from './application/dashboard/dashboard-service';
 import { DevicesService } from './application/devices/devices-service';
 import { EventsBus } from './application/events-bus';
 import { MonitorService } from './application/monitor/monitor-service';
+import { ObservingVerifier } from './application/monitor/observing-verifier';
 import { ProbeQueue } from './application/monitor/probe-queue';
 import type {
   Clock,
@@ -121,7 +122,10 @@ export function createServices(
     interfaces: ports.interfaces,
     sender: ports.sender,
     dryRunSender: ports.dryRunSender,
-    verifier: new ProberVerifier(probes.at('high'), ports.dns, settings),
+    verifier: new ObservingVerifier(
+      new ProberVerifier(probes.at('high'), ports.dns, settings),
+      (ids) => monitor.recordAlive(ids),
+    ),
     audit,
     events,
     logger: ports.logger.child({ module: 'wake' }),

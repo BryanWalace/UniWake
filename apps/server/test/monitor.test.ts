@@ -423,3 +423,66 @@ describe('ProbeQueue', () => {
     expect(r.get('good')?.alive).toBe(true);
   });
 });
+
+describe('verification counts as a positive probe (FR-004.1)', () => {
+  it('a device answering wake verification is online at once, with an event', async () => {
+    const w = world();
+    const id = w.add(1);
+    await w.s.monitor.sweep(); // offline
+    w.events.length = 0;
+    w.ports.prober.setAlive(w.s.devices.get(id).ip!);
+    const { jobId } = w.s.wake.start(
+      { target: { type: 'devices', deviceIds: [id] }, onlyOffline: false },
+      ACTOR,
+      { preConfirmed: true },
+    );
+    for (let t = 0; t < 120 && w.s.wake.job(jobId).devices[0]!.result !== 'acordou'; t++) {
+      await w.clock.advanceAsync(1000);
+    }
+    expect(w.s.wake.job(jobId).devices[0]!.result).toBe('acordou');
+    expect(statusOf(w, id)).toBe('online'); // no sweep ran in between
+    expect(JSON.parse(eventsOf(w, id).at(-1)!.data)).toMatchObject({
+      from: 'offline',
+      to: 'online',
+      via: 'verification',
+    });
+    expect(w.events).toContainEqual(
+      expect.objectContaining({ type: 'device.status', deviceId: id, status: 'online' }),
+    );
+    expect(w.events).toContainEqual({ type: 'counters' });
+    for (let t = 0; t < 900 && w.s.runner.activeCount > 0; t++) await w.clock.advanceAsync(1000);
+  });
+
+  it('a sweep that probed before the device booted does not undo the verification result', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const slow: Prober = {
+      probe: async (addresses) => {
+        await gate; // the sweep's probe saw nothing...
+        return new Map(addresses.map((a) => [a, { alive: false, via: null, latencyMs: null }]));
+      },
+    };
+    const w = world(slow);
+    const id = w.add(1);
+    const sweep = w.s.monitor.sweep();
+    await flushMicrotasks();
+    w.s.monitor.recordAlive([id]); // ...but verification saw it answer meanwhile
+    release();
+    await sweep;
+    expect(statusOf(w, id)).toBe('online');
+  });
+
+  it('disabled devices and unknown ids are ignored', () => {
+    const w = world();
+    const id = w.add(1);
+    w.s.devices.update(id, { enabled: false }, ACTOR);
+    w.s.monitor.recordAlive([id, 999]);
+    w.s.monitor.recordAlive([]);
+    expect(
+      w.s.db.get<{ status: string }>('SELECT status FROM device_state WHERE device_id = ?', [id])
+        ?.status,
+    ).not.toBe('online');
+    expect(eventsOf(w, id)).toEqual([]);
+    expect(w.events).toEqual([]);
+  });
+});
