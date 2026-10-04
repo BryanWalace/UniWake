@@ -21,12 +21,15 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "check:deps": "node scripts/check-deps.ts",
-    "verify": "npm run lint && npm run format:check && npm run typecheck && npm run test:coverage && npm run check:deps"
+    "verify": "npm run lint && npm run format:check && npm run typecheck && npm run test:coverage && npm run check:deps",
+    "dev": "concurrently -k -n hub,web -c blue,green \"tsx watch apps/server/src/main.ts --data-dir .dev-data\" \"npm run dev -w apps/web\"",
+    "build": "npm run build -w apps/web"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@types/node": "24.19.1",
     "@vitest/coverage-v8": "5.0.3",
+    "concurrently": "10.0.5",
     "eslint": "10.12.0",
     "eslint-plugin-react-hooks": "7.1.1",
     "fast-check": "4.10.2",

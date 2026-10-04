@@ -15,6 +15,15 @@ export default defineConfig({
       { test: { name: 'shared', root: 'packages/shared', include: ['test/**/*.test.ts'] } },
       {
         test: {
+          name: 'web',
+          root: 'apps/web',
+          environment: 'jsdom',
+          include: ['test/**/*.test.{ts,tsx}'],
+          setupFiles: ['test/setup.ts'],
+        },
+      },
+      {
+        test: {
           name: 'server',
           root: 'apps/server',
           include: ['test/**/*.test.ts'],
