@@ -97,7 +97,8 @@ packages/shared/src/
 apps/web/src/
   api/ (typed client), realtime/ (SSE hook), routes/ (pages), components/, i18n/pt-BR.ts
 ```
-**Boundary enforcement** (ESLint, `eslint-plugin-import-x` `no-restricted-paths`):
+**Boundary enforcement** (ESLint core `no-restricted-imports` per layer, matching import strings, so
+no resolver is needed; changed from import-x during M1-T02, see `tasks.md`):
 `domain` → only `domain` and `shared`; `application` → `domain`, `application`, `shared`
 (never `adapters`, `db`, `http`); `http` → `application`, `shared` (never `adapters`, `db`);
 `db` → `application/ports`, `domain`, `shared`; only `main.ts` / `updater/main.ts` import all.

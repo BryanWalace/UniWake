@@ -1,0 +1,14 @@
+node_modules
+dist
+build
+coverage
+.dev-data
+playwright-report
+test-results
+package-lock.json
+specs
+.agents
+*.md
+*.ps1
+*.iss
+*.xml
