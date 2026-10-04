@@ -35,3 +35,4 @@ Accepted items receive FR/NFR IDs in `spec.md` during Phase 1.
 | IMP-027 | Debug | Updater crash/power loss leaves the service stopped. | Watchdog scheduled task restarts the previous version after 15 min. | Reliability | S | accepted (FR-001.3, ADR-023) |
 | IMP-028 | Debug | Startup failures (port in use) invisible outside the log file. | Windows Application event log entry + distinct exit code. | Observability | S | accepted (plan §9) |
 | IMP-029 | Reviewer | Runtime dependencies drift from the justified list. | `npm run check:deps` compares package.json deps with plan §4.1. | Security | S | accepted (plan §12) |
+| IMP-030 | Reviewer | "Every AC has a test" can't be verified from markdown. | AC IDs in test titles + `npm run check:trace` in `verify`. | Quality | S | accepted (M1-T20) |
