@@ -75,10 +75,7 @@ export class SqliteAuditRepo implements AuditRepo {
     }
     const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const total =
-      this.db.get<{ n: number }>(
-        `SELECT COUNT(*) AS n FROM audit_log ${clause}`,
-        params,
-      )?.n ?? 0;
+      this.db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM audit_log ${clause}`, params)?.n ?? 0;
     const items = this.db
       .all<Row>(
         `SELECT * FROM audit_log ${clause} ORDER BY at DESC, id DESC LIMIT :limit OFFSET :offset`,
