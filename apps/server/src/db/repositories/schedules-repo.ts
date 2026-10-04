@@ -1,4 +1,4 @@
-import type { ScheduleException } from '@uniwake/shared';
+import type { ScheduleException, ScheduleRun, ScheduleRunsQuery } from '@uniwake/shared';
 import type {
   ScheduleRecord,
   SchedulesRepo,
@@ -129,6 +129,24 @@ export class SqliteSchedulesRepo implements SchedulesRepo {
 
   delete(id: number): void {
     this.db.run('DELETE FROM schedules WHERE id = ?', [id]);
+  }
+
+  runs(q: ScheduleRunsQuery): { items: ScheduleRun[]; total: number } {
+    const where = '(? IS NULL OR r.schedule_id = ?)';
+    const p = [q.scheduleId ?? null, q.scheduleId ?? null];
+    const total = this.db.get<{ n: number }>(
+      'SELECT COUNT(*) AS n FROM schedule_runs r WHERE ' + where,
+      p,
+    )!.n;
+    const items = this.db.all<ScheduleRun>(
+      'SELECT r.id, r.schedule_id AS scheduleId, s.name AS scheduleName, r.planned_at AS plannedAt, ' +
+        'r.claimed_at AS handledAt, r.status, r.detail, r.job_id AS jobId ' +
+        'FROM schedule_runs r JOIN schedules s ON s.id = r.schedule_id WHERE ' +
+        where +
+        ' ORDER BY r.planned_at DESC, r.id DESC LIMIT ? OFFSET ?',
+      [...p, q.pageSize, (q.page - 1) * q.pageSize],
+    );
+    return { items, total };
   }
 
   exceptions(): ScheduleException[] {

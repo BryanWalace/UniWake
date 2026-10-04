@@ -9,6 +9,8 @@ import {
   type ScheduleCreate,
   type ScheduleException,
   type ScheduleExceptionCreate,
+  type ScheduleRun,
+  type ScheduleRunsQuery,
   scheduleExceptionCreateSchema,
   scheduleCreateSchema,
   type ScheduleUpdate,
@@ -60,6 +62,7 @@ export interface SchedulesRepo {
   delete(id: number): void;
   exceptions(): ScheduleException[];
   insertException(e: Omit<ScheduleException, 'id'>): number;
+  runs(q: ScheduleRunsQuery): { items: ScheduleRun[]; total: number };
   deleteException(id: number): ScheduleException | undefined;
 }
 
@@ -232,6 +235,12 @@ export class SchedulesService {
         details: { id },
       });
     });
+  }
+
+  /** Execution log (FR-005.7), newest first. */
+  runs(q: ScheduleRunsQuery): { items: ScheduleRun[]; total: number } {
+    if (q.scheduleId !== undefined) this.record(q.scheduleId);
+    return this.d.repo.runs(q);
   }
 
   // ---------------------------------------------------------------- exceptions (FR-005.2)

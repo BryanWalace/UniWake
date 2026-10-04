@@ -5,6 +5,7 @@ import {
   idParamSchema,
   scheduleCreateSchema,
   scheduleExceptionCreateSchema,
+  scheduleRunsQuerySchema,
   schedulerPauseSchema,
   scheduleUpdateSchema,
 } from '@uniwake/shared';
@@ -40,6 +41,16 @@ export function scheduleRoutes(app: FastifyInstance, s: HttpServices): void {
     async (req, reply) => {
       s.schedules.delete(req.params.id, actorOf(req));
       return reply.status(204).send();
+    },
+  );
+
+  // FR-005.7 execution log.
+  r.get(
+    '/api/schedule-runs',
+    { config: auth, schema: { querystring: scheduleRunsQuerySchema } },
+    async (req) => {
+      const { items, total } = s.schedules.runs(req.query);
+      return { items, total, page: req.query.page, pageSize: req.query.pageSize };
     },
   );
 

@@ -380,3 +380,89 @@ describe('global pause (FR-005.6)', () => {
     expect((await post('/api/scheduler/resume')).statusCode).toBe(204); // idempotent
   });
 });
+
+describe('execution log API (FR-005.7)', () => {
+  const hs: ApiHarness[] = [];
+  afterEach(async () => {
+    for (const h of hs.splice(0)) {
+      h.services.scheduler.stop();
+      for (let i = 0; i < 400 && h.services.runner.activeCount > 0; i++)
+        await h.clock.advanceAsync(5_000);
+      await h.close();
+    }
+  });
+
+  it('AC-005-10: every status scenario leaves a log row, with its job id when a job exists', async () => {
+    const h = await apiHarness();
+    hs.push(h);
+    await h.as('operator');
+    const get = async <T>(url: string) =>
+      (await h.inject({ url, cookie: await h.login('operator-user') })).json<T>();
+    const s = h.services;
+    h.clock.set(sp(5, 5, 0));
+    const room = s.rooms.create({ name: 'Lab 1' }, ACTOR).id;
+    const gone = s.rooms.create({ name: 'Lab Demolido' }, ACTOR).id;
+    s.devices.create({ name: 'PC', mac: '00:DD:00:00:00:0A', roomId: room }, ACTOR);
+    s.devices.create({ name: 'PC2', mac: '00:DD:00:00:00:0B', roomId: gone }, ACTOR);
+    // its own room: the late run's wake may still be running when this one is due
+    const other = s.rooms.create({ name: 'Lab 2' }, ACTOR).id;
+    s.devices.create({ name: 'PC3', mac: '00:DD:00:00:00:0C', roomId: other }, ACTOR);
+    const mk = (name: string, timeLocal: string, roomId = room) =>
+      s.schedules.create(
+        { name, weekdays: 31, timeLocal, target: { type: 'rooms', roomIds: [roomId] } },
+        ACTOR,
+      ).id;
+    const lost = mk('Perdido', '05:50');
+    const late = mk('Atrasado', '06:30');
+    const holiday = mk('Feriado', '06:35');
+    const empty = mk('Vazio', '06:36', gone);
+    const onTime = mk('Pontual', '06:50', other);
+    const paused = mk('Pausado', '07:00');
+    s.schedules.createException(
+      { scheduleId: holiday, startDate: '2026-10-05', description: 'Reunião' },
+      ACTOR,
+    );
+    s.rooms.delete(gone, true, ACTOR);
+
+    new SqliteSchedulerRepo(s.db).setLastTick(sp(5, 5, 40)); // up at 05:40, then down
+    h.clock.set(sp(5, 6, 38));
+    s.scheduler.tick(); // lost (48 min), late (8 min), holiday, empty
+    h.clock.set(sp(5, 6, 50, 5));
+    s.scheduler.tick(); // on time
+    s.scheduler.pause({ reason: 'Teste' }, ACTOR);
+    h.clock.set(sp(5, 7, 0, 5));
+    s.scheduler.tick(); // paused
+
+    const log = await get<{
+      items: { scheduleId: number; status: string; detail: string | null; jobId: number | null }[];
+      total: number;
+    }>('/api/schedule-runs');
+    expect(log.total).toBe(6);
+    const row = (id: number) => log.items.find((r) => r.scheduleId === id)!;
+    expect(row(lost)).toMatchObject({ status: 'perdido', jobId: null });
+    expect(row(late)).toMatchObject({ status: 'atrasado', detail: 'atrasado (8 min)' });
+    expect(row(late).jobId).toEqual(expect.any(Number));
+    expect(row(holiday)).toMatchObject({
+      status: 'pulado_feriado',
+      detail: 'Reunião',
+      jobId: null,
+    });
+    expect(row(empty)).toMatchObject({ status: 'falhou', detail: 'alvo vazio', jobId: null });
+    expect(row(onTime).jobId).toEqual(expect.any(Number));
+    expect(row(onTime).status).toBe('executado');
+    expect(row(paused)).toMatchObject({ status: 'pulado_pausa', jobId: null });
+    // newest first, filter and paging
+    expect(log.items[0]!.scheduleId).toBe(paused);
+    const one = await get<{ items: unknown[]; total: number }>(
+      `/api/schedule-runs?scheduleId=${late}`,
+    );
+    expect(one.total).toBe(1);
+    const page2 = await get<{ items: unknown[] }>('/api/schedule-runs?page=2&pageSize=4');
+    expect(page2.items).toHaveLength(2);
+    const missing = await h.inject({
+      url: '/api/schedule-runs?scheduleId=999',
+      cookie: await h.login('operator-user'),
+    });
+    expect(missing.statusCode).toBe(404);
+  });
+});

@@ -125,3 +125,45 @@ export interface SchedulerPause {
   /** Username of whoever paused, when known. */
   by: string | null;
 }
+
+export const RUN_STATUSES = [
+  'executando',
+  'executado',
+  'atrasado',
+  'pulado_feriado',
+  'pulado_pausa',
+  'perdido',
+  'falhou',
+] as const;
+export type ScheduleRunStatus = (typeof RUN_STATUSES)[number];
+
+/** pt-BR labels for the execution log (FR-005.7). */
+export const RUN_STATUS_LABEL: Record<ScheduleRunStatus, string> = {
+  executando: 'Executando',
+  executado: 'Executado',
+  atrasado: 'Atrasado',
+  pulado_feriado: 'Pulado (feriado)',
+  pulado_pausa: 'Pulado (pausa)',
+  perdido: 'Perdido',
+  falhou: 'Falhou',
+};
+
+export const scheduleRunsQuerySchema = z.object({
+  scheduleId: z.coerce.number().int().positive().optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(200).default(50),
+});
+export type ScheduleRunsQuery = z.output<typeof scheduleRunsQuerySchema>;
+
+export interface ScheduleRun {
+  id: number;
+  scheduleId: number;
+  scheduleName: string;
+  plannedAt: number;
+  /** When the scheduler handled it (late runs: after the planned time). */
+  handledAt: number;
+  status: ScheduleRunStatus;
+  /** e.g. "atrasado (8 min)", the holiday name, "alvo vazio". */
+  detail: string | null;
+  jobId: number | null;
+}
