@@ -8,6 +8,7 @@ import type {
   WakeRequest,
 } from '@uniwake/shared';
 import { api } from '../../api/client';
+import { useRealtimeState } from '../../realtime/RealtimeProvider';
 
 export const FINAL_STATES: readonly JobState[] = ['concluido', 'interrompido', 'falhou'];
 
@@ -34,14 +35,18 @@ export const startWake = (req: WakeRequest) =>
 
 export const jobKey = (id: number) => ['jobs', id] as const;
 
-/** Job detail; refreshes every 2 s until the job reaches a final state. */
+/**
+ * Job detail until the job reaches a final state: live over SSE, with a slow poll as a safety net
+ * (every 2 s when the realtime channel is down).
+ */
 export function useJob(id: number | null) {
+  const live = useRealtimeState() === 'open';
   return useQuery({
     queryKey: jobKey(id ?? 0),
     queryFn: () => api.get<JobDetail>(`/api/jobs/${id}`),
     enabled: id !== null,
     refetchInterval: (q) =>
-      q.state.data && FINAL_STATES.includes(q.state.data.job.state) ? false : 2000,
+      q.state.data && FINAL_STATES.includes(q.state.data.job.state) ? false : live ? 15_000 : 2000,
   });
 }
 

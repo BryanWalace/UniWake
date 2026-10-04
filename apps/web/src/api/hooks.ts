@@ -22,6 +22,7 @@ export type RoomWithCount = Room & { deviceCount: number };
 export type TagWithCount = Required<Tag>;
 
 export const keys = {
+  me: ['auth', 'me'] as const,
   rooms: ['rooms'] as const,
   room: (id: number) => ['rooms', id] as const,
   tags: ['tags'] as const,

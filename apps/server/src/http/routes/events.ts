@@ -35,7 +35,9 @@ export function eventsRoutes(app: FastifyInstance, s: HttpServices): void {
       ...SECURITY_HEADERS,
       'content-type': 'text/event-stream; charset=utf-8',
       'cache-control': 'no-store',
-      connection: 'keep-alive',
+      // One long-lived response per connection: when it ends, the socket closes with it instead of
+      // idling in a keep-alive pool until server shutdown destroys it.
+      connection: 'close',
       'x-accel-buffering': 'no',
     });
     res.flushHeaders();

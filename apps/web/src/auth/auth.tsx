@@ -2,13 +2,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Navigate, useLocation, useNavigate } from 'react-router';
 import type { Me } from '@uniwake/shared';
 import { api, ApiRequestError } from '../api/client';
+import { keys } from '../api/hooks';
 import { ErrorState, LoadingState } from '../components/Banner';
 import { t } from '../i18n/pt-BR';
 import { WakeProvider } from '../features/wake/WakeProvider';
 import { DemoBanner } from '../features/dashboard/DemoBanner';
+import { RealtimeProvider } from '../realtime/RealtimeProvider';
 import { Layout } from '../routes/Layout';
 
-export const meQueryKey = ['auth', 'me'] as const;
+export const meQueryKey = keys.me;
 export const setupStatusKey = ['auth', 'setup-status'] as const;
 
 /** Current user, or null when not logged in (401). */
@@ -87,9 +89,11 @@ export function RequireAuth() {
     );
   }
   return (
-    <WakeProvider>
-      <Layout banners={<DemoBanner />} userMenu={<UserMenu me={me.data} />} />
-    </WakeProvider>
+    <RealtimeProvider>
+      <WakeProvider>
+        <Layout banners={<DemoBanner />} userMenu={<UserMenu me={me.data} />} />
+      </WakeProvider>
+    </RealtimeProvider>
   );
 }
 

@@ -12,6 +12,7 @@ import { EmptyState, ErrorState, LoadingState } from '../../components/Banner';
 import { Button, PageHeader, SelectField, StatusBadge } from '../../components/ui';
 import { formatDateTime, formatTime, plural, useNow } from '../../lib/format';
 import { useDebounced } from '../devices/DevicesPage';
+import { useRealtimeState } from '../../realtime/RealtimeProvider';
 import { useWakeUi } from '../wake/WakeProvider';
 import { useDashboard } from './api';
 
@@ -50,6 +51,7 @@ export function DashboardPage() {
   const dash = useDashboard();
   const { requestWake } = useWakeUi();
   const now = useNow(30_000);
+  const live = useRealtimeState();
   const searchRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<DeviceStatus | ''>('');
@@ -85,7 +87,12 @@ export function DashboardPage() {
       <p className="-mt-3 text-sm text-slate-600">
         {d.lastSweepAt === null
           ? 'Aguardando a primeira verificação de status…'
-          : `Status verificado às ${formatTime(d.lastSweepAt)}.`}
+          : `Status verificado às ${formatTime(d.lastSweepAt)}.`}{' '}
+        {live === 'open' ? (
+          <span className="font-medium text-green-800">Atualização ao vivo.</span>
+        ) : live === 'connecting' ? (
+          <span className="font-medium text-amber-800">Reconectando atualizações ao vivo…</span>
+        ) : null}
       </p>
 
       <Notices notices={d.notices} />
