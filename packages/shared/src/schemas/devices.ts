@@ -40,6 +40,7 @@ export const deviceListQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(LIMITS.pageSizeMax).default(50),
 });
 export type DeviceListQuery = z.input<typeof deviceListQuerySchema>;
+export type DeviceListParams = z.output<typeof deviceListQuerySchema>;
 
 export const BULK_ACTIONS = [
   'move',

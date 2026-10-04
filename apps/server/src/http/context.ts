@@ -4,6 +4,7 @@
  */
 import type { AuditService } from '../application/audit/audit-service';
 import type { AuthService } from '../application/auth/auth-service';
+import type { DevicesService } from '../application/devices/devices-service';
 import type { RoomsService } from '../application/rooms/rooms-service';
 import type { SettingsService } from '../application/settings/settings-service';
 import type { TagsService } from '../application/tags/tags-service';
@@ -14,4 +15,5 @@ export interface HttpServices {
   settings: SettingsService;
   rooms: RoomsService;
   tags: TagsService;
+  devices: DevicesService;
 }
