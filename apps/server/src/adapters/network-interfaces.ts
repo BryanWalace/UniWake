@@ -6,7 +6,7 @@
  */
 import { readFile } from 'node:fs/promises';
 import { networkInterfaces as osNetworkInterfaces, type NetworkInterfaceInfo } from 'node:os';
-import { join } from 'node:path';
+import { win32 } from 'node:path';
 import { type NetInterface, prefixFromNetmask } from '../domain/network';
 import type { NetworkInterfaces, ProcessRunner } from '../application/ports';
 
@@ -62,7 +62,8 @@ export class OsNetworkInterfaces implements NetworkInterfaces {
     this.platform = opts.platform ?? process.platform;
     this.listOs = opts.list ?? osNetworkInterfaces;
     this.readProcRoute = opts.readProcRoute ?? (() => readFile('/proc/net/route', 'utf8'));
-    this.routeExe = join(
+    // Always a Windows path (win32.join), so behavior and tests are identical on any OS.
+    this.routeExe = win32.join(
       opts.systemRoot ?? process.env.SystemRoot ?? 'C:\\Windows',
       'System32',
       'route.exe',
