@@ -65,10 +65,16 @@ export class Db {
     opts: DbOptions = {},
   ) {
     this.raw = new DatabaseSync(path, { enableForeignKeyConstraints: true });
-    this.raw.exec(`PRAGMA busy_timeout = ${Math.trunc(opts.busyTimeoutMs ?? 5000)};`);
-    this.raw.exec('PRAGMA journal_mode = WAL;');
-    this.raw.exec('PRAGMA synchronous = FULL;');
-    this.raw.exec('PRAGMA foreign_keys = ON;');
+    try {
+      this.raw.exec(`PRAGMA busy_timeout = ${Math.trunc(opts.busyTimeoutMs ?? 5000)};`);
+      this.raw.exec('PRAGMA journal_mode = WAL;');
+      this.raw.exec('PRAGMA synchronous = FULL;');
+      this.raw.exec('PRAGMA foreign_keys = ON;');
+    } catch (e) {
+      // M1-F2: a corrupt file fails here; close so the file is not left locked (Windows).
+      this.raw.close();
+      throw e;
+    }
   }
 
   private stmt(sql: string): StatementSync {

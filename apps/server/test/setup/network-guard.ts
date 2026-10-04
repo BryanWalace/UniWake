@@ -1,9 +1,10 @@
 /**
- * Network guard for tests (constitution §5): any UDP send or TCP connect to a non-loopback
- * destination throws. Loopback and local IPC (named pipes) stay allowed.
+ * Network guard for tests (constitution §5): any UDP send, TCP connect or DNS query for a
+ * non-loopback destination throws. Loopback and local IPC (named pipes) stay allowed.
  */
 /* eslint-disable @typescript-eslint/unbound-method -- the guard deliberately captures prototype methods and re-applies them with the original `this`. */
 import dgram from 'node:dgram';
+import dns from 'node:dns';
 import net from 'node:net';
 
 export class NetworkGuardError extends Error {
@@ -71,4 +72,54 @@ export function installNetworkGuard(): void {
   };
 }
 
+/** DNS methods that send queries; `reverse` takes an IP, the others a host name. */
+const DNS_METHODS = [
+  'lookup',
+  'lookupService',
+  'resolve',
+  'resolve4',
+  'resolve6',
+  'resolveAny',
+  'resolveCaa',
+  'resolveCname',
+  'resolveMx',
+  'resolveNaptr',
+  'resolveNs',
+  'resolvePtr',
+  'resolveSoa',
+  'resolveSrv',
+  'resolveTxt',
+  'reverse',
+] as const;
+
+/**
+ * Regression for M1-F1: the first guard only patched dgram/net, and a test resolved a real
+ * name. DNS goes through the OS resolver, so it must be blocked separately.
+ */
+function guardDns(): void {
+  const wrap = (target: object, isPromise: boolean) => {
+    const t = target as Record<string, unknown>;
+    for (const name of DNS_METHODS) {
+      const orig = t[name];
+      if (typeof orig !== 'function') continue;
+      t[name] = function guardedDns(this: unknown, ...args: unknown[]) {
+        const host = typeof args[0] === 'string' ? args[0] : undefined;
+        // IP literals resolve locally (dgram looks up "0.0.0.0" to auto-bind); only names query DNS.
+        const isIpLiteral = host !== undefined && net.isIP(host) !== 0 && name !== 'reverse';
+        if (!isIpLiteral && !isLoopbackHost(host)) {
+          const err = new NetworkGuardError(host ?? '?');
+          if (isPromise) return Promise.reject(err);
+          throw err;
+        }
+        return (orig as (...a: unknown[]) => unknown).apply(this, args);
+      };
+    }
+  };
+  wrap(dns, false);
+  wrap(dns.promises, true);
+  wrap(dns.Resolver.prototype, false);
+  wrap(dns.promises.Resolver.prototype, true);
+}
+
 installNetworkGuard();
+guardDns();

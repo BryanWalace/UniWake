@@ -46,6 +46,25 @@ export interface Hub {
   stop(): Promise<void>;
 }
 
+/** M1-F3: an unreadable database must tell the operator what to do (constitution §8). */
+function databaseError(dbPath: string, backupsDir: string, cause: unknown): HubStartError {
+  const detail = cause instanceof Error ? cause.message : String(cause);
+  return new HubStartError(
+    `O banco de dados do UniWake não pôde ser aberto (${detail}). Arquivo: ${dbPath}. ` +
+      `Restaure o backup mais recente da pasta ${backupsDir} (copie-o sobre o arquivo acima com o serviço parado) ` +
+      'ou mova o arquivo para outro lugar para começar com um banco vazio.',
+    cause,
+  );
+}
+
+function openDatabase(dbPath: string, backupsDir: string): Db {
+  try {
+    return new Db(dbPath);
+  } catch (e) {
+    throw databaseError(dbPath, backupsDir, e);
+  }
+}
+
 function panelHosts(): ReadonlySet<string> {
   return new Set<string>(LOOPBACK_HOSTS);
 }
@@ -57,13 +76,13 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
   const logger = opts.logger ?? createFileLogger(paths.logs, config.logLevel, config.demo);
 
   const clock = opts.clock ?? new SystemClock();
-  const db = new Db(paths.db);
+  const db = openDatabase(paths.db, paths.backups);
   try {
     const m = migrate(db, undefined, { now: () => clock.now() });
     if (m.applied.length > 0) logger.info({ from: m.from, to: m.to }, 'database migrated');
   } catch (e) {
     db.close();
-    throw e;
+    throw databaseError(paths.db, paths.backups, e);
   }
 
   const services = createServices(db, clock);

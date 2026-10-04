@@ -53,6 +53,15 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M1-T19 | Web: `/login`, `/primeiro-acesso`, auth guard, logout. | FR-006.1 | component tests | — |
 | [x] M1-T20 | `check:trace`: spec ACs ↔ test titles ↔ tasks. | IMP-030 | script unit test | in `verify` |
 
+### M1 close
+| ID | Task | Refs | Tests | Done when |
+|---|---|---|---|---|
+| [x] M1-D | Debug break-it pass (checklist) → `apps/server/test/breakit-m1.test.ts`. | tasks §Break-it | 9 probes | findings filed |
+| [x] M1-F1 | MAJOR: network guard does not block DNS (a real lookup left the machine). Patch `dns`/`dns.promises`/Resolver for non-loopback names. | constitution §5 | breakit DNS probe | guard blocks DNS |
+| [x] M1-F2 | MAJOR: `Db` constructor leaks the SQLite handle when pragmas fail (corrupt file stays locked on Windows). | ADR-017 | breakit corrupt-DB probe | handle closed on failure |
+| [x] M1-F3 | MINOR: corrupt/unreadable DB gives "file is not a database"; make it a startup error (exit 78) that points to backups. | constitution §8 | breakit corrupt-DB probe | actionable message |
+| [ ] M1-R | Code review → `specs/reviews/M1-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+
 ## M2 — Devices, Rooms, Tags
 | ID | Task | Refs | Tests | Done when |
 |---|---|---|---|---|
