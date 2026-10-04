@@ -53,6 +53,7 @@ export class SqliteJobsRepo implements JobsRepo {
       source: r.source,
       scheduleRunId: r.schedule_run_id,
       requestedBy: r.requested_by_name ?? (r.source === 'schedule' ? 'agendamento' : null),
+      requestedById: r.requested_by,
       target: target.descriptor,
       targetLabel: target.label,
       stagger: target.stagger,

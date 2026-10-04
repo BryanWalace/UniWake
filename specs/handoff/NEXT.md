@@ -3,21 +3,23 @@
 Updated: 2026-10-04 · Mode: single-agent orchestrator (`.agents/06-orchestrator.md`)
 
 ## Current state
-- Phases 0–3 DONE. Phase 4: **M1 DONE, M2 DONE** (reviews `specs/reviews/M1-*.md`, `M2-*.md`).
-- `npm run verify` green (236 tests; core coverage ~97% stmts / ~89% branches). Playwright E2E
-  7/7 (`npm run e2e`). CI green on ubuntu (verify + audit + gitleaks + E2E) and windows (tests).
-- M2 delivered: rooms (codes, delete impact), tags, devices CRUD with MAC rules and warnings,
-  list filters/search/paging, bulk ops, CSV import (preview/commit, Windows-1252 fallback) and
-  export, static panel serving, web pages `/dispositivos`, `/dispositivos/importar`, `/salas`,
-  `/salas/:id`, E2E harness with CSP/console guard and axe.
+- Phases 0–3 DONE. Phase 4: **M1, M2, M3 DONE** (reviews in `specs/reviews/M1-*`, `M2-*`, `M3-*`).
+- `npm run verify` green (~316 tests; core coverage ~95% stmts / ~87% branches). Playwright E2E 8/8
+  (`npm run e2e`, hub forced to demo/dry-run). CI green on ubuntu and windows.
+- M3 delivered: magic packet, interface selection + OS adapter (route print), scope resolver
+  (property-tested), stagger planner, per-interface UDP sender + dry-run sender, WakeService
+  (preview/start, confirmation guard, active-job exclusion, rate limit), JobRunner (send, packet
+  log, verification, network retry, restart recovery, graceful stop), TCP prober (M4-T02 done
+  early), DNS adapter, web wake dialog + live drawer + history/job pages.
 
-## Next: M3 — WoL engine, scoped wake, verification (lead: Senior Fullstack)
-Start at `M3-T01` in `specs/tasks.md`. Key rules:
-- Scope resolution server-side (spec §4 SR-01..SR-12); property test AC-003-18.
-- Sender binds per interface (plan §2.6); packet log per attempt; dry-run uses the recording sender.
-- Tests never send real packets: use `FakePacketSender`; the real UDP sender gets a loopback
-  contract test only (network guard allows 127.0.0.1).
-- Audit entries inside the same transaction as the change (M2 architect rule).
+## Next: M4 — Monitoring hub, realtime, history (lead: Senior Fullstack)
+Start at `M4-T01` (M4-T02 already done). Notes:
+- Composite prober: ICMP via persistent PowerShell helper (ADR-019) + existing `TcpProber`.
+- Sweeps must use the same Prober port; verification probes take priority (AC-004-13).
+- `EventsBus` exists (`application/events-bus.ts`); SSE route should subscribe to it; the web job
+  drawer currently polls every 2 s — switch it to SSE (M4-T11).
+- Demo mode (M4-T09) must also provide simulated network interfaces (R-M3-03).
+- Retention jobs (M4-T16) must purge `packet_log` (30 d).
 
 ## Working conventions
 - Commit via verify-gated helper (prettier → `npm run verify` → commit → push). Never pipe

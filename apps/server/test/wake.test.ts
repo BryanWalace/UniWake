@@ -382,3 +382,19 @@ describe('restart recovery (AC-003-17)', () => {
     expect(devices.every((d) => d.result === 'nao_respondeu')).toBe(true);
   });
 });
+
+describe('M3 review fixes', () => {
+  it('R-M3-01 wake.finish is attributed to the user who started the job', async () => {
+    const h = await apiHarness();
+    hs.push(h);
+    const cookie = await h.as('operator');
+    const room = h.services.rooms.create({ name: 'Lab R' }, ACTOR).id;
+    h.services.devices.create({ name: 'PC', mac: '00:AA:00:00:0F:01', roomId: room }, ACTOR);
+    await h.inject({ method: 'POST', url: '/api/wake', cookie, payload: roomTarget([room]) });
+    await drive(h);
+    const start = h.services.audit.query({ action: 'wake.start' }).items[0]!;
+    const finish = h.services.audit.query({ action: 'wake.finish' }).items[0]!;
+    expect(finish.actorUserId).toBe(start.actorUserId);
+    expect(finish.actorUserId).not.toBeNull();
+  });
+});

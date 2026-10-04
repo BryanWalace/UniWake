@@ -121,7 +121,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M3-F1 | MAJOR: a backwards wall-clock jump (NTP) during verification stretched the window by the jump, keeping the room's devices locked as "in an active job" (new wakes got WAKE_ALREADY_RUNNING). Verification is now also bounded by elapsed timer time. FakeClock timers made monotonic like real setTimeout. | FR-003.5, ADR-008 | breakit clock-jump probe | — |
 | [x] M3-F2 | MAJOR: one transient error reading network interfaces failed a manual wake with NO_NETWORK_INTERFACE. Reads are retried 3× (1 s apart). | FR-003.2 | breakit port-failure probe | — |
 | [x] M3-F3 | MAJOR: stopping the hub during a wake job closed the DB under the running job (unhandled rejection on every service stop mid-job). The runner now stops first; interrupted jobs are recovered on the next start. | constitution §7 | hub stop test | — |
-| [ ] M3-R | Code review → `specs/reviews/M3-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+| [x] M3-R | Code review → `specs/reviews/M3-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
 
 ## M4 — Monitoring hub, realtime, history
 | ID | Task | Refs | Tests | Done when |

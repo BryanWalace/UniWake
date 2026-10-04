@@ -260,3 +260,15 @@ describe('history (FR-009, FR-003.6)', () => {
     expect(await screen.findByText('Nenhuma ligação ainda')).toBeInTheDocument();
   });
 });
+
+describe('M3 review fixes (web)', () => {
+  it('R-M3-02 a failed job explains what to do next', async () => {
+    loggedInApi().on('GET', '/api/jobs/10', {
+      body: { ...JOB, job: { ...JOB.job, id: 10, state: 'falhou', error: 'boom' } },
+    });
+    renderApp('/historico/jobs/10');
+    expect(
+      await screen.findByText(/erro inesperado\. Veja os logs em Saúde do sistema/),
+    ).toBeInTheDocument();
+  });
+});

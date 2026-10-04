@@ -63,7 +63,11 @@ export function JobProgress({
           job.verifyUntil !== null &&
           ` — ${formatDuration(job.verifyUntil - now)} restantes`}
         {job.error === 'NO_NETWORK_INTERFACE' &&
-          ': nenhuma placa de rede disponível no computador do UniWake.'}
+          ': nenhuma placa de rede disponível no computador do UniWake. Verifique o cabo e a conexão de rede.'}
+        {job.state === 'falhou' &&
+          job.error !== 'NO_NETWORK_INTERFACE' &&
+          ': erro inesperado. Veja os logs em Saúde do sistema e tente novamente.'}
+        {job.state === 'interrompido' && ': o serviço foi reiniciado durante a ligação.'}
       </p>
       <dl className="grid grid-cols-2 gap-2 text-sm">
         <Stat label="Pacotes enviados" value={`${sent}/${job.summary.total}`} />

@@ -36,7 +36,14 @@ export function wakeRoutes(app: FastifyInstance, s: HttpServices): void {
       );
       return {
         items: items.map(
-          ({ target: _t, stagger: _s, excludedCount: _e, scheduleRunId: _r, ...job }) => job,
+          ({
+            target: _t,
+            stagger: _s,
+            excludedCount: _e,
+            scheduleRunId: _r,
+            requestedById: _u,
+            ...job
+          }) => job,
         ),
         total,
         page: req.query.page,
@@ -47,7 +54,14 @@ export function wakeRoutes(app: FastifyInstance, s: HttpServices): void {
 
   r.get('/api/jobs/:id', { config: auth, schema: { params: idParamSchema } }, async (req) => {
     const { job, devices } = s.wake.job(req.params.id);
-    const { target: _t, stagger: _s, excludedCount: _e, scheduleRunId: _r, ...rest } = job;
+    const {
+      target: _t,
+      stagger: _s,
+      excludedCount: _e,
+      scheduleRunId: _r,
+      requestedById: _u,
+      ...rest
+    } = job;
     return {
       job: rest,
       devices: devices.map(({ ip: _ip, hostname: _h, ...d }) => d),

@@ -333,7 +333,7 @@ export class JobRunner {
       const final = this.d.jobs.get(jobId)!;
       this.d.audit.record({
         actor: {
-          id: null,
+          id: job.requestedById,
           label: job.source === 'schedule' ? 'agendamento' : (job.requestedBy ?? 'sistema'),
         },
         action: 'wake.finish',

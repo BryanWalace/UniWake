@@ -49,6 +49,7 @@ export interface JobDeviceRow extends WakeJobDevice {
 }
 
 export interface StoredJob extends WakeJob {
+  requestedById: number | null;
   target: WakeTarget;
   stagger: { batchSize: number; batchDelaySeconds: number } | null;
   excludedCount: number;
