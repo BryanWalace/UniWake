@@ -66,6 +66,7 @@ function dashboard(over: Partial<Dashboard> = {}): Dashboard {
     notices: [],
     demo: false,
     lastSweepAt: NOW,
+    pause: null,
     ...over,
   };
 }

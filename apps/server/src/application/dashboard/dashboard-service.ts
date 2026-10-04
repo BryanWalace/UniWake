@@ -94,6 +94,7 @@ export interface DashboardDeps {
   transaction: <T>(fn: () => T) => T;
   demo: boolean;
   lastSweepAt: () => number | null;
+  pause: () => Dashboard['pause'];
 }
 
 const ROLLUP_AT = '00:10';
@@ -189,6 +190,7 @@ export class DashboardService {
       notices: this.d.repo.openNotices(20),
       demo: this.d.demo,
       lastSweepAt: this.d.lastSweepAt(),
+      pause: this.d.pause(),
     };
   }
 

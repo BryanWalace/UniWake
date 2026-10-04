@@ -3,6 +3,7 @@
  */
 import { z } from 'zod';
 import type { DeviceStatus } from './devices';
+import type { SchedulerPause } from './schedules';
 import type { DeviceResult, JobState } from './wake';
 
 export interface StatusCounts {
@@ -72,6 +73,8 @@ export interface Dashboard {
   notices: DashboardNotice[];
   demo: boolean;
   lastSweepAt: number | null;
+  /** Global scheduler pause (FR-005.6): a red banner on every page while set. */
+  pause: SchedulerPause | null;
 }
 
 export const UPTIME_MAX_DAYS = 366;

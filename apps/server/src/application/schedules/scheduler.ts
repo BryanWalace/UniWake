@@ -4,14 +4,19 @@
  * claimed with an INSERT on the unique (schedule, planned time) key, then executed: two schedulers,
  * a restart or a clock jumped back can never fire the same run twice (AC-005-03/04).
  */
-import type { WakeRequestParams } from '@uniwake/shared';
+import {
+  type SchedulerPause,
+  type SchedulerPauseInput,
+  schedulerPauseSchema,
+  type WakeRequestParams,
+} from '@uniwake/shared';
 import {
   decideRuns,
   exceptionFor,
   occurrencesBetween,
   type RunStatus,
 } from '../../domain/schedule';
-import type { Actor } from '../audit/audit-service';
+import type { Actor, AuditService } from '../audit/audit-service';
 import { AppError } from '../errors';
 import type { EventsBus } from '../events-bus';
 import type { Clock, Logger, TimerHandle } from '../ports';
@@ -30,7 +35,8 @@ export interface PauseState {
   reason: string;
   /** Automatic resume (UTC ms), or null for a manual resume. */
   resumeAt: number | null;
-  by: number | null;
+  /** Who paused (username), for the banner. */
+  by: string | null;
 }
 
 export interface SchedulerRepo {
@@ -63,6 +69,7 @@ export interface SchedulerDeps {
   refs: TargetRefs;
   startWake: (req: WakeRequestParams, actor: Actor, opts: StartOptions) => StartResult;
   settings: SettingsService;
+  audit: AuditService;
   clock: Clock;
   events: EventsBus;
   logger: Logger;
@@ -206,6 +213,57 @@ export class Scheduler {
       this.d.logger.info({}, 'scheduler resumed automatically');
     }
     return pause;
+  }
+
+  // ---------------------------------------------------------------- pause (FR-005.6)
+
+  pauseState(): SchedulerPause | null {
+    const p = this.d.repo.pause();
+    // An expired automatic resume reads as running even before the next tick clears it.
+    if (!p || (p.resumeAt !== null && p.resumeAt <= this.d.clock.now())) return null;
+    return { since: p.since, reason: p.reason, resumeAt: p.resumeAt, by: p.by };
+  }
+
+  pause(input: SchedulerPauseInput, actor: Actor): SchedulerPause {
+    const data = schedulerPauseSchema.parse(input);
+    const reason = data.reason?.trim().normalize('NFC') ?? '';
+    if (reason === '') throw new AppError('PAUSE_REASON_REQUIRED');
+    const now = this.d.clock.now();
+    const resumeAt = data.resumeAt ?? null;
+    if (resumeAt !== null && resumeAt <= now) {
+      throw new AppError(
+        'VALIDATION_FAILED',
+        {},
+        { fields: { resumeAt: 'A retomada automática precisa ser no futuro.' } },
+      );
+    }
+    const state: PauseState = { since: now, reason, resumeAt, by: actor.label };
+    this.d.transaction(() => {
+      this.d.repo.setPause(state);
+      this.d.audit.record({
+        actor,
+        action: 'scheduler.pause',
+        target: 'scheduler',
+        details: { reason, resumeAt },
+      });
+    });
+    this.d.events.publish({ type: 'scheduler', paused: true });
+    return this.pauseState()!;
+  }
+
+  resume(actor: Actor): void {
+    const was = this.d.repo.pause();
+    if (!was) return;
+    this.d.transaction(() => {
+      this.d.repo.setPause(null);
+      this.d.audit.record({
+        actor,
+        action: 'scheduler.resume',
+        target: 'scheduler',
+        details: { since: was.since },
+      });
+    });
+    this.d.events.publish({ type: 'scheduler', paused: false });
   }
 
   start(): void {

@@ -121,6 +121,7 @@ export function createServices(
     transaction: tx,
     demo: opts.demo === true,
     lastSweepAt: () => monitor.lastSweep?.startedAt ?? null,
+    pause: () => scheduler.pauseState(),
   });
 
   const runner = new JobRunner({
@@ -193,6 +194,7 @@ export function createServices(
     refs,
     startWake: (req, actor, opts) => wake.start(req, actor, opts),
     settings,
+    audit,
     clock,
     events,
     logger: ports.logger.child({ module: 'scheduler' }),

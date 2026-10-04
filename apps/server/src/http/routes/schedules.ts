@@ -5,6 +5,7 @@ import {
   idParamSchema,
   scheduleCreateSchema,
   scheduleExceptionCreateSchema,
+  schedulerPauseSchema,
   scheduleUpdateSchema,
 } from '@uniwake/shared';
 import type { HttpServices } from '../context';
@@ -41,6 +42,18 @@ export function scheduleRoutes(app: FastifyInstance, s: HttpServices): void {
       return reply.status(204).send();
     },
   );
+
+  // FR-005.6 global pause.
+  r.post(
+    '/api/scheduler/pause',
+    { config: auth, schema: { body: schedulerPauseSchema } },
+    async (req) => s.scheduler.pause(req.body, actorOf(req)),
+  );
+
+  r.post('/api/scheduler/resume', { config: auth }, async (req, reply) => {
+    s.scheduler.resume(actorOf(req));
+    return reply.status(204).send();
+  });
 
   // FR-005.2 exceptions: holidays and recesses, global or for one schedule.
   r.get('/api/schedule-exceptions', { config: auth }, async () => s.schedules.exceptions());

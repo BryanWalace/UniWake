@@ -93,6 +93,7 @@ const DASH: Dashboard = {
   notices: [],
   demo: false,
   lastSweepAt: null,
+  pause: null,
 };
 
 describe('applyCounters', () => {

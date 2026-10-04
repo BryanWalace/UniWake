@@ -109,3 +109,19 @@ export interface ScheduleException {
   endDate: string;
   description: string;
 }
+
+/** FR-005.6: the reason is checked by the service so a blank one gets PAUSE_REASON_REQUIRED. */
+export const schedulerPauseSchema = z.object({
+  reason: z.string().max(200).optional(),
+  /** Automatic resume, UTC epoch ms (the UI converts the operator's local date/time). */
+  resumeAt: z.number().int().positive().nullable().optional(),
+});
+export type SchedulerPauseInput = z.input<typeof schedulerPauseSchema>;
+
+export interface SchedulerPause {
+  since: number;
+  reason: string;
+  resumeAt: number | null;
+  /** Username of whoever paused, when known. */
+  by: string | null;
+}

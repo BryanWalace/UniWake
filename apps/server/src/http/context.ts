@@ -10,6 +10,7 @@ import type { DevicesService } from '../application/devices/devices-service';
 import type { EventsBus } from '../application/events-bus';
 import type { Clock } from '../application/ports';
 import type { RoomsService } from '../application/rooms/rooms-service';
+import type { Scheduler } from '../application/schedules/scheduler';
 import type { SchedulesService } from '../application/schedules/schedules-service';
 import type { SettingsService } from '../application/settings/settings-service';
 import type { TagsService } from '../application/tags/tags-service';
@@ -28,4 +29,5 @@ export interface HttpServices {
   clock: Clock;
   dashboard: DashboardService;
   schedules: SchedulesService;
+  scheduler: Scheduler;
 }

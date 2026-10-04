@@ -6,6 +6,7 @@ import { FakeClock } from './fakes/fake-clock';
 import { MemoryLogger } from './fakes/system-fakes';
 import { T0, testDb } from './helpers/db';
 import { fakePorts } from './helpers/ports';
+import { apiHarness, type ApiHarness } from './helpers/api';
 
 const ACTOR = { id: null, label: 'teste' };
 const MIN = 60_000;
@@ -95,6 +96,7 @@ describe('scheduler: on time (FR-005.3)', () => {
       refs: { room: () => true, tag: () => true, device: () => true },
       startWake: (req, actor, opts) => w.s.wake.start(req, actor, opts),
       settings: w.s.settings,
+      audit: w.s.audit,
       clock: w.clock,
       events: w.s.events,
       logger: new MemoryLogger(),
@@ -270,5 +272,111 @@ describe('scheduler: faults', () => {
     }
     expect(w.runs()).toHaveLength(1);
     expect(w.jobs()).toHaveLength(0);
+  });
+});
+
+describe('global pause (FR-005.6)', () => {
+  const hs: ApiHarness[] = [];
+  afterEach(async () => {
+    for (const h of hs.splice(0)) {
+      h.services.scheduler.stop();
+      for (let i = 0; i < 400 && h.services.runner.activeCount > 0; i++)
+        await h.clock.advanceAsync(5_000);
+      await h.close();
+    }
+  });
+
+  async function api() {
+    const h = await apiHarness();
+    hs.push(h);
+    await h.as('operator');
+    const room = h.services.rooms.create({ name: 'Lab 1' }, ACTOR).id;
+    h.services.devices.create({ name: 'PC', mac: '00:DD:00:00:00:09', roomId: room }, ACTOR);
+    h.services.schedules.create(
+      {
+        name: 'Manhã',
+        weekdays: 31,
+        timeLocal: '06:50',
+        target: { type: 'rooms', roomIds: [room] },
+      },
+      ACTOR,
+    );
+    // These tests move the clock by days: log in fresh for each request (sessions idle out).
+    const post = async (url: string, payload?: object) =>
+      h.inject({
+        method: 'POST',
+        url,
+        cookie: await h.login('operator-user'),
+        ...(payload ? { payload } : {}),
+      });
+    const runs = () =>
+      h.services.db.all<{ status: string; planned_at: number }>(
+        'SELECT status, planned_at FROM schedule_runs ORDER BY planned_at',
+      );
+    return { h, post, runs };
+  }
+
+  it('AC-005-09: a pause without a reason is rejected with PAUSE_REASON_REQUIRED', async () => {
+    const { post } = await api();
+    for (const body of [{}, { reason: '' }, { reason: '   ' }]) {
+      const r = await post('/api/scheduler/pause', body);
+      expect(r.statusCode).toBe(422);
+      expect(r.json<{ code: string }>().code).toBe('PAUSE_REASON_REQUIRED');
+    }
+    const past = await post('/api/scheduler/pause', { reason: 'Férias', resumeAt: T0 - 1 });
+    expect(past.statusCode).toBe(422);
+  });
+
+  it('AC-005-07: paused with auto-resume Monday 00:00, Monday 06:50 runs and the banner is gone', async () => {
+    const { h, post, runs } = await api();
+    const events: string[] = [];
+    h.services.events.subscribe((e) => {
+      if (e.type === 'scheduler') events.push(e.paused ? 'paused' : 'resumed');
+    });
+    h.clock.set(sp(9, 10)); // Friday 10:00
+    h.services.scheduler.tick();
+    const paused = await post('/api/scheduler/pause', {
+      reason: 'Feriado prolongado',
+      resumeAt: sp(12, 0),
+    });
+    expect(paused.statusCode).toBe(200);
+    expect(h.services.dashboard.dashboard().pause).toMatchObject({
+      reason: 'Feriado prolongado',
+      resumeAt: sp(12, 0),
+      by: 'operator-user',
+    });
+    for (let t = h.clock.now(); t < sp(12, 6, 51); t += 15 * 60_000) {
+      h.clock.set(t);
+      h.services.scheduler.tick();
+    }
+    h.clock.set(sp(12, 6, 50, 10));
+    h.services.scheduler.tick();
+    expect(runs()).toMatchObject([{ planned_at: sp(12, 6, 50), status: 'executado' }]);
+    expect(h.services.dashboard.dashboard().pause).toBeNull();
+    expect(events).toEqual(['paused', 'resumed']);
+  });
+
+  it('runs during a pause are "pulado (pausa)"; resume restores them; both are audited', async () => {
+    const { h, post, runs } = await api();
+    h.clock.set(sp(5, 6, 40));
+    h.services.scheduler.tick();
+    expect((await post('/api/scheduler/pause', { reason: 'Manutenção da rede' })).statusCode).toBe(
+      200,
+    );
+    h.clock.set(sp(5, 6, 50, 5));
+    h.services.scheduler.tick();
+    expect(runs()).toMatchObject([{ status: 'pulado_pausa' }]);
+    expect((await post('/api/scheduler/resume')).statusCode).toBe(204);
+    expect(h.services.dashboard.dashboard().pause).toBeNull();
+    h.clock.set(sp(6, 6, 50, 5));
+    h.services.scheduler.tick();
+    expect(runs().map((r) => r.status)).toEqual(['pulado_pausa', 'executado']);
+    const actions = h.services.db
+      .all<{ action: string }>(
+        "SELECT action FROM audit_log WHERE action LIKE 'scheduler.%' ORDER BY id",
+      )
+      .map((r) => r.action);
+    expect(actions).toEqual(['scheduler.pause', 'scheduler.resume']);
+    expect((await post('/api/scheduler/resume')).statusCode).toBe(204); // idempotent
   });
 });
