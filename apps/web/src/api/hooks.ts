@@ -56,6 +56,13 @@ export function useTags() {
   return useQuery({ queryKey: keys.tags, queryFn: () => api.get<TagWithCount[]>('/api/tags') });
 }
 
+export function useDevice(id: number) {
+  return useQuery({
+    queryKey: ['devices', 'one', id] as const,
+    queryFn: () => api.get<Device>(`/api/devices/${id}`),
+  });
+}
+
 export function useDevices(params: DeviceQueryParams) {
   return useQuery({
     queryKey: keys.devices(params),

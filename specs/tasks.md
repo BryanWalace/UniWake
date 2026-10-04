@@ -137,7 +137,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M4-T09 | Simulated prober + demo seed + `--demo` guard. | FR-015 | AC-015-01 | `npm run dev` lively |
 | [x] M4-T10 | Web: dashboard (counters, room cards, tag filter + wake, search `/`, status filter, notices area). | FR-004.5 | component tests | — |
 | [x] M4-T11 | Web: realtime hook (SSE → Query cache, reconnect refetch). | FR-004.4 | hook tests | — |
-| [ ] M4-T12 | Web: device detail (history, uptime). | FR-004.6 | component tests | — |
+| [x] M4-T12 | Web: device detail (history, uptime). | FR-004.6 | component tests | — |
 | [ ] M4-T13 | E2E in demo mode: dashboard, realtime, search, axe; 500-device dashboard < 2 s. | FR-004.4, FR-004.5; NFR-01, NFR-07 | AC-004-08, AC-004-09, AC-004-15 [E2E] | — |
 | [ ] M4-T14 | `Ctrl+K` quick-wake palette. | FR-004.7 | AC-004-17 [E2E] | — |
 | [ ] M4-T15 | E2E: wake a room in demo mode, drawer progress to final counts. | FR-009 | AC-009-01 [E2E] | — |

@@ -6,6 +6,10 @@
 import type {
   Counters,
   Dashboard,
+  DeviceHistoryItem,
+  DeviceHistoryPage,
+  DeviceHistoryQuery,
+  DeviceResult,
   DashboardNotice,
   DashboardRoom,
   DashboardTag,
@@ -28,6 +32,20 @@ export interface RoomRow {
   block: string | null;
   floor: string | null;
   color: string;
+}
+
+/** A raw history row: a device event or one wake-job attempt. */
+export interface HistoryRow {
+  src: 'event' | 'wake';
+  id: number;
+  at: number;
+  type: string;
+  data: string;
+  jobId: number | null;
+  source: 'manual' | 'schedule' | 'test' | null;
+  result: DeviceResult | null;
+  dryRun: number | null;
+  wokeAt: number | null;
 }
 
 export interface DashboardRepo {
@@ -54,6 +72,11 @@ export interface DashboardRepo {
   dailyUptime(deviceIds: readonly number[], fromDay: string, toDay: string): Map<string, number>;
   upsertDailyUptime(rows: readonly { deviceId: number; day: string; onlineMs: number }[]): void;
   latestRolledDay(): string | null;
+  /** Newest first: `at < before` (limited), or every row with `at = exactly`. */
+  deviceHistory(
+    deviceId: number,
+    q: { before: number | null; limit: number } | { exactly: number },
+  ): HistoryRow[];
   earliestDeviceCreatedAt(): number | null;
 }
 
@@ -72,6 +95,36 @@ const collator = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base'
 /** Natural order with empty values last. */
 const cmp = (a: string | null, b: string | null) =>
   a === b ? 0 : a === null || a === '' ? 1 : b === null || b === '' ? -1 : collator.compare(a, b);
+
+function toHistoryItem(r: HistoryRow): DeviceHistoryItem {
+  if (r.src === 'wake') {
+    return {
+      kind: 'wake',
+      at: r.at,
+      jobId: r.jobId!,
+      source: r.source!,
+      result: r.result!,
+      dryRun: r.dryRun === 1,
+      wokeAt: r.wokeAt,
+    };
+  }
+  const data = JSON.parse(r.data) as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === 'string' ? v : null);
+  switch (r.type) {
+    case 'status':
+      return {
+        kind: 'status',
+        at: r.at,
+        from: str(data.from) as DeviceStatus | null,
+        to: (str(data.to) ?? 'desconhecido') as DeviceStatus,
+        reason: str(data.reason),
+      };
+    case 'ip_changed':
+      return { kind: 'ip_changed', at: r.at, from: str(data.from), to: str(data.to) ?? '' };
+    default:
+      return { kind: r.type === 'moved' ? 'moved' : 'enrolled', at: r.at, data };
+  }
+}
 
 const empty = (): StatusCounts => ({ online: 0, offline: 0, desconhecido: 0, total: 0 });
 
@@ -170,6 +223,26 @@ export class DashboardService {
       days.push({ day, ratio: alive.length === 0 ? null : average(ratios) });
     }
     return { days, average: average(days.map((x) => x.ratio)) };
+  }
+
+  /** Status changes, IP drift, moves and wake attempts of one device (FR-004.6). */
+  history(deviceId: number, q: DeviceHistoryQuery): DeviceHistoryPage {
+    if (!this.d.repo.deviceExists(deviceId)) throw new AppError('DEVICE_NOT_FOUND');
+    let rows = this.d.repo.deviceHistory(deviceId, { before: q.before ?? null, limit: q.limit });
+    let nextBefore: number | null = null;
+    if (rows.length === q.limit) {
+      // Never split rows sharing the boundary instant: the next page starts strictly before it.
+      const last = rows[rows.length - 1]!.at;
+      const seen = new Set(rows.map((r) => `${r.src}:${r.id}`));
+      rows = [
+        ...rows,
+        ...this.d.repo
+          .deviceHistory(deviceId, { exactly: last })
+          .filter((r) => !seen.has(`${r.src}:${r.id}`)),
+      ];
+      nextBefore = last;
+    }
+    return { items: rows.map(toHistoryItem), nextBefore };
   }
 
   private computeDay(start: number, end: number, ids: readonly number[]): Map<number, number> {

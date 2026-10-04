@@ -6,7 +6,11 @@ import type {
   RoomLastAction,
   StatusCounts,
 } from '@uniwake/shared';
-import type { DashboardRepo, RoomRow } from '../../application/dashboard/dashboard-service';
+import type {
+  DashboardRepo,
+  HistoryRow,
+  RoomRow,
+} from '../../application/dashboard/dashboard-service';
 import type { StatusChange } from '../../domain/uptime';
 import type { Db } from '../connection';
 
@@ -193,6 +197,29 @@ export class SqliteDashboardRepo implements DashboardRepo {
 
   latestRolledDay(): string | null {
     return this.db.get<{ d: string | null }>('SELECT MAX(day) AS d FROM daily_uptime')?.d ?? null;
+  }
+
+  deviceHistory(
+    deviceId: number,
+    q: { before: number | null; limit: number } | { exactly: number },
+  ): HistoryRow[] {
+    const exact = 'exactly' in q;
+    return this.db.all<HistoryRow>(
+      `SELECT * FROM (
+         SELECT 'event' AS src, e.id AS id, e.at AS at, e.type AS type, e.data AS data,
+           NULL AS jobId, NULL AS source, NULL AS result, NULL AS dryRun, NULL AS wokeAt
+         FROM device_events e WHERE e.device_id = ?
+         UNION ALL
+         SELECT 'wake', jd.job_id, COALESCE(jd.sent_at, j.started_at, j.created_at), 'wake', '{}',
+           j.id, j.source, jd.result, j.dry_run, jd.woke_at
+         FROM wake_job_devices jd JOIN wake_jobs j ON j.id = jd.job_id WHERE jd.device_id = ?
+       )
+       WHERE CASE WHEN ? THEN at = ? ELSE (? IS NULL OR at < ?) END
+       ORDER BY at DESC, src, id DESC LIMIT ?`,
+      exact
+        ? [deviceId, deviceId, 1, q.exactly, null, null, -1]
+        : [deviceId, deviceId, 0, null, q.before, q.before, q.limit],
+    );
   }
 
   earliestDeviceCreatedAt(): number | null {

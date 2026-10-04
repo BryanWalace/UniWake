@@ -1,3 +1,4 @@
+import { Link } from 'react-router';
 import type { Device } from '@uniwake/shared';
 import type { RoomWithCount, TagWithCount } from '../../api/hooks';
 import { Button, StatusBadge, TagChip } from '../../components/ui';
@@ -78,7 +79,9 @@ export function DevicesTable({
                 />
               </td>
               <td className="px-3 py-2 font-medium">
-                {d.name}
+                <Link to={`/dispositivos/${d.id}`} className="text-blue-800 underline">
+                  {d.name}
+                </Link>
                 {!d.enabled && <span className="ml-2 text-xs">(inativo)</span>}
                 {d.flags.macLocallyAdministered && (
                   <span

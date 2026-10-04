@@ -2,7 +2,8 @@
  * Dashboard and uptime DTOs (FR-004.5, FR-004.6; plan §6.1, §6.3).
  */
 import { z } from 'zod';
-import type { JobState } from './wake';
+import type { DeviceStatus } from './devices';
+import type { DeviceResult, JobState } from './wake';
 
 export interface StatusCounts {
   online: number;
@@ -96,4 +97,39 @@ export interface UptimeDay {
 export interface UptimeSeries {
   days: UptimeDay[];
   average: number | null;
+}
+
+export const deviceHistoryQuerySchema = z.object({
+  /** Cursor: items strictly older than this instant (epoch ms). */
+  before: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+export type DeviceHistoryQuery = z.output<typeof deviceHistoryQuerySchema>;
+
+/** One line of a device's history (FR-004.6), newest first. */
+export type DeviceHistoryItem =
+  | {
+      kind: 'status';
+      at: number;
+      from: DeviceStatus | null;
+      to: DeviceStatus;
+      /** e.g. `hub_start` when the hub restarted. */
+      reason: string | null;
+    }
+  | { kind: 'ip_changed'; at: number; from: string | null; to: string }
+  | { kind: 'moved' | 'enrolled'; at: number; data: Record<string, unknown> }
+  | {
+      kind: 'wake';
+      at: number;
+      jobId: number;
+      source: 'manual' | 'schedule' | 'test';
+      result: DeviceResult;
+      dryRun: boolean;
+      wokeAt: number | null;
+    };
+
+export interface DeviceHistoryPage {
+  items: DeviceHistoryItem[];
+  /** Pass as `before` for the next page; null at the end. */
+  nextBefore: number | null;
 }

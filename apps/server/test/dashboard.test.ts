@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { Counters, Dashboard, UptimeSeries } from '@uniwake/shared';
+import type { Counters, Dashboard, DeviceHistoryPage, UptimeSeries } from '@uniwake/shared';
 import { addDays, dayRange, dayStart, localDay, nextLocalTime } from '../src/domain/tz';
 import { average, onlineMs } from '../src/domain/uptime';
 import { apiHarness, type ApiHarness } from './helpers/api';
@@ -307,5 +307,51 @@ describe('dashboard and uptime API', () => {
       global: { online: 1, offline: 0, desconhecido: 0, total: 1 },
       rooms: [{ roomId: room, online: 1, offline: 0, desconhecido: 0, total: 1 }],
     });
+  });
+  it('FR-004.6: device history lists status, IP drift and wake attempts newest first, paged without splitting an instant', async () => {
+    const { h, get } = await setup();
+    const id = h.services.devices.create(
+      { name: 'PC', mac: mac(1), ip: '10.0.3.1', hostname: 'pc' },
+      ACTOR,
+    ).device.id;
+    h.ports.dns.records.set('pc', ['10.0.3.9']);
+    h.ports.prober.setAlive('10.0.3.9');
+    await h.services.monitor.sweep(); // ip_changed + status online, same instant
+    h.clock.advance(60_000);
+    h.ports.prober.setOffline('10.0.3.9');
+    await h.services.monitor.sweep();
+    await h.services.monitor.sweep(); // offline
+    h.clock.advance(60_000);
+    const { jobId } = h.services.wake.start(
+      { target: { type: 'devices', deviceIds: [id] }, onlyOffline: false },
+      ACTOR,
+      { preConfirmed: true },
+    );
+    for (let t = 0; t < 300 && h.services.runner.activeCount > 0; t++)
+      await h.clock.advanceAsync(1000);
+
+    const all = await get<DeviceHistoryPage>(`/api/devices/${id}/history`);
+    expect(all.status).toBe(200);
+    expect(all.body.items.map((i) => i.kind)).toEqual(['wake', 'status', 'status', 'ip_changed']);
+    expect(all.body.items[0]).toMatchObject({ kind: 'wake', jobId, source: 'manual' });
+    expect(all.body.items[1]).toMatchObject({ kind: 'status', from: 'online', to: 'offline' });
+    expect(all.body.items[3]).toMatchObject({
+      kind: 'ip_changed',
+      from: '10.0.3.1',
+      to: '10.0.3.9',
+    });
+    expect(all.body.nextBefore).toBeNull();
+
+    // limit 3 ends on the instant shared by "online" and "ip_changed": both come in this page.
+    const p1 = await get<DeviceHistoryPage>(`/api/devices/${id}/history?limit=3`);
+    expect(p1.body.items).toHaveLength(4);
+    const p2 = await get<DeviceHistoryPage>(
+      `/api/devices/${id}/history?limit=3&before=${p1.body.nextBefore}`,
+    );
+    expect(p2.body.items).toEqual([]);
+
+    expect((await get<{ code: string }>('/api/devices/999/history')).body.code).toBe(
+      'DEVICE_NOT_FOUND',
+    );
   });
 });
