@@ -73,7 +73,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M2-T01 | Rooms repo/service/routes: CRUD, code generation, delete impact, devices → "Sem sala". | FR-008.1 | AC-008-01, AC-008-02, AC-008-03 | — |
 | [x] M2-T02 | Tags repo/service/routes; delete impact. | FR-008.2 | AC-008-04 | — |
 | [x] M2-T03 | Devices repo/service/routes CRUD; MAC duplicate; disabled; duplicate-name flag. | FR-002.1 | AC-002-01, AC-002-02, AC-002-03, AC-002-04, AC-002-05 [API] | — |
-| [ ] M2-T04 | Device list: filters, pagination, compact `all=1`; 500-device benchmark. | plan §5.1; NFR-01 | query < 50 ms at 500 | — |
+| [x] M2-T04 | Device list: filters, pagination, compact `all=1`; 500-device benchmark. | plan §5.1; NFR-01 | query < 50 ms at 500 | — |
 | [ ] M2-T05 | Bulk operations + audit. | FR-002.2 | AC-002-07 | — |
 | [ ] M2-T06 | `domain/csv.ts`: delimiter/BOM detection, header aliases, row validation, formula neutralization. | FR-002.3; ADR-016 | AC-002-09, AC-002-11 | — |
 | [ ] M2-T07 | CSV import preview/commit + export routes. | FR-002.3 | AC-002-08, AC-002-10 | — |
