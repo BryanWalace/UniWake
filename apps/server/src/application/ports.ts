@@ -25,18 +25,9 @@ export interface Logger {
 }
 
 // ---------------------------------------------------------------- Network interfaces
-export interface NetInterface {
-  /** Windows interface alias, e.g. "Ethernet". */
-  name: string;
-  /** IPv4 address of the interface. */
-  address: string;
-  prefixLength: number;
-  netmask: string;
-  mac: string;
-  /** Default gateway reachable through this interface, if any. */
-  gateway: string | null;
-  internal: boolean;
-}
+export type { NetInterface } from '../domain/network';
+
+import type { NetInterface } from '../domain/network';
 
 export interface NetworkInterfaces {
   /** Reads the current IPv4 interfaces (never cached; constitution §2.6). */
