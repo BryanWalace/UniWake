@@ -30,6 +30,10 @@ export interface Config {
   logLevel: 'debug' | 'info' | 'warn' | 'error';
   /** Demo mode (FR-015): seed data, dry-run, simulated targets. */
   demo: boolean;
+  /** Demo: seed an empty inventory on start (UNIWAKE_DEMO_SEED=0 disables, e.g. for E2E). */
+  demoSeed: boolean;
+  /** Demo: simulated boot time after a magic packet (UNIWAKE_DEMO_WAKE_MS="min-max"). */
+  demoWakeDelayMs: readonly [number, number];
 }
 
 export const CONFIG_DEFAULTS: Omit<Config, 'dataDir' | 'demo'> = {
@@ -38,7 +42,15 @@ export const CONFIG_DEFAULTS: Omit<Config, 'dataDir' | 'demo'> = {
   panelBind: '127.0.0.1',
   agentBind: '0.0.0.0',
   logLevel: DEFAULT_SETTINGS['bootstrap.logLevel'],
+  demoSeed: true,
+  demoWakeDelayMs: [20_000, 120_000],
 };
+
+const delayRangeSchema = z
+  .string()
+  .regex(/^\d{1,7}-\d{1,7}$/, 'expected "min-max" in milliseconds')
+  .transform((v) => v.split('-').map(Number) as [number, number])
+  .refine(([a, b]) => a <= b, 'min must not exceed max');
 
 const ENV_KEYS = {
   panelPort: 'UNIWAKE_PANEL_PORT',
@@ -92,10 +104,21 @@ export function resolveConfig(
     throw new ConfigError(`environment variables are invalid: ${z.prettifyError(envParsed.error)}`);
   }
 
+  let demoWakeDelayMs = CONFIG_DEFAULTS.demoWakeDelayMs;
+  if (env.UNIWAKE_DEMO_WAKE_MS) {
+    const r = delayRangeSchema.safeParse(env.UNIWAKE_DEMO_WAKE_MS);
+    if (!r.success) {
+      throw new ConfigError(`UNIWAKE_DEMO_WAKE_MS is invalid: ${z.prettifyError(r.error)}`);
+    }
+    demoWakeDelayMs = r.data;
+  }
+
   return {
     ...CONFIG_DEFAULTS,
     ...fromFile,
     ...envParsed.data,
+    demoSeed: env.UNIWAKE_DEMO_SEED !== '0',
+    demoWakeDelayMs,
     dataDir: overrides.dataDir ?? env.UNIWAKE_DATA_DIR ?? defaultDataDir(env),
     demo: overrides.demo ?? env.UNIWAKE_DEMO === '1',
   };

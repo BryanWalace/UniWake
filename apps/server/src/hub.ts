@@ -7,6 +7,12 @@ import { join } from 'node:path';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import { createFileLogger } from './adapters/logger';
 import { OsDnsResolver } from './adapters/dns-resolver';
+import { SimulatedNetwork } from './adapters/simulated-network';
+import { seedDemo } from './application/demo/demo-seed';
+import { SqliteDemoRepo } from './db/repositories/demo-repo';
+import { SqliteDevicesRepo } from './db/repositories/devices-repo';
+import { SqliteJobsRepo } from './db/repositories/jobs-repo';
+import { SqliteMonitorRepo } from './db/repositories/monitor-repo';
 import { CompositeProber, PingExeIcmp, powershellSpawner, PsHelperIcmp } from './adapters/icmp';
 import { OsNetworkInterfaces } from './adapters/network-interfaces';
 import { NodeProcessRunner } from './adapters/process-runner';
@@ -112,11 +118,20 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
     throw databaseError(paths.db, paths.backups, e);
   }
 
-  // Demo mode never constructs the real sender (AC-015-01): no packet can leave the machine.
-  const sender = config.demo ? new RecordingPacketSender() : new UdpPacketSender();
+  // Demo mode never constructs the real sender (AC-015-01): no packet can leave the machine, and
+  // interfaces, probes and DNS are simulated too (FR-015, R-M3-03).
+  const demoDevices = new SqliteDevicesRepo(db);
+  const sim = config.demo
+    ? new SimulatedNetwork({
+        clock,
+        wakeDelayMs: config.demoWakeDelayMs,
+        devices: () => demoDevices.listCompact({}, Number.MAX_SAFE_INTEGER),
+      })
+    : null;
+  const sender = sim ? sim.sender : new UdpPacketSender();
   const runner = new NodeProcessRunner();
   const icmpHelper =
-    process.platform === 'win32' && opts.helperPath && !opts.ports
+    !sim && process.platform === 'win32' && opts.helperPath && !opts.ports
       ? new PsHelperIcmp(
           powershellSpawner(opts.helperPath),
           clock,
@@ -133,14 +148,24 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
   const services = createServices(
     db,
     clock,
-    opts.ports ?? {
-      interfaces: new OsNetworkInterfaces(runner),
-      sender,
-      dryRunSender: new RecordingPacketSender(),
-      prober,
-      dns: new OsDnsResolver(),
-      logger,
-    },
+    opts.ports ??
+      (sim
+        ? {
+            interfaces: sim.interfaces,
+            sender,
+            dryRunSender: sim.sender,
+            prober: sim.prober,
+            dns: sim.dns,
+            logger,
+          }
+        : {
+            interfaces: new OsNetworkInterfaces(runner),
+            sender,
+            dryRunSender: new RecordingPacketSender(),
+            prober,
+            dns: new OsDnsResolver(),
+            logger,
+          }),
     { demo: config.demo },
   );
 
@@ -210,6 +235,18 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
         throw e;
       }
       started = true;
+      if (sim && config.demoSeed) {
+        const seeded = seedDemo({
+          ...services,
+          jobs: new SqliteJobsRepo(db),
+          monitor: new SqliteMonitorRepo(db),
+          transaction: (fn) => db.transaction(fn),
+          setPower: (mac, on) => sim.setPower(mac, on),
+          neverWakes: (mac) => SimulatedNetwork.neverWakes(mac),
+          demo: new SqliteDemoRepo(db),
+        });
+        if (seeded) logger.info({ ...seeded }, 'demo data seeded');
+      }
       services.runner.recover();
       services.monitor.start();
       services.dashboard.start();

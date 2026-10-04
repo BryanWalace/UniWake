@@ -134,7 +134,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M4-T06 | `monitor-service` sweep: DNS cache, IP drift, one-tx writes, events, SSE emits. | FR-004.2, FR-004.3; NFR-01 | AC-004-06, AC-004-07; **faults**: helper deadline, DNS timeout, DB busy | — |
 | [x] M4-T07 | Events bus + SSE route (heartbeat, session expiry, buffer cap). | FR-004.4; ADR-020 | AC-004-14 (server side) | — |
 | [x] M4-T08 | Dashboard API, `domain/uptime.ts`, nightly rollup, uptime API. | FR-004.5, FR-004.6 | AC-004-10, AC-004-16 | — |
-| [ ] M4-T09 | Simulated prober + demo seed + `--demo` guard. | FR-015 | AC-015-01 | `npm run dev` lively |
+| [x] M4-T09 | Simulated prober + demo seed + `--demo` guard. | FR-015 | AC-015-01 | `npm run dev` lively |
 | [ ] M4-T10 | Web: dashboard (counters, room cards, tag filter + wake, search `/`, status filter, notices area). | FR-004.5 | component tests | — |
 | [ ] M4-T11 | Web: realtime hook (SSE → Query cache, reconnect refetch). | FR-004.4 | hook tests | — |
 | [ ] M4-T12 | Web: device detail (history, uptime). | FR-004.6 | component tests | — |
@@ -152,7 +152,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [ ] M5-T04 | Scheduler tick: claim-then-execute, grace, atrasado/perdido, multiple missed, clock jumps. | FR-005.3, FR-005.4; NFR-02 | AC-005-03, AC-005-04, AC-005-05, AC-005-08; **faults**: clock ±1 h, DB busy on claim, restart mid-tick | — |
 | [ ] M5-T05 | Pause/resume (reason, auto-resume), SSE. | FR-005.6 | AC-005-07, AC-005-09 | — |
 | [ ] M5-T06 | Execution log API. | FR-005.7 | AC-005-10 | — |
-| [ ] M5-T07 | Morning result notices + notices API + ack. | FR-013 | AC-013-01 | — |
+| [ ] M5-T07 | Morning result notices + notices API + ack. Extend the demo seed (M4-T09) with 2 schedules and the past morning-result notice. | FR-013, FR-015 | AC-013-01 | — |
 | [ ] M5-T08 | Web: schedules list/form (target picker, weekdays, tz, stagger, next runs, "alvo vazio"). | FR-005.1, FR-005.8 | component tests | — |
 | [ ] M5-T09 | Web: exceptions, pause dialog/banner, execution log, morning-result card. | FR-005.2, FR-005.6, FR-005.7, FR-013 | component tests | — |
 

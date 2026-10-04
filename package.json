@@ -22,7 +22,7 @@
     "test:coverage": "vitest run --coverage",
     "check:deps": "node scripts/check-deps.ts",
     "verify": "npm run lint && npm run format:check && npm run typecheck && npm run test:coverage && npm run check:deps && npm run check:trace",
-    "dev": "concurrently -k -n hub,web -c blue,green \"tsx watch apps/server/src/main.ts --data-dir .dev-data\" \"npm run dev -w apps/web\"",
+    "dev": "concurrently -k -n hub,web -c blue,green \"tsx watch apps/server/src/main.ts --demo --data-dir .dev-data\" \"npm run dev -w apps/web\"",
     "build": "npm run build -w apps/web",
     "check:trace": "node scripts/check-trace.ts",
     "e2e": "npm run build && playwright test"
