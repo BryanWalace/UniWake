@@ -3,7 +3,7 @@
  *  1. Every AC in spec.md is referenced by at least one task in tasks.md.
  *  2. Tasks reference only ACs that exist in spec.md.
  *  3. For every task marked [x], each of its non-[manual] ACs appears in a test title
- *     (Vitest `it/test/describe('AC-…')` or Pester `It/Describe 'AC-…'`).
+ *     (Vitest or Playwright `it/test/describe('AC-…')`, or Pester `It/Describe 'AC-…'`).
  * Run with `node scripts/check-trace.ts`.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -99,13 +99,14 @@ function collectTestFiles(dir: string, out: string[] = []): string[] {
     if (name === 'node_modules' || name === 'dist' || name.startsWith('.')) continue;
     const p = join(dir, name);
     if (statSync(p).isDirectory()) collectTestFiles(p, out);
-    else if (/\.test\.tsx?$|\.Tests\.ps1$/.test(name)) out.push(p);
+    else if (/\.(?:test|spec)\.tsx?$|\.Tests\.ps1$/.test(name)) out.push(p);
   }
   return out;
 }
 
 if (import.meta.main) {
-  const files = ['apps', 'packages', 'scripts', 'test'].flatMap((d) => {
+  // Playwright specs (e2e/*.spec.ts) carry the [E2E] acceptance criteria.
+  const files = ['apps', 'packages', 'scripts', 'test', 'e2e'].flatMap((d) => {
     try {
       return collectTestFiles(d);
     } catch {

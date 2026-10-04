@@ -9,6 +9,7 @@ import { DashboardService } from './application/dashboard/dashboard-service';
 import { DevicesService } from './application/devices/devices-service';
 import { EventsBus } from './application/events-bus';
 import { MonitorService } from './application/monitor/monitor-service';
+import { RetentionService } from './application/maintenance/retention-service';
 import { ObservingVerifier } from './application/monitor/observing-verifier';
 import { ProbeQueue } from './application/monitor/probe-queue';
 import type {
@@ -33,6 +34,7 @@ import { SqliteDashboardRepo } from './db/repositories/dashboard-repo';
 import { SqliteDevicesRepo } from './db/repositories/devices-repo';
 import { SqliteJobsRepo } from './db/repositories/jobs-repo';
 import { SqliteMonitorRepo } from './db/repositories/monitor-repo';
+import { SqliteRetentionRepo } from './db/repositories/retention-repo';
 import { SqliteRoomsRepo } from './db/repositories/rooms-repo';
 import { SqliteSettingsRepo } from './db/repositories/settings-repo';
 import { SqliteTagsRepo } from './db/repositories/tags-repo';
@@ -58,6 +60,7 @@ export interface Services extends HttpServices {
   clock: Clock;
   events: EventsBus;
   runner: JobRunner;
+  retention: RetentionService;
   monitor: MonitorService;
   probes: ProbeQueue;
 }
@@ -131,6 +134,14 @@ export function createServices(
     logger: ports.logger.child({ module: 'wake' }),
     transaction: tx,
   });
+  const retention = new RetentionService({
+    repo: new SqliteRetentionRepo(db),
+    settings,
+    clock,
+    logger: ports.logger.child({ module: 'retention' }),
+    busy: () => runner.activeCount > 0,
+    yieldNow: () => new Promise((resolve) => setImmediate(resolve)),
+  });
   const wake = new WakeService({
     snapshot: () =>
       devicesRepo.listCompact({}, Number.MAX_SAFE_INTEGER).map((d) => ({
@@ -172,5 +183,6 @@ export function createServices(
     monitor,
     probes,
     dashboard,
+    retention,
   };
 }
