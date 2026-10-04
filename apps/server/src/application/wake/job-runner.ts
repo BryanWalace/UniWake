@@ -22,6 +22,7 @@ import {
 import { hasAddress, type Verifier } from './verifier';
 
 export const NETWORK_RETRY_MS = 30_000;
+const INTERFACE_READ_ATTEMPTS = 3;
 
 export interface JobRunnerDeps {
   jobs: JobsRepo;
@@ -49,16 +50,26 @@ const FINAL: readonly JobState[] = ['concluido', 'interrompido', 'falhou'];
 
 export class JobRunner {
   private readonly running = new Map<number, Promise<void>>();
+  private stopped = false;
 
   constructor(private readonly d: JobRunnerDeps) {}
 
   start(jobId: number, opts: RunOptions = {}): void {
+    if (this.stopped) return;
     this.track(jobId, () => this.run(jobId, opts));
   }
 
   /** Resolves when no job is running (tests, graceful shutdown). */
   async idle(): Promise<void> {
     while (this.running.size > 0) await Promise.allSettled([...this.running.values()]);
+  }
+
+  /**
+   * Graceful shutdown: running jobs are abandoned where they are (their state stays in the DB and
+   * `recover()` resumes or closes them on the next start); no further work touches the DB.
+   */
+  stop(): void {
+    this.stopped = true;
   }
 
   get activeCount(): number {
@@ -81,8 +92,13 @@ export class JobRunner {
   private track(jobId: number, fn: () => Promise<void>) {
     const p = fn()
       .catch((e: unknown) => {
+        if (this.stopped) return; // DB is closing; recover() handles the job on next start
         this.d.logger.error({ jobId, err: e }, 'wake job failed');
-        this.close(jobId, 'falhou', e instanceof Error ? e.message : String(e));
+        try {
+          this.close(jobId, 'falhou', e instanceof Error ? e.message : String(e));
+        } catch (closeError) {
+          this.d.logger.error({ jobId, err: closeError }, 'could not record wake job failure');
+        }
       })
       .finally(() => this.running.delete(jobId));
     this.running.set(jobId, p);
@@ -126,7 +142,17 @@ export class JobRunner {
     jobId: number,
   ): Promise<NetInterface[]> {
     for (;;) {
-      const all = await this.d.interfaces.list().catch(() => []);
+      // M3-F2: a transient read error must not fail the wake; retry a few times first.
+      let all: NetInterface[] = [];
+      for (let attempt = 0; attempt < INTERFACE_READ_ATTEMPTS; attempt++) {
+        try {
+          all = await this.d.interfaces.list();
+          break;
+        } catch (e) {
+          this.d.logger.warn({ jobId, err: e, attempt }, 'reading network interfaces failed');
+          if (attempt < INTERFACE_READ_ATTEMPTS - 1) await this.d.clock.sleep(1000);
+        }
+      }
       const selected = selectInterfaces(all, s['wake.interfaces']);
       if (selected.length > 0) return selected;
       const until = opts.networkRetryUntil;
@@ -262,8 +288,14 @@ export class JobRunner {
     );
 
     const interval = this.d.settings.get('wake.verifyIntervalSeconds') * 1000;
-    while (waiting().length > 0 && clock.now() < verifyUntil) {
-      await clock.sleep(Math.min(interval, verifyUntil - clock.now()));
+    // M3-F1: bound the loop by elapsed timer time too. A backwards wall-clock jump (NTP) must not
+    // stretch the window and keep these devices locked in an "active job".
+    const windowMs = Math.max(0, verifyUntil - clock.now());
+    let elapsed = 0;
+    while (waiting().length > 0 && clock.now() < verifyUntil && elapsed < windowMs) {
+      const step = Math.min(interval, windowMs - elapsed);
+      await clock.sleep(step);
+      elapsed += step;
       const pending = waiting();
       const alive = await this.d.verifier.check(pending).catch(() => new Set<number>());
       const now = clock.now();

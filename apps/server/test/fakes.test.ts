@@ -34,8 +34,11 @@ describe('FakeClock', () => {
     clock.jump(500);
     expect(fired).toBe(0);
     expect(clock.now()).toBe(1500);
-    clock.advance(0); // the 100 ms timer (due at 1100) is now overdue and fires
+    clock.advance(99); // timers are monotonic: the 100 ms timer still needs its full delay
+    expect(fired).toBe(0);
+    clock.advance(1);
     expect(fired).toBe(1);
+    expect(clock.now()).toBe(1600);
   });
 
   it('advanceAsync drives async loops that await sleep()', async () => {

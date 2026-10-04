@@ -131,3 +131,28 @@ describe('demo mode safety (AC-015-01)', () => {
     expect(s.wake.job(jobId).job.dryRun).toBe(true);
   });
 });
+
+describe('M3-F3: stopping the hub during a wake job', () => {
+  it('leaves the job for recovery instead of failing on a closed database', async () => {
+    const config = testConfig({ demo: true });
+    const hub = await createHub({ config, logger: silent });
+    const s = hub.services;
+    const room = s.rooms.create({ name: 'Lab' }, { id: null, label: 't' });
+    s.devices.create(
+      { name: 'PC', mac: '00:11:22:33:44:56', roomId: room.id, ip: '10.9.9.9' },
+      { id: null, label: 't' },
+    );
+    const { jobId } = s.wake.start(
+      { target: { type: 'rooms', roomIds: [room.id], includeNoRoom: false }, onlyOffline: false },
+      { id: null, label: 't' },
+    );
+    await hub.stop(); // job is mid-flight
+    await new Promise((r) => setTimeout(r, 300)); // any late DB access would surface as an unhandled rejection
+
+    const again = await createHub({ config, logger: silent });
+    hubs.push(again);
+    again.services.runner.recover();
+    const job = again.services.wake.job(jobId).job;
+    expect(['interrompido', 'verificando', 'concluido']).toContain(job.state);
+  });
+});

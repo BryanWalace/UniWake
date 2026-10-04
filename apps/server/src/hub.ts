@@ -188,6 +188,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       );
     },
     async stop() {
+      services.runner.stop();
       await Promise.allSettled([panel.close(), agent.close()]);
       await sender.close();
       db.close();

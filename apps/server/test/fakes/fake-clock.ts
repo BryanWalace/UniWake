@@ -9,7 +9,8 @@ interface Timer {
 
 /**
  * Deterministic clock. `advance` fires due timers in time order (FIFO for equal times), including
- * timers scheduled while advancing. `jump` moves wall time without firing timers (clock jumps).
+ * timers scheduled while advancing. `jump` moves wall time (NTP correction, CMOS reset) without
+ * firing anything; pending timers keep their remaining delay, as real setTimeout does.
  */
 export class FakeClock implements Clock {
   private current: number;
@@ -75,7 +76,9 @@ export class FakeClock implements Clock {
 
   /** Changes wall time without firing timers (NTP correction, CMOS reset). */
   jump(ms: number): void {
+    // Like real timers, pending timeouts are monotonic: they keep their remaining delay.
     this.current += ms;
+    for (const t of this.timers) t.at += ms;
   }
 
   set(epochMs: number | string): void {
