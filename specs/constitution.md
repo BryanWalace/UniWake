@@ -115,7 +115,8 @@ specs/            SDD documents
 - English identifiers; pt-BR only in the message catalog and the web UI.
 - A file over ~400 lines must be justified in review.
 - No `TODO` without a task ID (`TODO(M3-T04): ...`).
-- React: `dangerouslySetInnerHTML` is forbidden (`react/no-danger` = error) (ADR-016).
+- React: `dangerouslySetInnerHTML` is forbidden, enforced as a lint error (ADR-016; rule
+  mechanism per ADR-024).
 
 ### 4.2 PowerShell (`scripts/*.ps1`)
 - Compatible with Windows PowerShell **5.1** (no `??`, ternary, `ForEach-Object -Parallel`).

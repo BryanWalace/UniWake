@@ -169,3 +169,97 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
 - **Decision:** Every string field has a max length in the shared Zod schemas; `react/no-danger` is
   a lint error; CSV exports neutralize formula-leading characters; enrollment bodies ≤ 8 KB.
 - **Consequences:** Closes stored-XSS and CSV-injection paths with cheap, testable rules.
+
+## ADR-017 — SQLite driver: built-in `node:sqlite`
+- **Date:** 2026-10-04 · **Status:** Accepted
+- **Context:** ADR-010 asks to avoid native addons. Spike (plan §1): `node:sqlite` in Node 24.15
+  supports WAL, `synchronous=FULL`, transactions, `backup()`, with no experimental warning.
+- **Decision:** Use `node:sqlite` behind `db/connection.ts`. Synchronous access rules in plan §5.1.
+- **Consequences:** No native addon to match ABIs. If the API changes, only the wrapper changes;
+  fallback option is better-sqlite3 (would need its own ADR per ADR-010).
+
+## ADR-018 — Password hashing: built-in argon2id
+- **Date:** 2026-10-04 · **Status:** Accepted
+- **Context:** Constitution §6.2 prefers argon2id. Node 24.15 ships `crypto.argon2`.
+- **Decision:** argon2id, memory 19 456 KiB, 2 passes, parallelism 1, 16-byte salt, 32-byte tag,
+  stored as a PHC string (`$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>`), verified with
+  `timingSafeEqual`. Parameters upgradable on login (rehash when params differ).
+- **Consequences:** ~45 ms per hash on the dev machine; no native addon.
+
+## ADR-019 — Probing: persistent PowerShell ICMP helper, `ping.exe` fallback, TCP, `route print`
+- **Date:** 2026-10-04 · **Status:** Accepted
+- **Context:** Raw ICMP sockets need admin and native code; `ping.exe` output is localized;
+  `Get-NetIPConfiguration` is ~4 s. Spike: a persistent helper using .NET `Ping.SendPingAsync`
+  did 250 pings in ~0.5 s with locale-independent status.
+- **Decision:** `probe-helper.ps1` (JSON lines over stdin/stdout) is the primary ICMP prober,
+  supervised with deadlines; after 3 restarts in 5 min the composite prober switches to
+  `ping.exe` (exit code + `TTL=`), shown on the health page. TCP probes via `node:net`
+  (`ECONNREFUSED` = alive). Default gateways from `route.exe print -4`, matched per interface IP.
+- **Consequences:** Fast and locale-safe; depends on PowerShell being allowed for SYSTEM, with a
+  working fallback when it isn't.
+
+## ADR-020 — Realtime channel: Server-Sent Events
+- **Date:** 2026-10-04 · **Status:** Accepted
+- **Context:** Updates flow server → client only; the panel uses cookie sessions.
+- **Decision:** SSE at `GET /api/events`; heartbeat 20 s; `session.expired` event; client refetches
+  on reconnect.
+- **Consequences:** No WebSocket library; native browser reconnect; works through the same auth.
+
+## ADR-021 — Windows Service wrapper: WinSW 2.12, LocalSystem
+- **Date:** 2026-10-04 · **Status:** Accepted
+- **Context:** Node is not an SCM-aware service binary. WinSW 2.12 is the stable release (v3 is
+  prerelease). The service must run installers, manage firewall rules, the certificate store and
+  scheduled tasks.
+- **Decision:** WinSW 2.12 x64 renamed `UniWakeService.exe`, account LocalSystem, recovery restart
+  10/30/60 s. Hardening: process execution rules (plan §9.1), ACL'd data dir, update source
+  constant (ADR-025), minimal LAN surface.
+- **Consequences:** Highest privilege, mitigated by narrowing every input path that can reach a
+  process or file operation.
+
+## ADR-022 — Packaging: esbuild bundle + pinned Node runtime + versioned dirs + Inno Setup
+- **Date:** 2026-10-04 · **Status:** Accepted
+- **Context:** Zero native addons (ADR-017/018) means the server is pure JS.
+- **Decision:** esbuild bundles `server.mjs` and `updater.mjs`; the installer ships the official
+  pinned `node.exe` (checksum-verified in CI), the Vite build, scripts and the helper into
+  `versions\<ver>\`, and rewrites `UniWakeService.xml` to that dir. The previous version dir is
+  kept for rollback.
+- **Consequences:** Rollback = repoint XML (+ optional DB restore). Installer ≈ 35–40 MB.
+
+## ADR-023 — Updater launched by Task Scheduler, with a watchdog task
+- **Date:** 2026-10-04 · **Status:** Accepted
+- **Context:** WinSW kills the wrapped process tree on stop, so an updater spawned by the hub would
+  die when it stops the service (phase-2 D2-01). An updater crash could leave the service stopped.
+- **Decision:** The hub registers and runs one-shot scheduled tasks as SYSTEM: `UniWake-Updater`
+  (runs `updater.mjs` with a plan file) and `UniWake-Watchdog` (15 min later; restarts the previous
+  version if the service is not running). The updater restores the DB only if the schema version
+  advanced. Task command lines contain only fixed paths and the validated plan path.
+- **Consequences:** Updates survive the service stop and updater crashes; extra code in
+  `windows-host` adapter, covered by fakes and the Windows CI end-to-end test.
+
+## ADR-024 — Toolchain pins
+- **Date:** 2026-10-04 · **Status:** Accepted · **Amends:** constitution §4.1 (no-danger rule wording)
+- **Context:** As of 2026-10-04: TypeScript 7 exists but typescript-eslint supports `<6.1`;
+  eslint-plugin-react does not support ESLint 10; `@types/node` latest is 26 while we ship Node 24.
+- **Decision:** TypeScript 6.0.x; ESLint 10 + typescript-eslint 8 + eslint-plugin-import-x +
+  eslint-plugin-react-hooks; the no-`dangerouslySetInnerHTML` rule is enforced with
+  `no-restricted-syntax`; `@types/node` 24; Vite 8; Vitest 5; React 19; React Router 8 (library
+  mode); TanStack Query 5; Tailwind 4; Zod 4; Fastify 5.
+- **Consequences:** Type-aware linting works; upgrade to TS 7 when typescript-eslint supports it.
+
+## ADR-025 — Update source is a build-time constant
+- **Date:** 2026-10-04 · **Status:** Accepted
+- **Context:** A configurable update repository would let anyone with admin or DB write access
+  redirect updates and execute code as SYSTEM (phase-2 R2-01).
+- **Decision:** Repository owner/name and API host are compiled into production builds. Only test
+  builds can override them (fake release server).
+- **Consequences:** Forks must rebuild to change the source; no runtime path to redirect updates.
+
+## ADR-026 — LAN panel certificate via PowerShell
+- **Date:** 2026-10-04 · **Status:** Accepted
+- **Context:** ADR-012 needs a certificate without adding a dependency; Node cannot create X.509
+  certificates natively.
+- **Decision:** When LAN access is enabled, the hub runs `New-SelfSignedCertificate`
+  (`-KeyExportPolicy Exportable`, SAN = LAN name/IP, 5-year validity) and `Export-PfxCertificate`
+  with a random password stored in `%ProgramData%\UniWake\certs\pfx.key`, then removes the cert
+  from the store. Admins can upload their own PFX instead.
+- **Consequences:** Self-signed warning in browsers until IT trusts the cert (README explains).

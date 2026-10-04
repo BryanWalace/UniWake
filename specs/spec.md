@@ -1,7 +1,8 @@
 # UniWake — Specification
 
-Version: **1.0** · Date: 2026-10-04 · Owner: Architect
-History: v0.1 draft → reviewed in `specs/reviews/phase-1-*.md` → consolidated as v1.0.
+Version: **1.1** · Date: 2026-10-04 · Owner: Architect
+History: v0.1 draft → reviewed in `specs/reviews/phase-1-*.md` → consolidated as v1.0 → v1.1
+(Phase 2: AC-001-13/14, FR-004.7).
 Sources: `.agents/01-project-brief.md`, `specs/constitution.md`, `specs/improvements.md`,
 `specs/decisions.md`.
 
@@ -104,6 +105,11 @@ stop service → silent install → start service → poll health (timeout 120 s
 - AC-001-10: Given an operator, Then "Atualizar agora" is hidden and the endpoint returns 403.
 - AC-001-11: Given `auto` mode, a pending update, time 03:10, and a schedule due at 04:00, Then the
   install is postponed; given no schedule before 05:00 and no active job, Then it starts.
+- AC-001-13: Given the updater stops the service and then crashes, When the watchdog task runs
+  15 min later, Then the service runs the previous version and the next start records
+  "Atualização interrompida — versão anterior restaurada". (IMP-027, ADR-023)
+- AC-001-14: Given free space below 3 × installer size + DB size, Then no download starts and the
+  panel shows `UPDATE_DISK_SPACE`.
 
 **FR-001.4 Release workflow.** On tag `v*`, GitHub Actions runs all quality gates, builds the
 installer, writes `UniWake-Setup.exe.sha256`, and publishes a Release with generated notes.
@@ -278,6 +284,11 @@ moved by enrollment in the last 24 h (ADR-013), dry-run/demo, pause, update fail
 online) and per room (average of its devices). Retention default 180 days.
 - AC-004-10: Given online 08:00 → offline 12:00 on one day, Then that day's uptime is 4 h (16.7%).
 - AC-004-16: Given a room with devices at 50% and 100%, Then room uptime is 75%.
+
+**FR-004.7 Quick-wake palette (IMP-026, low priority).** `Ctrl+K` opens a searchable picker of
+rooms, tags and devices; Enter runs the normal preview → (confirmation) → wake flow.
+- AC-004-17 [E2E]: Given `Ctrl+K`, typing "lab 3" and Enter, Then the preview for Lab 3 is shown;
+  confirmation rules are identical to the room card button.
 
 ### FR-005 Scheduler
 **FR-005.1 Schedules.** Name, target (rooms/tags/devices/all + "só os desligados"), weekdays,
@@ -618,3 +629,5 @@ touch targets ≥ 44 px on primary actions; every list has loading/empty/error s
 | IMP-023 | RM-5 |
 | IMP-024 | FR-003.3 |
 | IMP-025 | FR-007.3 |
+| IMP-026 | FR-004.7 |
+| IMP-027 | FR-001.3 (AC-001-13) |

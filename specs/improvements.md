@@ -31,3 +31,7 @@ Accepted items receive FR/NFR IDs in `spec.md` during Phase 1.
 | IMP-023 | Reviewer | Enrollment token travels in clear on the LAN. | TLS on agent listener with thumbprint pinned in the command. | Security | M | roadmap (RM-5, ADR-013) |
 | IMP-024 | Fullstack | UI can't show the confirmation count before the server resolves the target. | `POST /api/wake/preview` for every wake; summary always shown. | Productivity, safety | S | accepted (FR-003.3) |
 | IMP-025 | Fullstack | Getting the script onto each PC needs a USB stick. | Agent listener serves the script; panel shows a hash-pinned one-liner. | Productivity | S | accepted (FR-007.3, ADR-011) |
+| IMP-026 | Fullstack | Morning rush: many clicks to wake a specific room. | `Ctrl+K` quick-wake palette (room/tag/device) reusing preview + confirmation. | Productivity | S | accepted, low priority (FR-004.7) |
+| IMP-027 | Debug | Updater crash/power loss leaves the service stopped. | Watchdog scheduled task restarts the previous version after 15 min. | Reliability | S | accepted (FR-001.3, ADR-023) |
+| IMP-028 | Debug | Startup failures (port in use) invisible outside the log file. | Windows Application event log entry + distinct exit code. | Observability | S | accepted (plan §9) |
+| IMP-029 | Reviewer | Runtime dependencies drift from the justified list. | `npm run check:deps` compares package.json deps with plan §4.1. | Security | S | accepted (plan §12) |
