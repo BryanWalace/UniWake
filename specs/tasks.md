@@ -48,7 +48,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M1-T14 | `main.ts`: two listeners, graceful shutdown, `EADDRINUSE` → exit 78. | plan §2.1, §9 | ephemeral loopback ports; shutdown closes DB | `node main` serves health |
 | [ ] M1-T15 | Route-table authz test harness for both listeners. | IMP-014 | enumerates routes; 401 without session | harness reusable |
 | [ ] M1-T16 | Auth core: argon2id (PHC), users + sessions repos, session plugin, setup (loopback + transactional), login/logout/me, role guard, idle/absolute expiry. | FR-006.1; ADR-018; plan §6.4 | AC-006-01, AC-006-02; expiry with fake clock; rehash | — |
-| [ ] M1-T17 | Audit service (append-only) + repo. | FR-006.5 | append + query | — |
+| [x] M1-T17 | Audit service (append-only) + repo. | FR-006.5 | append + query | — |
 | [ ] M1-T18 | Web scaffold: Vite 8, React 19, Tailwind 4, Router, Query, layout shell pt-BR, banner slot, typed API client. | plan §6.5 | shell renders | `npm run dev` shows shell |
 | [ ] M1-T19 | Web: `/login`, `/primeiro-acesso`, auth guard, logout. | FR-006.1 | component tests | — |
 | [ ] M1-T20 | `check:trace`: spec ACs ↔ test titles ↔ tasks. | IMP-030 | script unit test | in `verify` |
