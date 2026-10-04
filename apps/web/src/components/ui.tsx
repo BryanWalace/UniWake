@@ -99,10 +99,22 @@ export function TagChip({ name, color }: { name: string; color: string }) {
   );
 }
 
-export function PageHeader({ title, actions }: { title: string; actions?: ReactNode }) {
+export function PageHeader({
+  title,
+  actions,
+  level = 1,
+}: {
+  title: string;
+  actions?: ReactNode;
+  /** One h1 per page; secondary sections use 2. */
+  level?: 1 | 2;
+}) {
+  const Heading = level === 1 ? 'h1' : 'h2';
   return (
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-      <h1 className="text-2xl font-bold">{title}</h1>
+      <Heading className={level === 1 ? 'text-2xl font-bold' : 'text-xl font-bold'}>
+        {title}
+      </Heading>
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
     </div>
   );

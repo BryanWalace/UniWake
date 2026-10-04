@@ -141,6 +141,7 @@ export function RoomsPage() {
 
       <div>
         <PageHeader
+          level={2}
           title="Etiquetas"
           actions={<Button onClick={() => setEditTag('new')}>Nova etiqueta</Button>}
         />
