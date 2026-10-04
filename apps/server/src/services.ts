@@ -22,6 +22,7 @@ import type {
 } from './application/ports';
 import { KeyedLimiter } from './application/rate-limit';
 import { RoomsService } from './application/rooms/rooms-service';
+import { Scheduler } from './application/schedules/scheduler';
 import { SchedulesService } from './application/schedules/schedules-service';
 import { SettingsService } from './application/settings/settings-service';
 import { TagsService } from './application/tags/tags-service';
@@ -37,6 +38,7 @@ import { SqliteJobsRepo } from './db/repositories/jobs-repo';
 import { SqliteMonitorRepo } from './db/repositories/monitor-repo';
 import { SqliteRetentionRepo } from './db/repositories/retention-repo';
 import { SqliteRoomsRepo } from './db/repositories/rooms-repo';
+import { SqliteSchedulerRepo } from './db/repositories/scheduler-repo';
 import { SqliteSchedulesRepo } from './db/repositories/schedules-repo';
 import { SqliteSettingsRepo } from './db/repositories/settings-repo';
 import { SqliteTagsRepo } from './db/repositories/tags-repo';
@@ -63,6 +65,7 @@ export interface Services extends HttpServices {
   events: EventsBus;
   runner: JobRunner;
   retention: RetentionService;
+  scheduler: Scheduler;
   monitor: MonitorService;
   probes: ProbeQueue;
 }
@@ -170,17 +173,29 @@ export function createServices(
     forceDryRun: opts.demo === true,
   });
 
+  const refs = {
+    room: (id: number) => roomsRepo.get(id) !== undefined,
+    tag: (id: number) => tagsRepo.get(id) !== undefined,
+    device: (id: number) => devicesRepo.get(id) !== undefined,
+  };
   const schedules = new SchedulesService({
     repo: new SqliteSchedulesRepo(db),
-    refs: {
-      room: (id) => roomsRepo.get(id) !== undefined,
-      tag: (id) => tagsRepo.get(id) !== undefined,
-      device: (id) => devicesRepo.get(id) !== undefined,
-    },
+    refs,
     describeTargets: (targets) => wake.describeTargets(targets),
     settings,
     audit,
     clock,
+    transaction: tx,
+  });
+
+  const scheduler = new Scheduler({
+    repo: new SqliteSchedulerRepo(db),
+    refs,
+    startWake: (req, actor, opts) => wake.start(req, actor, opts),
+    settings,
+    clock,
+    events,
+    logger: ports.logger.child({ module: 'scheduler' }),
     transaction: tx,
   });
 
@@ -202,5 +217,6 @@ export function createServices(
     dashboard,
     retention,
     schedules,
+    scheduler,
   };
 }

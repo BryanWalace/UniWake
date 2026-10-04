@@ -161,7 +161,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M5-T01 | `domain/schedule.ts`: occurrences, weekdays, tz, DST rule, exceptions, next 5; midnight/month-end/leap cases. | FR-005.1, FR-005.2, FR-005.5; ADR-008 | AC-005-01, AC-005-02, AC-005-06 (DST matrix) | — |
 | [x] M5-T02 | Schedules repo/service/routes + targets + confirm at save + empty-target flag. | FR-005.1, FR-005.8 | AC-005-11 [API] | — |
 | [x] M5-T03 | Exceptions CRUD (global / per schedule). | FR-005.2 | API tests | — |
-| [ ] M5-T04 | Scheduler tick: claim-then-execute, grace, atrasado/perdido, multiple missed, clock jumps. | FR-005.3, FR-005.4; NFR-02 | AC-005-03, AC-005-04, AC-005-05, AC-005-08; **faults**: clock ±1 h, DB busy on claim, restart mid-tick | — |
+| [x] M5-T04 | Scheduler tick: claim-then-execute, grace, atrasado/perdido, multiple missed, clock jumps. | FR-005.3, FR-005.4; NFR-02 | AC-005-03, AC-005-04, AC-005-05, AC-005-08; **faults**: clock ±1 h, DB busy on claim, restart mid-tick | — |
 | [ ] M5-T05 | Pause/resume (reason, auto-resume), SSE. | FR-005.6 | AC-005-07, AC-005-09 | — |
 | [ ] M5-T06 | Execution log API. | FR-005.7 | AC-005-10 | — |
 | [ ] M5-T07 | Morning result notices + notices API + ack. Extend the demo seed (M4-T09) with 2 schedules and the past morning-result notice. | FR-013, FR-015 | AC-013-01 | — |
