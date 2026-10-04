@@ -51,7 +51,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M1-T17 | Audit service (append-only) + repo. | FR-006.5 | append + query | — |
 | [x] M1-T18 | Web scaffold: Vite 8, React 19, Tailwind 4, Router, Query, layout shell pt-BR, banner slot, typed API client. | plan §6.5 | shell renders | `npm run dev` shows shell |
 | [x] M1-T19 | Web: `/login`, `/primeiro-acesso`, auth guard, logout. | FR-006.1 | component tests | — |
-| [ ] M1-T20 | `check:trace`: spec ACs ↔ test titles ↔ tasks. | IMP-030 | script unit test | in `verify` |
+| [x] M1-T20 | `check:trace`: spec ACs ↔ test titles ↔ tasks. | IMP-030 | script unit test | in `verify` |
 
 ## M2 — Devices, Rooms, Tags
 | ID | Task | Refs | Tests | Done when |
