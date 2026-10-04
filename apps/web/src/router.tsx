@@ -1,5 +1,6 @@
 import type { RouteObject } from 'react-router';
 import { RequireAuth } from './auth/auth';
+import { DevicesPage } from './features/devices/DevicesPage';
 import { t } from './i18n/pt-BR';
 import { LoginPage } from './routes/LoginPage';
 import { NotFound, Placeholder } from './routes/NotFound';
@@ -14,7 +15,7 @@ export const routes: RouteObject[] = [
     element: <RequireAuth />,
     children: [
       { index: true, element: <Placeholder title={t.nav.dashboard} /> },
-      { path: 'dispositivos', element: <Placeholder title={t.nav.devices} /> },
+      { path: 'dispositivos', element: <DevicesPage /> },
       { path: 'agendamentos', element: <Placeholder title={t.nav.schedules} /> },
       { path: 'historico', element: <Placeholder title={t.nav.history} /> },
       { path: 'preparar', element: <Placeholder title={t.nav.prepare} /> },
