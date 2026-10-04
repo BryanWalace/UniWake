@@ -1,0 +1,23 @@
+{
+  "name": "uniwake",
+  "private": true,
+  "version": "0.0.0",
+  "description": "UniWake — Wake-on-LAN, monitoring and scheduling for college labs",
+  "license": "UNLICENSED",
+  "type": "module",
+  "workspaces": [
+    "packages/shared",
+    "apps/server",
+    "apps/web"
+  ],
+  "engines": {
+    "node": ">=24.15.0 <25"
+  },
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.1",
+    "typescript": "6.0.3"
+  }
+}

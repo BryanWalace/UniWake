@@ -32,7 +32,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 ## M1 — Foundation
 | ID | Task | Refs | Tests | Done when |
 |---|---|---|---|---|
-| [ ] M1-T01 | Monorepo scaffold: root `package.json` (workspaces), `.nvmrc` 24.15.0, `engines`, `tsconfig.base.json` (strict + extra flags), `apps/server`, `apps/web`, `packages/shared`, `.editorconfig`. | ADR-004, ADR-024 | `npm run typecheck` passes | all workspaces compile |
+| [x] M1-T01 | Monorepo scaffold: root `package.json` (workspaces), `.nvmrc` 24.15.0, `engines`, `tsconfig.base.json` (strict + extra flags), `apps/server`, `apps/web`, `packages/shared`, `.editorconfig`. | ADR-004, ADR-024 | `npm run typecheck` passes | all workspaces compile |
 | [ ] M1-T02 | ESLint 10 flat config (typescript-eslint type-checked, import-x `no-restricted-paths` zones, restricted Node modules outside `adapters/`, `no-restricted-syntax` for `dangerouslySetInnerHTML`, react-hooks) + Prettier. | constitution §2.1, §4.1; ADR-024 | lint-rule test: violating fixtures fail via ESLint API | `npm run lint` 0 warnings |
 | [ ] M1-T03 | Vitest projects (server, shared, web), coverage thresholds on core globs, network-guard setup. | constitution §5; NFR-06 | guard: UDP/TCP to 192.0.2.1 throws, loopback allowed | thresholds enforced |
 | [ ] M1-T04 | `npm run verify` + `check:deps`. | plan §12; IMP-029 | check-deps unit test | verify runs all gates |
