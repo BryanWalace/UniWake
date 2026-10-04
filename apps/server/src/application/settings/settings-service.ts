@@ -80,6 +80,20 @@ export class SettingsService {
       );
     }
     const data: SettingsPatch = parsed.data;
+    // R-M1-04: config.json keys are not stored in the DB (M6-T05 routes them to the config file).
+    const configKeys = SETTING_KEYS.filter(
+      (k) => k in data && SETTING_DEFS[k].meta.storage === 'config',
+    );
+    if (configKeys.length > 0) {
+      throw new AppError(
+        'VALIDATION_FAILED',
+        {},
+        configKeys.map((k) => ({
+          path: k,
+          message: 'Configurado em config.json (requer reinício).',
+        })),
+      );
+    }
     const changes: SettingChange[] = [];
     const now = this.clock.now();
     for (const key of SETTING_KEYS) {

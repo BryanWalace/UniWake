@@ -45,15 +45,33 @@ export function loggerOptions(level: string): LoggerOptions {
   };
 }
 
+export interface FileLogger {
+  logger: pino.Logger;
+  /** Flushes buffered lines and closes the file (R-M1-02: nothing lost on exit). */
+  close(): Promise<void>;
+}
+
 /** Logger writing to a rotating file in `dir` (and optionally stdout for dev). */
-export function createFileLogger(dir: string, level: string, alsoStdout = false): pino.Logger {
+export function createFileLogger(dir: string, level: string, alsoStdout = false): FileLogger {
   mkdirSync(dir, { recursive: true });
   const file = createStream(LOG_FILE, rotationOptions(dir));
   const streams: { stream: DestinationStream; level: pino.Level }[] = [
     { stream: file, level: 'debug' },
   ];
   if (alsoStdout) streams.push({ stream: pino.destination(1), level: 'debug' });
-  return pino(loggerOptions(level), pino.multistream(streams));
+  const logger = pino(loggerOptions(level), pino.multistream(streams));
+  let closed: Promise<void> | null = null;
+  return {
+    logger,
+    close() {
+      closed ??= new Promise<void>((resolve) => {
+        // Late log calls after close must not write to an ended stream (that would emit 'error').
+        logger.level = 'silent';
+        file.end(() => resolve());
+      });
+      return closed;
+    },
+  };
 }
 
 /** Logger writing to an arbitrary stream (tests). */

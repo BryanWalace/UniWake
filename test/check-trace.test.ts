@@ -45,6 +45,16 @@ describe('check:trace (IMP-030)', () => {
     ]);
   });
 
+  it('R-M1-07 finds titles that Prettier wrapped onto the next line', () => {
+    const src = [
+      '  it(',
+      "    'AC-003-05 waking room A sends zero packets to devices of room B',",
+      '    async () => {},',
+      '  );',
+    ].join('\n');
+    expect([...acsInTestTitles(src)]).toEqual(['AC-003-05']);
+  });
+
   it('passes when done tasks have tests for their automated ACs (manual ACs exempt)', () => {
     const r = checkTrace(SPEC, TASKS, [`it('AC-001-01a smoke', () => {})`]);
     expect(r.errors).toEqual([]);

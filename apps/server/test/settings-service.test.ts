@@ -56,6 +56,12 @@ describe('settings service (constitution §2.4)', () => {
     expect(service.all()).toEqual(DEFAULT_SETTINGS);
   });
 
+  it('R-M1-04 rejects config.json (bootstrap) keys instead of storing them where they do nothing', () => {
+    const { service, db } = setup();
+    expect(() => service.update({ 'bootstrap.panelPort': 48000 }, 1)).toThrow(AppError);
+    expect(db.get("SELECT * FROM settings WHERE key = 'bootstrap.panelPort'")).toBeUndefined();
+  });
+
   it('falls back to defaults for corrupt or out-of-range stored values', () => {
     const { repo, clock } = setup();
     repo.upsert('wake.repeat', '{not json', T0, null);

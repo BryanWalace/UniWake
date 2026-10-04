@@ -60,7 +60,12 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M1-F1 | MAJOR: network guard does not block DNS (a real lookup left the machine). Patch `dns`/`dns.promises`/Resolver for non-loopback names. | constitution §5 | breakit DNS probe | guard blocks DNS |
 | [x] M1-F2 | MAJOR: `Db` constructor leaks the SQLite handle when pragmas fail (corrupt file stays locked on Windows). | ADR-017 | breakit corrupt-DB probe | handle closed on failure |
 | [x] M1-F3 | MINOR: corrupt/unreadable DB gives "file is not a database"; make it a startup error (exit 78) that points to backups. | constitution §8 | breakit corrupt-DB probe | actionable message |
-| [ ] M1-R | Code review → `specs/reviews/M1-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+| [x] M1-R | Code review → `specs/reviews/M1-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+| [x] M1-F4 | MINOR R-M1-01: close DB/panel when `createHub` fails after opening them. | review | hub test | — |
+| [x] M1-F5 | MINOR R-M1-02: flush and close the file logger on stop. | review | logger test | — |
+| [x] M1-F6 | MINOR R-M1-04: reject `bootstrap.*` (config.json) keys in `SettingsService.update` until M6-T05. | review | settings test | — |
+| [x] M1-F7 | MINOR R-M1-06: login button stays enabled (autofill); validate on submit. | review | web test | — |
+| [x] M1-F8 | MINOR R-M1-07: `check:trace` matches titles wrapped onto the next line. | review | script test | — |
 
 ## M2 — Devices, Rooms, Tags
 | ID | Task | Refs | Tests | Done when |

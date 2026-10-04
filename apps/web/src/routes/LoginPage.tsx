@@ -35,12 +35,24 @@ export function LoginPage() {
   if (setup.data?.needsSetup) return <Navigate to="/primeiro-acesso" replace />;
   if (me.data) return <Navigate to={next} replace />;
 
-  async function onSubmit(e: FormEvent) {
+  async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    // Read the form too: browser autofill may not have fired change events yet (R-M1-06).
+    const form = new FormData(e.currentTarget);
+    const field = (k: string) => {
+      const v = form.get(k);
+      return typeof v === 'string' ? v : '';
+    };
+    const u = username || field('username');
+    const p = password || field('password');
+    if (!u || !p) {
+      setError('Informe usuário e senha.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      const user = await api.post<Me>('/api/auth/login', { username, password });
+      const user = await api.post<Me>('/api/auth/login', { username: u, password: p });
       qc.setQueryData(meQueryKey, user);
       await navigate(next, { replace: true });
     } catch (err) {
@@ -73,9 +85,7 @@ export function LoginPage() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
-        <PrimaryButton disabled={busy || !username || !password}>
-          {busy ? 'Entrando…' : 'Entrar'}
-        </PrimaryButton>
+        <PrimaryButton disabled={busy}>{busy ? 'Entrando…' : 'Entrar'}</PrimaryButton>
       </form>
     </AuthCard>
   );

@@ -87,6 +87,21 @@ describe('login page', () => {
   });
 });
 
+describe('login page with empty fields (R-M1-06)', () => {
+  it('keeps the button enabled for autofill and explains what is missing', async () => {
+    const api = installFakeApi()
+      .on('GET', '/api/auth/setup-status', { body: { needsSetup: false } })
+      .on('GET', '/api/auth/me', { status: 401, body: { code: 'UNAUTHENTICATED', message: 'x' } });
+    const user = userEvent.setup();
+    renderApp('/login');
+    const button = await screen.findByRole('button', { name: 'Entrar' });
+    expect(button).toBeEnabled();
+    await user.click(button);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Informe usuário e senha.');
+    expect(api.calls.some((c) => c.path === '/api/auth/login')).toBe(false);
+  });
+});
+
 describe('first access page', () => {
   it('validates length and confirmation before submitting', async () => {
     const api = installFakeApi().on('GET', '/api/auth/setup-status', {

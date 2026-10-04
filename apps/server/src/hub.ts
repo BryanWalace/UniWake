@@ -73,7 +73,10 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
   const { config } = opts;
   const paths = dataPaths(config.dataDir);
   mkdirSync(paths.dbDir, { recursive: true });
-  const logger = opts.logger ?? createFileLogger(paths.logs, config.logLevel, config.demo);
+  const fileLogger = opts.logger
+    ? null
+    : createFileLogger(paths.logs, config.logLevel, config.demo);
+  const logger = opts.logger ?? fileLogger!.logger;
 
   const clock = opts.clock ?? new SystemClock();
   const db = openDatabase(paths.db, paths.backups);
@@ -87,19 +90,29 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
 
   const services = createServices(db, clock);
 
-  const panel = await buildApp({
-    kind: 'panel',
-    logger: logger.child({ listener: 'panel' }),
-    hosts: panelHosts,
-    register: (app) => registerPanelRoutes(app, services),
-  });
-  const agent = await buildApp({
-    kind: 'agent',
-    logger: logger.child({ listener: 'agent' }),
-    hosts: 'any',
-    bodyLimit: 8 * 1024,
-    register: (app) => registerAgentRoutes(app),
-  });
+  let panel: FastifyInstance | undefined;
+  let agent: FastifyInstance;
+  try {
+    panel = await buildApp({
+      kind: 'panel',
+      logger: logger.child({ listener: 'panel' }),
+      hosts: panelHosts,
+      register: (app) => registerPanelRoutes(app, services),
+    });
+    agent = await buildApp({
+      kind: 'agent',
+      logger: logger.child({ listener: 'agent' }),
+      hosts: 'any',
+      bodyLimit: 8 * 1024,
+      register: (app) => registerAgentRoutes(app),
+    });
+  } catch (e) {
+    // R-M1-01: release what was opened so the DB file is not left locked.
+    await panel?.close();
+    db.close();
+    await fileLogger?.close();
+    throw e;
+  }
 
   let started = false;
 
@@ -121,7 +134,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
   const hub: Hub = {
     db,
     services,
-    panel,
+    panel: panel,
     agent,
     logger,
     addresses() {
@@ -150,6 +163,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       db.close();
       if (started) logger.info({}, 'UniWake hub stopped');
       started = false;
+      await fileLogger?.close();
     },
   };
   return hub;

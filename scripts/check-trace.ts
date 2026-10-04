@@ -46,12 +46,17 @@ export function parseTasks(tasks: string): TaskRow[] {
   return rows;
 }
 
-/** AC IDs appearing in test titles of one test file's source. */
+/**
+ * AC IDs appearing in test titles of one test file's source. The title may start on the line
+ * after `it(` because Prettier wraps long calls (R-M1-07).
+ */
+const TITLE_RE =
+  /\b(?:it|test|describe|It|Describe|Context)\b\s*\(?\s*(['"`])((?:(?!\1)[^\n])*)\1/g;
+
 export function acsInTestTitles(source: string): Set<string> {
   const found = new Set<string>();
-  for (const line of source.split('\n')) {
-    if (!/\b(it|test|describe|It|Describe|Context)\b\s*\(?\s*['"`]/.test(line)) continue;
-    for (const id of line.match(AC_RE) ?? []) found.add(id);
+  for (const m of source.matchAll(TITLE_RE)) {
+    for (const id of m[2]?.match(AC_RE) ?? []) found.add(id);
   }
   return found;
 }
