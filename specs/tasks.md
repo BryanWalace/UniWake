@@ -126,7 +126,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 ## M4 — Monitoring hub, realtime, history
 | ID | Task | Refs | Tests | Done when |
 |---|---|---|---|---|
-| [ ] M4-T01 | `domain/status.ts` state machine (debounce, ever_online, desconhecido). | FR-004.1; ADR-014 | AC-004-01, AC-004-02, AC-004-03, AC-004-04, AC-004-05, AC-004-11, AC-004-12 | — |
+| [~] M4-T01 | `domain/status.ts` state machine (debounce, ever_online, desconhecido). | FR-004.1; ADR-014 | AC-004-01, AC-004-02, AC-004-03, AC-004-04, AC-004-05, AC-004-11, AC-004-12 | — |
 | [x] M4-T02 | `adapters/tcp-prober` (timeout, refused = alive). | FR-004.1 | loopback open/closed ports | — |
 | [ ] M4-T03 | `probe-helper.ps1` + `ps-helper-icmp` adapter (JSON lines, deadlines, restart). | ADR-019 | fake process tests; Windows loopback contract test + 10 000-request soak | — |
 | [ ] M4-T04 | `ping-exe-icmp` fallback + composite prober switch rule. | ADR-019 | localized output fixtures (pt-BR, en-US); switch after 3 restarts in 5 min | — |
