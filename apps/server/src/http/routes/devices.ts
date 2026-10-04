@@ -39,7 +39,13 @@ export function deviceRoutes(app: FastifyInstance, s: HttpServices): void {
     s.csv.commit(req.body, actorOf(req)),
   );
   r.get('/api/devices/export.csv', { config: auth }, async (_req, reply) => {
-    const day = new Date().toISOString().slice(0, 10);
+    // R-M2-02: the operator's local date, not UTC.
+    const day = new Intl.DateTimeFormat('en-CA', {
+      timeZone: s.settings.get('scheduler.timezone'),
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
     return reply
       .header('content-type', 'text/csv; charset=utf-8')
       .header('content-disposition', `attachment; filename="uniwake-dispositivos-${day}.csv"`)

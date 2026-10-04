@@ -22,6 +22,10 @@ export function registerErrorHandling(app: FastifyInstance): void {
       if (error.status >= 500) req.log.error({ err: error }, error.code);
       return reply.status(error.status).send(body(error.code, error.message, error.details));
     }
+    if (error.name === 'ForeignKeyError') {
+      // Safety net (R-M2-05): services validate references first; a race must not become a 500.
+      return reply.status(422).send(body('VALIDATION_FAILED', undefined, { reason: 'reference' }));
+    }
     if (error instanceof ZodError) {
       // Service-level parse of data that did not come through a route schema.
       const details = error.issues.map((i) => ({ path: i.path.join('.'), message: i.message }));

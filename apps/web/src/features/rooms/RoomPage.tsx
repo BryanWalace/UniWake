@@ -85,19 +85,29 @@ export function RoomPage() {
           Adicione uma máquina, mova dispositivos para cá ou use "Preparar máquinas".
         </EmptyState>
       ) : (
-        <DevicesTable
-          devices={devices.data.items}
-          rooms={rooms.data ?? []}
-          tags={tags.data ?? []}
-          selected={selection.selected}
-          onToggle={selection.toggle}
-          onToggleAll={selection.toggleAll}
-          onEdit={(d) => {
-            setEditing(d);
-            setDeviceFormOpen(true);
-          }}
-          showRoom={false}
-        />
+        <>
+          {devices.data.total > devices.data.items.length && (
+            <p role="status" className="mb-2 text-sm text-slate-700">
+              Mostrando {devices.data.items.length} de {devices.data.total} máquinas.{' '}
+              <Link to={`/dispositivos?sala=${id}`} className="text-blue-800 underline">
+                Ver todas em Dispositivos
+              </Link>
+            </p>
+          )}
+          <DevicesTable
+            devices={devices.data.items}
+            rooms={rooms.data ?? []}
+            tags={tags.data ?? []}
+            selected={selection.selected}
+            onToggle={selection.toggle}
+            onToggleAll={selection.toggleAll}
+            onEdit={(d) => {
+              setEditing(d);
+              setDeviceFormOpen(true);
+            }}
+            showRoom={false}
+          />
+        </>
       )}
 
       {selection.selected.size > 0 && (

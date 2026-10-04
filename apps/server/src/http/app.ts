@@ -4,12 +4,18 @@
  * relies on enrollment tokens.
  */
 import { randomUUID } from 'node:crypto';
-import Fastify, { type FastifyBaseLogger, type FastifyInstance, LogController } from 'fastify';
+import Fastify, {
+  type FastifyBaseLogger,
+  type FastifyInstance,
+  type FastifyReply,
+  LogController,
+} from 'fastify';
 import {
   serializerCompiler,
   validatorCompiler,
   type ZodTypeProvider,
 } from 'fastify-type-provider-zod';
+import { formatErrorMessage } from '@uniwake/shared';
 import { registerErrorHandling } from './errors';
 import { registerRouteAuthRegistry } from './route-auth';
 import { type HostPolicy, registerSecurity } from './security';
@@ -37,6 +43,15 @@ export async function buildApp(opts: BuildAppOptions): Promise<FastifyInstance> 
     trustProxy: false,
     genReqId: () => randomUUID().slice(0, 8),
     return503OnClosing: true,
+    // R-M2-01: errors raised before routing (malformed URL, bad content type) keep ADR-006 shape.
+    frameworkErrors: (error, _req, rawReply) => {
+      const reply = rawReply as unknown as FastifyReply;
+      void reply.status(400).send({
+        code: 'VALIDATION_FAILED',
+        message: formatErrorMessage('VALIDATION_FAILED'),
+        details: { reason: error.code },
+      });
+    },
   }).withTypeProvider<ZodTypeProvider>();
 
   app.setValidatorCompiler(validatorCompiler);

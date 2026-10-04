@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link } from 'react-router';
+import { useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router';
 import type { Device, DeviceSaveResult, DeviceStatus } from '@uniwake/shared';
 import { type DeviceQueryParams, useDevices, useRooms, useTags } from '../../api/hooks';
 import { EmptyState, ErrorState, LoadingState } from '../../components/Banner';
@@ -9,6 +9,16 @@ import { DeviceFormDialog, WARNING_TEXT } from './DeviceFormDialog';
 import { DevicesTable } from './DevicesTable';
 
 const PAGE_SIZE = 50;
+
+/** Value that follows `value` after `ms` without changes (R-M2-03: no request per keystroke). */
+export function useDebounced<T>(value: T, ms: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return debounced;
+}
 
 export function useSelection() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -72,8 +82,16 @@ export function noticeFromSave(result: DeviceSaveResult, created: boolean) {
 export function DevicesPage() {
   const rooms = useRooms();
   const tags = useTags();
-  const [filters, setFilters] = useState<DeviceQueryParams>({ page: 1, pageSize: PAGE_SIZE });
-  const devices = useDevices(filters);
+  const [params] = useSearchParams();
+  const sala = params.get('sala');
+  const [filters, setFilters] = useState<DeviceQueryParams>({
+    page: 1,
+    pageSize: PAGE_SIZE,
+    ...(sala ? { roomId: sala === 'none' ? 'none' : Number(sala) } : {}),
+  });
+  const [search, setSearch] = useState('');
+  const q = useDebounced(search, 250);
+  const devices = useDevices({ ...filters, q });
   const selection = useSelection();
   const [editing, setEditing] = useState<Device | undefined>(undefined);
   const [formOpen, setFormOpen] = useState(false);
@@ -132,7 +150,12 @@ export function DevicesPage() {
             type="search"
             placeholder="Nome, IP, MAC ou host"
             className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2"
-            onChange={(e) => setFilter({ q: e.target.value })}
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setFilters((f) => ({ ...f, page: 1 }));
+              selection.clear();
+            }}
           />
         </div>
         <SelectField

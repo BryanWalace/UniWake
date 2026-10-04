@@ -91,7 +91,12 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M2-D | Debug break-it pass → `apps/server/test/breakit-m2.test.ts` (limits on every endpoint, CSV 2 MB/5000 rows, parallel creates/imports, kill -9 during imports, NFC/NFD names, HTML in names). | tasks §Break-it | 9 probes | findings filed |
 | [x] M2-F1 | MAJOR: names differing only in Unicode normalization (NFC vs NFD, e.g. CSV from macOS) created duplicate rooms/tags. All text is NFC-normalized in the shared schemas and CSV lookups. | spec §8 | breakit NFC probe | — |
 | [x] M2-F2 | MAJOR: audit entries were written after the change committed; a crash in between lost the trace (P4). Mutating service methods now run change + audit in one transaction. | constitution P4 | breakit atomic-audit test | — |
-| [ ] M2-R | Code review → `specs/reviews/M2-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+| [x] M2-R | Code review → `specs/reviews/M2-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+| [x] M2-F3 | MINOR R-M2-01: framework errors (malformed URL) use the catalog shape. | ADR-006 | server test | — |
+| [x] M2-F4 | MINOR R-M2-02: export filename uses the configured time zone. | FR-002.3 | server test | — |
+| [x] M2-F5 | MINOR R-M2-03: debounced device search. | FR-002 | web test | — |
+| [x] M2-F6 | MINOR R-M2-04: room page says when it shows part of the devices; `?sala=` filter link. | FR-008.3 | web test | — |
+| [x] M2-F7 | MINOR R-M2-05: FK violations map to 422. | ADR-006 | server test | — |
 
 ## M3 — WoL engine, scoped wake, verification
 | ID | Task | Refs | Tests | Done when |
