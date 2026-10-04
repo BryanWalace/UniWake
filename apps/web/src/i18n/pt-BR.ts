@@ -6,6 +6,7 @@ export const t = {
     label: 'Navegação principal',
     dashboard: 'Painel',
     devices: 'Dispositivos',
+    rooms: 'Salas',
     schedules: 'Agendamentos',
     history: 'Histórico',
     prepare: 'Preparar máquinas',

@@ -5,6 +5,7 @@ import { t } from '../i18n/pt-BR';
 const NAV = [
   { to: '/', label: t.nav.dashboard, end: true },
   { to: '/dispositivos', label: t.nav.devices },
+  { to: '/salas', label: t.nav.rooms },
   { to: '/agendamentos', label: t.nav.schedules },
   { to: '/historico', label: t.nav.history },
   { to: '/preparar', label: t.nav.prepare },
