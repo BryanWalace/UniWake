@@ -243,7 +243,8 @@ prefix is not used because loopback is HTTP (browsers reject `__Host-` without `
 `last_seen_at` is updated at most once per minute.
 
 ### 6.5 Web routes (pt-BR)
-`/` painel · `/salas/:id` · `/dispositivos` · `/dispositivos/:id` (detalhe + diagnóstico) ·
+`/` painel · `/salas` (salas e etiquetas) · `/salas/:id` · `/dispositivos` (`?sala=<id>` pré-filtra) ·
+`/dispositivos/importar` · `/dispositivos/:id` (detalhe + diagnóstico) ·
 `/agendamentos` · `/historico` (jobs + execuções) · `/historico/jobs/:id` · `/preparar` ·
 `/configuracoes` · `/usuarios` · `/auditoria` · `/saude` · `/logs` · `/ajuda/:topico` · `/login` ·
 `/primeiro-acesso`. Global quick-wake palette `Ctrl+K` (FR-004.7).
