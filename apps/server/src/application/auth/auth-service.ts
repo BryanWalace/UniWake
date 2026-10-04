@@ -182,8 +182,11 @@ export class AuthService {
     return { token, user: { id: user.id, username: user.username, role: user.role }, expiresAt };
   }
 
-  /** Resolves a session cookie to the current user, enforcing idle and absolute expiry. */
-  authenticate(token: string | undefined): Me | null {
+  /**
+   * Resolves a session cookie to the current user, enforcing idle and absolute expiry.
+   * `touch: false` checks validity without counting as activity (SSE heartbeats).
+   */
+  authenticate(token: string | undefined, opts: { touch?: boolean } = {}): Me | null {
     if (!token || token.length > 128) return null;
     const idHash = sha256(token);
     const s = this.sessions.find(idHash);
@@ -199,7 +202,9 @@ export class AuthService {
       this.sessions.delete(idHash);
       return null;
     }
-    if (now - s.lastSeenAt >= TOUCH_INTERVAL_MS) this.sessions.touch(idHash, now);
+    if (opts.touch !== false && now - s.lastSeenAt >= TOUCH_INTERVAL_MS) {
+      this.sessions.touch(idHash, now);
+    }
     return { id: user.id, username: user.username, role: user.role };
   }
 

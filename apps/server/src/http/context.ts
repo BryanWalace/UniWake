@@ -6,6 +6,8 @@ import type { AuditService } from '../application/audit/audit-service';
 import type { AuthService } from '../application/auth/auth-service';
 import type { CsvImportService } from '../application/devices/csv-import-service';
 import type { DevicesService } from '../application/devices/devices-service';
+import type { EventsBus } from '../application/events-bus';
+import type { Clock } from '../application/ports';
 import type { RoomsService } from '../application/rooms/rooms-service';
 import type { SettingsService } from '../application/settings/settings-service';
 import type { TagsService } from '../application/tags/tags-service';
@@ -20,4 +22,6 @@ export interface HttpServices {
   devices: DevicesService;
   csv: CsvImportService;
   wake: WakeService;
+  events: EventsBus;
+  clock: Clock;
 }
