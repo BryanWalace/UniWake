@@ -4,7 +4,7 @@
     "rootDir": ".",
     "types": ["node"],
     "allowImportingTsExtensions": true,
-    "erasableSyntaxOnly": true
+    "lib": ["ES2023", "DOM"]
   },
-  "include": ["test", "scripts", "*.ts"]
+  "include": ["test", "scripts", "e2e", "*.ts"]
 }

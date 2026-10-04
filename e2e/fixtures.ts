@@ -1,0 +1,87 @@
+/**
+ * E2E fixtures (M2-T13): every page is logged in as the admin and fails the test on console
+ * errors, uncaught exceptions or CSP violations (constitution §5, §6.1).
+ */
+import AxeBuilder from '@axe-core/playwright';
+import { type APIRequestContext, expect, type Page, test as base } from '@playwright/test';
+
+export const ADMIN = { username: 'admin', password: 'senha-e2e-12345' };
+
+/** Chrome logs failed fetches as console errors; expected 4xx responses are not bugs. */
+const IGNORED = [/Failed to load resource: the server responded with a status of 4\d\d/];
+
+async function ensureAdmin(request: APIRequestContext) {
+  const status = (await (await request.get('/api/auth/setup-status')).json()) as {
+    needsSetup: boolean;
+  };
+  if (status.needsSetup) {
+    const r = await request.post('/api/auth/setup', { data: ADMIN });
+    expect(r.status(), await r.text()).toBe(201);
+  }
+}
+
+export function guardConsole(page: Page): string[] {
+  const errors: string[] = [];
+  page.on('console', (m) => {
+    if (m.type() === 'error' && !IGNORED.some((re) => re.test(m.text()))) errors.push(m.text());
+  });
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+  return errors;
+}
+
+interface Fixtures {
+  /** API client sharing cookies with the logged-in page. */
+  api: APIRequestContext;
+  anonymousPage: Page;
+}
+
+export const test = base.extend<Fixtures>({
+  page: async ({ page }, use) => {
+    const errors = guardConsole(page);
+    const request = page.context().request;
+    await ensureAdmin(request);
+    const login = await request.post('/api/auth/login', { data: ADMIN });
+    expect(login.status(), await login.text()).toBe(200);
+    await use(page);
+    expect(errors, 'console errors / CSP violations').toEqual([]);
+  },
+  api: async ({ page }, use) => {
+    await use(page.context().request);
+  },
+  anonymousPage: async ({ browser }, use) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const errors = guardConsole(page);
+    await ensureAdmin(context.request);
+    await use(page);
+    expect(errors, 'console errors / CSP violations').toEqual([]);
+    await context.close();
+  },
+});
+
+export { expect };
+
+/** axe-core scan: no serious or critical violations (NFR-07). */
+export async function expectAccessible(page: Page) {
+  const results = await new AxeBuilder({ page }).analyze();
+  const serious = results.violations.filter(
+    (v) => v.impact === 'serious' || v.impact === 'critical',
+  );
+  expect(
+    serious.map((v) => `${v.id}: ${v.help} (${v.nodes.map((n) => n.target.join(' ')).join(', ')})`),
+  ).toEqual([]);
+}
+
+let seq = 0;
+/** Unique suffix so tests sharing one database don't collide. */
+export function uniq(prefix: string): string {
+  seq++;
+  return `${prefix}-${Date.now().toString(36)}${seq}`;
+}
+
+/** A random unicast, globally administered MAC. */
+export function randomMac(): string {
+  const bytes = Array.from({ length: 6 }, () => Math.floor(Math.random() * 256));
+  bytes[0] = bytes[0]! & 0xfc;
+  return bytes.map((b) => b.toString(16).padStart(2, '0').toUpperCase()).join(':');
+}

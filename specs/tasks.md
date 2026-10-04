@@ -82,7 +82,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M2-T10 | Web: rooms & tags management (impact confirmations). | FR-008.1, FR-008.2 | component tests | — |
 | [x] M2-T11 | Web: CSV import wizard + export. | FR-002.3 | component tests | — |
 | [x] M2-T12 | Web: room page `/salas/:id`. | FR-008.3 | component tests | — |
-| [ ] M2-T13 | Playwright harness: built server + web, temp data dir, admin via setup API, API seeding helpers; **fails on CSP violations and console errors**. | constitution §5, §6.1 | harness smoke | in CI |
+| [x] M2-T13 | Playwright harness: built server + web, temp data dir, admin via setup API, API seeding helpers; **fails on CSP violations and console errors**. | constitution §5, §6.1 | harness smoke | in CI |
 | [ ] M2-T14 | E2E: duplicate name warning, room page deep link, axe on devices page. | FR-002.1, FR-008.3; NFR-07 | AC-002-06, AC-008-05 [E2E] | — |
 
 ## M3 — WoL engine, scoped wake, verification

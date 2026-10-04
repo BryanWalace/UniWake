@@ -4,7 +4,7 @@
  * relies on enrollment tokens.
  */
 import { randomUUID } from 'node:crypto';
-import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyBaseLogger, type FastifyInstance, LogController } from 'fastify';
 import {
   serializerCompiler,
   validatorCompiler,
@@ -31,7 +31,7 @@ export interface BuildAppOptions {
 export async function buildApp(opts: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     ...(opts.logger ? { loggerInstance: opts.logger } : { logger: false }),
-    disableRequestLogging: true,
+    logController: new LogController({ disableRequestLogging: true }),
     bodyLimit: opts.bodyLimit ?? 1024 * 1024,
     requestTimeout: 30_000,
     trustProxy: false,
