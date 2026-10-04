@@ -62,6 +62,11 @@ export class RoomsService {
   }
 
   create(input: RoomCreate, actor: Actor): RoomRow {
+    // Audit is written in the same transaction as the change (M2-F2, P4).
+    return this.transaction(() => this.createTx(input, actor));
+  }
+
+  private createTx(input: RoomCreate, actor: Actor): RoomRow {
     const data = roomCreateSchema.parse(input);
     const id = this.transaction(() => {
       if (this.repo.nameTaken(data.name)) throw new AppError('ROOM_NAME_DUPLICATE');
@@ -94,6 +99,11 @@ export class RoomsService {
   }
 
   update(id: number, input: RoomUpdate, actor: Actor): RoomRow {
+    // Audit is written in the same transaction as the change (M2-F2, P4).
+    return this.transaction(() => this.updateTx(id, input, actor));
+  }
+
+  private updateTx(id: number, input: RoomUpdate, actor: Actor): RoomRow {
     const patch = roomUpdateSchema.parse(input);
     const current = this.get(id);
     const next: RoomWrite = {
@@ -135,6 +145,11 @@ export class RoomsService {
 
   /** AC-008-01/03: without `confirm`, a room with devices or schedules is not deleted. */
   delete(id: number, confirm: boolean, actor: Actor): RoomDeleteImpact {
+    // Audit is written in the same transaction as the change (M2-F2, P4).
+    return this.transaction(() => this.deleteTx(id, confirm, actor));
+  }
+
+  private deleteTx(id: number, confirm: boolean, actor: Actor): RoomDeleteImpact {
     const room = this.get(id);
     const impact = this.deleteImpact(id);
     if (!confirm && (impact.deviceCount > 0 || impact.schedules.length > 0)) {

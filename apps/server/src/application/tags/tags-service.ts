@@ -46,6 +46,11 @@ export class TagsService {
   }
 
   create(input: TagCreate, actor: Actor): Required<Tag> {
+    // Audit is written in the same transaction as the change (M2-F2, P4).
+    return this.transaction(() => this.createTx(input, actor));
+  }
+
+  private createTx(input: TagCreate, actor: Actor): Required<Tag> {
     const data = tagCreateSchema.parse(input);
     const id = this.transaction(() => {
       if (this.repo.nameTaken(data.name)) throw new AppError('TAG_NAME_DUPLICATE');
@@ -56,6 +61,11 @@ export class TagsService {
   }
 
   update(id: number, input: TagUpdate, actor: Actor): Required<Tag> {
+    // Audit is written in the same transaction as the change (M2-F2, P4).
+    return this.transaction(() => this.updateTx(id, input, actor));
+  }
+
+  private updateTx(id: number, input: TagUpdate, actor: Actor): Required<Tag> {
     const patch = tagUpdateSchema.parse(input);
     const current = this.get(id);
     const name = patch.name ?? current.name;
@@ -76,6 +86,11 @@ export class TagsService {
 
   /** AC-008-04: devices lose the tag. Schedules referencing it require confirmation. */
   delete(id: number, confirm: boolean, actor: Actor): TagDeleteImpact {
+    // Audit is written in the same transaction as the change (M2-F2, P4).
+    return this.transaction(() => this.deleteTx(id, confirm, actor));
+  }
+
+  private deleteTx(id: number, confirm: boolean, actor: Actor): TagDeleteImpact {
     const tag = this.get(id);
     const impact = this.deleteImpact(id);
     if (!confirm && impact.schedules.length > 0) {

@@ -99,13 +99,20 @@ export class AuthService {
     const id = this.transaction(() => {
       // Re-checked inside the write transaction: concurrent setups cannot both succeed (AC-006-02).
       if (this.users.count() > 0) throw new AppError('SETUP_ALREADY_DONE');
-      return this.users.create({ username: input.username, passwordHash, role: 'admin', now });
-    });
-    this.audit.record({
-      actor: { id, label: input.username },
-      action: 'auth.setup',
-      target: `user:${input.username}`,
-      sourceIp: ctx.ip,
+      const created = this.users.create({
+        username: input.username,
+        passwordHash,
+        role: 'admin',
+        now,
+      });
+      // Same transaction as the user (M2-F2): no admin without its audit entry.
+      this.audit.record({
+        actor: { id: created, label: input.username },
+        action: 'auth.setup',
+        target: `user:${input.username}`,
+        sourceIp: ctx.ip,
+      });
+      return created;
     });
     return { id, username: input.username, role: 'admin' };
   }

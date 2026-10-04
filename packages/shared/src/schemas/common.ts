@@ -18,15 +18,24 @@ export const LIMITS = {
   compactListMax: 2000,
 } as const;
 
-/** Trimmed, required text of 1..max chars. */
+/**
+ * Trimmed, NFC-normalized, required text of 1..max chars. NFC matters: files made on macOS use
+ * NFD, and "Laboratório" in NFC and NFD would otherwise be two different rooms (M2-F1).
+ */
 export const requiredText = (max: number) =>
-  z.string().trim().min(1, 'Campo obrigatório.').max(max, `Máximo de ${max} caracteres.`);
+  z
+    .string()
+    .trim()
+    .normalize('NFC')
+    .min(1, 'Campo obrigatório.')
+    .max(max, `Máximo de ${max} caracteres.`);
 
-/** Trimmed optional text; empty string becomes null. */
+/** Trimmed, NFC-normalized optional text; empty string becomes null. */
 export const optionalText = (max: number) =>
   z
     .string()
     .trim()
+    .normalize('NFC')
     .max(max, `Máximo de ${max} caracteres.`)
     .transform((s) => (s === '' ? null : s))
     .nullable()

@@ -115,6 +115,11 @@ export class DevicesService {
   }
 
   create(input: DeviceCreate, actor: Actor): DeviceSaveResult {
+    // Audit is written in the same transaction as the change (M2-F2, P4).
+    return this.transaction(() => this.createTx(input, actor));
+  }
+
+  private createTx(input: DeviceCreate, actor: Actor): DeviceSaveResult {
     const data = deviceCreateSchema.parse(input);
     const id = this.transaction(() => {
       this.checkRefs(data.roomId, data.tagIds);
@@ -144,6 +149,11 @@ export class DevicesService {
   }
 
   update(id: number, input: DeviceUpdate, actor: Actor): DeviceSaveResult {
+    // Audit is written in the same transaction as the change (M2-F2, P4).
+    return this.transaction(() => this.updateTx(id, input, actor));
+  }
+
+  private updateTx(id: number, input: DeviceUpdate, actor: Actor): DeviceSaveResult {
     const patch = deviceUpdateSchema.parse(input);
     this.transaction(() => {
       const cur = this.get(id);
@@ -175,6 +185,11 @@ export class DevicesService {
 
   /** FR-002.2: one transaction and one audit entry listing every device (AC-002-07). */
   bulk(input: DeviceBulkParams, actor: Actor): { affected: number } {
+    // Audit is written in the same transaction as the change (M2-F2, P4).
+    return this.transaction(() => this.bulkTx(input, actor));
+  }
+
+  private bulkTx(input: DeviceBulkParams, actor: Actor): { affected: number } {
     const ids = [...new Set(input.deviceIds)];
     const now = this.clock.now();
     const details = this.transaction((): Record<string, unknown> => {
@@ -215,6 +230,11 @@ export class DevicesService {
   }
 
   delete(id: number, actor: Actor): void {
+    // Audit is written in the same transaction as the change (M2-F2, P4).
+    return this.transaction(() => this.deleteTx(id, actor));
+  }
+
+  private deleteTx(id: number, actor: Actor): void {
     const d = this.get(id);
     this.repo.delete(id);
     this.audit.record({

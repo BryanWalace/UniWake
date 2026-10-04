@@ -84,7 +84,7 @@ interface Plan {
   columns: CsvColumn[];
 }
 
-const fold = (s: string) => s.trim().toLowerCase();
+const fold = (s: string) => s.trim().normalize('NFC').toLowerCase();
 
 export class CsvImportService {
   constructor(
@@ -101,6 +101,11 @@ export class CsvImportService {
   }
 
   commit(input: CsvImportInput, actor: Actor): ImportResult {
+    // Audit is written in the same transaction as the change (M2-F2, P4).
+    return this.transaction(() => this.commitTx(input, actor));
+  }
+
+  private commitTx(input: CsvImportInput, actor: Actor): ImportResult {
     const opts = csvImportSchema.parse(input);
     const now = this.clock.now();
     const result = this.transaction(() => {
