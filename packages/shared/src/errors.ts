@@ -113,6 +113,11 @@ export const ERROR_DEFS = {
     message:
       'Nenhuma máquina corresponde ao alvo escolhido. Verifique a sala, etiqueta ou seleção.',
   },
+  TARGET_NOT_FOUND: {
+    status: 422,
+    message:
+      'Alguma sala, etiqueta ou máquina escolhida não existe mais. Atualize a página e escolha de novo.',
+  },
   NO_NETWORK_INTERFACE: {
     status: 503,
     message:

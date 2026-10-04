@@ -22,6 +22,7 @@ import type {
 } from './application/ports';
 import { KeyedLimiter } from './application/rate-limit';
 import { RoomsService } from './application/rooms/rooms-service';
+import { SchedulesService } from './application/schedules/schedules-service';
 import { SettingsService } from './application/settings/settings-service';
 import { TagsService } from './application/tags/tags-service';
 import { JobRunner } from './application/wake/job-runner';
@@ -36,6 +37,7 @@ import { SqliteJobsRepo } from './db/repositories/jobs-repo';
 import { SqliteMonitorRepo } from './db/repositories/monitor-repo';
 import { SqliteRetentionRepo } from './db/repositories/retention-repo';
 import { SqliteRoomsRepo } from './db/repositories/rooms-repo';
+import { SqliteSchedulesRepo } from './db/repositories/schedules-repo';
 import { SqliteSettingsRepo } from './db/repositories/settings-repo';
 import { SqliteTagsRepo } from './db/repositories/tags-repo';
 import type { HttpServices } from './http/context';
@@ -168,6 +170,20 @@ export function createServices(
     forceDryRun: opts.demo === true,
   });
 
+  const schedules = new SchedulesService({
+    repo: new SqliteSchedulesRepo(db),
+    refs: {
+      room: (id) => roomsRepo.get(id) !== undefined,
+      tag: (id) => tagsRepo.get(id) !== undefined,
+      device: (id) => devicesRepo.get(id) !== undefined,
+    },
+    describeTargets: (targets) => wake.describeTargets(targets),
+    settings,
+    audit,
+    clock,
+    transaction: tx,
+  });
+
   return {
     db,
     clock,
@@ -185,5 +201,6 @@ export function createServices(
     probes,
     dashboard,
     retention,
+    schedules,
   };
 }

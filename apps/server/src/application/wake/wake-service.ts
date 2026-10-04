@@ -42,6 +42,16 @@ export interface StartOptions extends RunOptions {
   preConfirmed?: boolean;
 }
 
+export interface TargetSummary {
+  /** Machines a wake would send to now (disabled ones excluded). */
+  count: number;
+  /** Nothing to wake at all, not even machines busy in another job ("alvo vazio"). */
+  empty: boolean;
+  label: string;
+  needsConfirmation: boolean;
+  rooms: WakePreview['rooms'];
+}
+
 export interface StartResult {
   jobId: number;
   count: number;
@@ -84,6 +94,27 @@ export class WakeService {
         this.d.settings.get('wake.confirmThreshold'),
       ),
     };
+  }
+
+  /**
+   * Summaries of stored targets (schedules, FR-005.8), resolved against one device snapshot.
+   * Unknown ids are not an error here: a deleted room/device just leaves the target smaller.
+   */
+  describeTargets(targets: readonly WakeTarget[]): TargetSummary[] {
+    const snapshot = this.d.snapshot();
+    const active = this.d.jobs.activeDeviceJobs();
+    const threshold = this.d.settings.get('wake.confirmThreshold');
+    return targets.map((target) => {
+      const res = resolveWake({ target, onlyOffline: false }, snapshot, active);
+      const busy = res.excluded.filter((e) => e.reason === 'in_active_job').length;
+      return {
+        count: res.devices.length,
+        empty: res.devices.length + busy === 0,
+        label: this.label(target, res),
+        needsConfirmation: needsConfirmation(target, res, threshold),
+        rooms: this.roomsView(res),
+      };
+    });
   }
 
   /** Human label for history and audit, e.g. "sala Lab 3", "etiqueta professor", "todos". */
