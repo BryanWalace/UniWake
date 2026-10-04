@@ -91,12 +91,16 @@ export interface HelperOptions {
   restartLimit?: number;
   restartWindowMs?: number;
   cooldownMs?: number;
+  /** How long a fresh helper may take to print its ready line (PowerShell cold start). */
+  startupTimeoutMs?: number;
 }
 
 const DEAD: PingResult = { alive: false, latencyMs: null };
 
 export class PsHelperIcmp implements IcmpPinger {
   private child: ChildHandle | null = null;
+  private ready = false;
+  private startupTimer: TimerHandle | null = null;
   private nextId = 1;
   private readonly inFlight = new Map<number, InFlight>();
   private readonly queues = new Map<number, Waiting[]>(); // by timeout
@@ -117,6 +121,7 @@ export class PsHelperIcmp implements IcmpPinger {
       restartLimit: opts.restartLimit ?? 3,
       restartWindowMs: opts.restartWindowMs ?? 5 * 60_000,
       cooldownMs: opts.cooldownMs ?? 30 * 60_000,
+      startupTimeoutMs: opts.startupTimeoutMs ?? 30_000,
     };
   }
 
@@ -137,6 +142,7 @@ export class PsHelperIcmp implements IcmpPinger {
 
   close(): void {
     for (const b of this.batches.splice(0)) for (const w of b.entries) w.resolve(DEAD);
+    this.clearStartup();
     this.child?.kill();
     this.child = null;
     for (const f of this.inFlight.values()) this.fail(f);
@@ -146,9 +152,16 @@ export class PsHelperIcmp implements IcmpPinger {
   private ensureChild(): ChildHandle {
     if (this.child) return this.child;
     const child = this.spawner();
+    this.ready = false;
+    this.child = child;
+    this.startupTimer = this.clock.setTimeout(
+      () => this.onStartupTimeout(child),
+      this.o.startupTimeoutMs,
+    );
     child.onLine((line) => this.onLine(line));
     child.onExit(() => {
       if (this.child !== child) return;
+      this.clearStartup();
       this.child = null;
       this.logger.warn({}, 'probe helper exited');
       this.noteRestart();
@@ -156,8 +169,25 @@ export class PsHelperIcmp implements IcmpPinger {
       this.inFlight.clear();
       this.pump();
     });
-    this.child = child;
     return child;
+  }
+
+  private clearStartup() {
+    if (this.startupTimer !== null) this.clock.clearTimeout(this.startupTimer);
+    this.startupTimer = null;
+  }
+
+  /** The helper never said it was ready: give up on it and fail the batch that was waiting. */
+  private onStartupTimeout(child: ChildHandle) {
+    this.startupTimer = null;
+    if (this.child !== child || this.ready) return;
+    this.logger.warn({}, 'probe helper did not become ready; restarting it');
+    this.child = null;
+    child.kill();
+    this.noteRestart();
+    const head = this.batches.shift();
+    for (const w of head?.entries ?? []) w.resolve(DEAD);
+    this.pump();
   }
 
   private readonly batches: { entries: Waiting[]; timeout: number }[] = [];
@@ -181,34 +211,41 @@ export class PsHelperIcmp implements IcmpPinger {
    * the moment of sending would otherwise expire for requests merely waiting in its queue.
    */
   private pump() {
-    if (this.inFlight.size > 0) return;
-    const next = this.batches.shift();
-    if (next) this.send(next.entries, next.timeout);
-  }
-
-  private send(entries: Waiting[], timeout: number) {
-    const id = this.nextId++;
+    if (this.inFlight.size > 0 || this.batches.length === 0) return;
     let child: ChildHandle;
     try {
       child = this.ensureChild();
     } catch (e) {
       this.logger.warn({ err: e }, 'probe helper could not start');
       this.noteRestart();
-      for (const w of entries) w.resolve(DEAD);
+      for (const w of this.batches.shift()!.entries) w.resolve(DEAD);
       queueMicrotask(() => this.pump());
       return;
     }
+    if (!this.ready) return; // the ready line pumps again
+    const next = this.batches.shift()!;
+    this.send(child, next.entries, next.timeout);
+  }
+
+  private send(child: ChildHandle, entries: Waiting[], timeout: number) {
+    const id = this.nextId++;
     const deadline = this.clock.setTimeout(() => this.onDeadline(id), timeout + 3000);
     this.inFlight.set(id, { entries, deadline });
     child.write(JSON.stringify({ id, targets: entries.map((e) => e.address), timeout }));
   }
 
   private onLine(line: string) {
-    let msg: { id?: number; results?: unknown };
+    let msg: { id?: number; results?: unknown; ready?: boolean };
     try {
-      msg = JSON.parse(line) as { id?: number; results?: unknown };
+      msg = JSON.parse(line) as { id?: number; results?: unknown; ready?: boolean };
     } catch {
       return; // ignore anything that is not our JSON (warnings, banners)
+    }
+    if (msg.ready === true) {
+      this.ready = true;
+      this.clearStartup();
+      this.pump();
+      return;
     }
     if (typeof msg.id !== 'number') return;
     const f = this.inFlight.get(msg.id);
@@ -240,6 +277,7 @@ export class PsHelperIcmp implements IcmpPinger {
     this.fail(f);
     const child = this.child;
     this.child = null;
+    this.clearStartup();
     child?.kill();
     this.noteRestart();
     this.pump();

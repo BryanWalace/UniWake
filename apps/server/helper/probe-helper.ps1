@@ -2,7 +2,8 @@
 <#
   UniWake ICMP probe helper (ADR-019).
   Reads one JSON request per line on stdin:  {"id":1,"targets":["10.0.3.21"],"timeout":1000}
-  Writes one JSON response per line:         {"id":1,"results":[{"t":"10.0.3.21","s":"Success","ms":1}]}
+  Writes {"ready":true} once at startup, then one JSON response per line:
+                                             {"id":1,"results":[{"t":"10.0.3.21","s":"Success","ms":1}]}
   Uses System.Net.NetworkInformation.Ping (IcmpSendEcho2): no admin rights, locale-independent
   status names. Only JSON is written to stdout; nothing is read from or written to disk.
 #>
@@ -10,6 +11,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+# Startup can take seconds on a cold machine; the hub waits for this line before sending work.
+[Console]::Out.WriteLine('{"ready":true}')
+[Console]::Out.Flush()
 
 while ($true) {
     $line = [Console]::In.ReadLine()

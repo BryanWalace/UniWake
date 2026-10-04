@@ -16,7 +16,11 @@ import { FakeProcessRunner, MemoryLogger } from './fakes/system-fakes';
 type Mode = 'answer' | 'hang' | 'exit' | 'garbage';
 
 /** Scripted stand-in for the PowerShell helper process. */
-function fakeHelper(alive: Set<string>, mode: () => Mode = () => 'answer') {
+function fakeHelper(
+  alive: Set<string>,
+  mode: () => Mode = () => 'answer',
+  announceReady: () => boolean = () => true,
+) {
   const spawned: {
     requests: { id: number; targets: string[]; timeout: number }[];
     killed: boolean;
@@ -50,7 +54,10 @@ function fakeHelper(alive: Set<string>, mode: () => Mode = () => 'answer') {
           );
         });
       },
-      onLine: (cb) => (lineCb = cb),
+      onLine: (cb) => {
+        lineCb = cb;
+        if (announceReady()) queueMicrotask(() => lineCb('{"ready":true}'));
+      },
       onExit: (cb) => (exitCb = cb),
       kill: () => (rec.killed = true),
     };
@@ -278,7 +285,10 @@ describe('helper queueing (regression: deadlines expired while requests waited i
           900,
         );
       },
-      onLine: (cb) => (lineCb = cb),
+      onLine: (cb) => {
+        lineCb = cb;
+        queueMicrotask(() => cb('{"ready":true}'));
+      },
       onExit: () => undefined,
       kill: () => undefined,
     });
@@ -289,5 +299,62 @@ describe('helper queueing (regression: deadlines expired while requests waited i
     expect(results.every((r) => r.alive)).toBe(true); // 6 batches × 0.9 s > 4 s deadline, still fine
     expect(writes).toHaveLength(6);
     expect(icmp.healthy).toBe(true);
+  });
+
+  it('waits for the ready line: a slow cold start is not a missed deadline (CI regression)', async () => {
+    const clock = new FakeClock(0);
+    let lineCb: (l: string) => void = () => undefined;
+    const writes: number[] = [];
+    let spawns = 0;
+    const spawner = (): ChildHandle => {
+      spawns++;
+      return {
+        write(line) {
+          const req = JSON.parse(line) as { id: number; targets: string[] };
+          writes.push(clock.now());
+          queueMicrotask(() =>
+            lineCb(
+              JSON.stringify({
+                id: req.id,
+                results: req.targets.map((t) => ({ t, s: 'Success', ms: 1 })),
+              }),
+            ),
+          );
+        },
+        onLine: (cb) => {
+          lineCb = cb;
+          clock.setTimeout(() => cb('{"ready":true}'), 8_000); // PowerShell takes 8 s to start
+        },
+        onExit: () => undefined,
+        kill: () => undefined,
+      };
+    };
+    const logger = new MemoryLogger();
+    const icmp = new PsHelperIcmp(spawner, clock, logger);
+    const pending = icmp.ping('127.0.0.1', 1000);
+    for (let t = 0; t < 9_000; t += 100) await clock.advanceAsync(100);
+    expect(await pending).toEqual({ alive: true, latencyMs: 1 });
+    expect(writes).toEqual([8_000 + 5]);
+    expect(spawns).toBe(1);
+    expect(logger.entries.filter((e) => e.level === 'warn')).toEqual([]);
+  });
+
+  it('restarts a helper that never becomes ready and answers the waiting batch as dead', async () => {
+    const clock = new FakeClock(0);
+    const { spawner, spawned } = fakeHelper(
+      new Set(['10.0.0.1']),
+      () => 'answer',
+      () => spawned.length > 1,
+    );
+    const icmp = new PsHelperIcmp(spawner, clock, new MemoryLogger(), { startupTimeoutMs: 20_000 });
+    const first = icmp.ping('10.0.0.1', 1000);
+    await clock.advanceAsync(20_005);
+    expect(await first).toEqual({ alive: false, latencyMs: null });
+    expect(spawned[0]?.killed).toBe(true);
+    expect(spawned[0]?.requests).toEqual([]);
+    const second = icmp.ping('10.0.0.1', 1000);
+    await clock.advanceAsync(10);
+    expect((await second).alive).toBe(true);
+    expect(spawned).toHaveLength(2);
   });
 });
