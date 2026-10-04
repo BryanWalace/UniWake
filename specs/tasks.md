@@ -43,7 +43,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M1-T09 | `shared/mac.ts` (pure; shared so web forms validate identically; server imports it): parse/normalize/validate, multicast/zero/broadcast rejection, locally-administered flag. | FR-002.1 | AC-002-01, AC-002-03, AC-002-04 + property test | — |
 | [x] M1-T10 | `application/ports.ts` + test fakes (FakeClock with timers, FakeSender, FakeProber, FakeInterfaces, FakeFs, FakeProcess, FakeReleaseSource) with fault injection. | constitution §2.2 | fake clock ordering; fault injection | — |
 | [x] M1-T11 | `db/connection.ts` (pragmas, `transaction()`, unique-violation → AppError), `migrate.ts`, `001_initial.sql`. | plan §5; ADR-017 | migrations on `:memory:`, idempotent, pragmas, FK cascade, unique mapping | — |
-| [ ] M1-T12 | Config loader (defaults < file < env, Zod) + pino logger with rotation. | constitution §2.4; NFR-04 | precedence; invalid config message; rotation config | — |
+| [x] M1-T12 | Config loader (defaults < file < env, Zod) + pino logger with rotation. | constitution §2.4; NFR-04 | precedence; invalid config message; rotation config | — |
 | [ ] M1-T13 | `http/app.ts`: Fastify + Zod provider, error handler, route-auth registry, host allowlist, security headers, CSRF origin check, `/api/health`. | constitution §6.1, §6.2; plan §6 | undeclared route throws; bad Host rejected; headers; error shape; CSRF | — |
 | [ ] M1-T14 | `main.ts`: two listeners, graceful shutdown, `EADDRINUSE` → exit 78. | plan §2.1, §9 | ephemeral loopback ports; shutdown closes DB | `node main` serves health |
 | [ ] M1-T15 | Route-table authz test harness for both listeners. | IMP-014 | enumerates routes; 401 without session | harness reusable |
