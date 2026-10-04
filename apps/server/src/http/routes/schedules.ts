@@ -1,7 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { idParamSchema, scheduleCreateSchema, scheduleUpdateSchema } from '@uniwake/shared';
+import {
+  idParamSchema,
+  scheduleCreateSchema,
+  scheduleExceptionCreateSchema,
+  scheduleUpdateSchema,
+} from '@uniwake/shared';
 import type { HttpServices } from '../context';
 import { actorOf } from '../session-auth';
 
@@ -33,6 +38,25 @@ export function scheduleRoutes(app: FastifyInstance, s: HttpServices): void {
     { config: auth, schema: { params: idParamSchema } },
     async (req, reply) => {
       s.schedules.delete(req.params.id, actorOf(req));
+      return reply.status(204).send();
+    },
+  );
+
+  // FR-005.2 exceptions: holidays and recesses, global or for one schedule.
+  r.get('/api/schedule-exceptions', { config: auth }, async () => s.schedules.exceptions());
+
+  r.post(
+    '/api/schedule-exceptions',
+    { config: auth, schema: { body: scheduleExceptionCreateSchema } },
+    async (req, reply) =>
+      reply.status(201).send(s.schedules.createException(req.body, actorOf(req))),
+  );
+
+  r.delete(
+    '/api/schedule-exceptions/:id',
+    { config: auth, schema: { params: idParamSchema } },
+    async (req, reply) => {
+      s.schedules.deleteException(req.params.id, actorOf(req));
       return reply.status(204).send();
     },
   );

@@ -68,3 +68,44 @@ export interface NextRun {
   day: string;
   at: number;
 }
+
+/** A real calendar date `YYYY-MM-DD` (rejects 2026-02-30). */
+export const isoDateSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use o formato AAAA-MM-DD.')
+  .refine((s) => {
+    const [y, m, d] = s.split('-').map(Number) as [number, number, number];
+    const t = new Date(Date.UTC(y, m - 1, d));
+    return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d;
+  }, 'Data inválida.');
+
+export const scheduleExceptionCreateSchema = z
+  .object({
+    /** Omitted or null = every schedule (holiday, recess). */
+    scheduleId: z.number().int().positive().nullable().optional(),
+    startDate: isoDateSchema,
+    /** Defaults to the start date (one day). */
+    endDate: isoDateSchema.optional(),
+    description: z.string().trim().normalize('NFC').min(1, 'Informe uma descrição.').max(100),
+  })
+  .refine((e) => !e.endDate || e.endDate >= e.startDate, {
+    message: 'A data final deve ser igual ou posterior à inicial.',
+    path: ['endDate'],
+  })
+  .refine(
+    (e) =>
+      !e.endDate ||
+      Date.parse(`${e.endDate}T00:00:00Z`) - Date.parse(`${e.startDate}T00:00:00Z`) <=
+        366 * 86_400_000,
+    { message: 'O período pode ter no máximo um ano.', path: ['endDate'] },
+  );
+export type ScheduleExceptionCreate = z.input<typeof scheduleExceptionCreateSchema>;
+
+export interface ScheduleException {
+  id: number;
+  scheduleId: number | null;
+  startDate: string;
+  endDate: string;
+  description: string;
+}

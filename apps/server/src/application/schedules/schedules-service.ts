@@ -7,6 +7,9 @@ import {
   type NextRun,
   type Schedule,
   type ScheduleCreate,
+  type ScheduleException,
+  type ScheduleExceptionCreate,
+  scheduleExceptionCreateSchema,
   scheduleCreateSchema,
   type ScheduleUpdate,
   scheduleUpdateSchema,
@@ -55,7 +58,9 @@ export interface SchedulesRepo {
   insert(s: ScheduleWrite, createdBy: number | null, now: number): number;
   update(id: number, s: ScheduleWrite, now: number): void;
   delete(id: number): void;
-  exceptions(): ExceptionRange[];
+  exceptions(): ScheduleException[];
+  insertException(e: Omit<ScheduleException, 'id'>): number;
+  deleteException(id: number): ScheduleException | undefined;
 }
 
 export interface TargetRefs {
@@ -225,6 +230,47 @@ export class SchedulesService {
         action: 'schedule.delete',
         target: `schedule:${current.name}`,
         details: { id },
+      });
+    });
+  }
+
+  // ---------------------------------------------------------------- exceptions (FR-005.2)
+
+  exceptions(): ScheduleException[] {
+    return this.d.repo.exceptions();
+  }
+
+  createException(input: ScheduleExceptionCreate, actor: Actor): ScheduleException {
+    return this.d.transaction(() => {
+      const data = scheduleExceptionCreateSchema.parse(input);
+      const scheduleId = data.scheduleId ?? null;
+      if (scheduleId !== null) this.record(scheduleId);
+      const e = {
+        scheduleId,
+        startDate: data.startDate,
+        endDate: data.endDate ?? data.startDate,
+        description: data.description,
+      };
+      const id = this.d.repo.insertException(e);
+      this.d.audit.record({
+        actor,
+        action: 'schedule.exception.create',
+        target: scheduleId === null ? 'schedules:all' : `schedule:${scheduleId}`,
+        details: { id, ...e },
+      });
+      return { id, ...e };
+    });
+  }
+
+  deleteException(id: number, actor: Actor): void {
+    this.d.transaction(() => {
+      const e = this.d.repo.deleteException(id);
+      if (!e) throw new AppError('NOT_FOUND');
+      this.d.audit.record({
+        actor,
+        action: 'schedule.exception.delete',
+        target: e.scheduleId === null ? 'schedules:all' : `schedule:${e.scheduleId}`,
+        details: { ...e },
       });
     });
   }

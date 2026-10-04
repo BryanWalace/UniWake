@@ -1,3 +1,4 @@
+import type { ScheduleException } from '@uniwake/shared';
 import type {
   ScheduleRecord,
   SchedulesRepo,
@@ -5,7 +6,6 @@ import type {
   TargetRow,
   TargetRowType,
 } from '../../application/schedules/schedules-service';
-import type { ExceptionRange } from '../../domain/schedule';
 import type { Db } from '../connection';
 
 interface Row {
@@ -131,10 +131,23 @@ export class SqliteSchedulesRepo implements SchedulesRepo {
     this.db.run('DELETE FROM schedules WHERE id = ?', [id]);
   }
 
-  exceptions(): ExceptionRange[] {
-    return this.db.all<ExceptionRange>(
-      `SELECT schedule_id AS scheduleId, start_date AS startDate, end_date AS endDate, description
-       FROM schedule_exceptions ORDER BY start_date`,
+  exceptions(): ScheduleException[] {
+    return this.db.all<ScheduleException>(
+      `SELECT id, schedule_id AS scheduleId, start_date AS startDate, end_date AS endDate, description
+       FROM schedule_exceptions ORDER BY start_date, id`,
     );
+  }
+
+  insertException(e: Omit<ScheduleException, 'id'>): number {
+    return this.db.run(
+      'INSERT INTO schedule_exceptions (schedule_id, start_date, end_date, description) VALUES (?, ?, ?, ?)',
+      [e.scheduleId, e.startDate, e.endDate, e.description],
+    ).lastInsertRowid;
+  }
+
+  deleteException(id: number): ScheduleException | undefined {
+    const e = this.exceptions().find((x) => x.id === id);
+    if (e) this.db.run('DELETE FROM schedule_exceptions WHERE id = ?', [id]);
+    return e;
   }
 }

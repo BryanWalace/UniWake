@@ -177,3 +177,105 @@ describe('schedules API (FR-005.1)', () => {
     expect((await h.inject({ url: '/api/schedules' })).statusCode).toBe(401);
   });
 });
+
+describe('schedule exceptions (FR-005.2)', () => {
+  const sched = (room: number, name = 'Manhã') => ({
+    name,
+    weekdays: MON_FRI,
+    timeLocal: '06:50',
+    target: { type: 'rooms', roomIds: [room] },
+  });
+
+  it('AC-005-02: a global holiday is skipped by every schedule; a schedule exception only by its own', async () => {
+    const { call, room } = await setup(); // Mon 5 Oct 2026, 06:00 local
+    const a = (await call<Schedule>('POST', '/api/schedules', sched(room, 'A'))).body;
+    const b = (await call<Schedule>('POST', '/api/schedules', sched(room, 'B'))).body;
+    const holiday = await call<{ id: number }>('POST', '/api/schedule-exceptions', {
+      startDate: '2026-10-07',
+      description: 'Feriado municipal',
+    });
+    expect(holiday).toMatchObject({
+      status: 201,
+      body: { scheduleId: null, endDate: '2026-10-07' },
+    });
+    await call('POST', '/api/schedule-exceptions', {
+      scheduleId: b.id,
+      startDate: '2026-10-08',
+      endDate: '2026-10-09',
+      description: 'Prova no Lab',
+    });
+    const days = async (id: number) =>
+      (await call<NextRun[]>('GET', `/api/schedules/${id}/next-runs`)).body.map((r) => r.day);
+    expect(await days(a.id)).toEqual([
+      '2026-10-05',
+      '2026-10-06',
+      '2026-10-08',
+      '2026-10-09',
+      '2026-10-12',
+    ]);
+    expect(await days(b.id)).toEqual([
+      '2026-10-05',
+      '2026-10-06',
+      '2026-10-12',
+      '2026-10-13',
+      '2026-10-14',
+    ]);
+    const list = await call<{ description: string }[]>('GET', '/api/schedule-exceptions');
+    expect(list.body.map((e) => e.description)).toEqual(['Feriado municipal', 'Prova no Lab']);
+  });
+
+  it('validates dates, ranges and the schedule; deleting works once and is audited', async () => {
+    const { h, call, room } = await setup();
+    for (const bad of [
+      { startDate: '2026-02-30', description: 'x' },
+      { startDate: '20-11-2026', description: 'x' },
+      { startDate: '2026-11-20', endDate: '2026-11-19', description: 'x' },
+      { startDate: '2026-01-01', endDate: '2027-06-01', description: 'x' },
+      { startDate: '2026-11-20', description: '' },
+      { startDate: '2026-11-20', description: 'x'.repeat(101) },
+    ]) {
+      expect(
+        (await call('POST', '/api/schedule-exceptions', bad)).status,
+        JSON.stringify(bad),
+      ).toBe(422);
+    }
+    expect(
+      (
+        await call('POST', '/api/schedule-exceptions', {
+          scheduleId: 999,
+          startDate: '2026-11-20',
+          description: 'x',
+        })
+      ).status,
+    ).toBe(404);
+    const s = (await call<Schedule>('POST', '/api/schedules', sched(room))).body;
+    const e = (
+      await call<{ id: number }>('POST', '/api/schedule-exceptions', {
+        scheduleId: s.id,
+        startDate: '2026-12-21',
+        endDate: '2027-01-31',
+        description: 'Férias',
+      })
+    ).body;
+    expect((await call('DELETE', `/api/schedule-exceptions/${e.id}`)).status).toBe(204);
+    expect((await call('DELETE', `/api/schedule-exceptions/${e.id}`)).status).toBe(404);
+    // A schedule's own exceptions go with it.
+    await call('POST', '/api/schedule-exceptions', {
+      scheduleId: s.id,
+      startDate: '2026-12-24',
+      description: 'Natal',
+    });
+    await call('DELETE', `/api/schedules/${s.id}`);
+    expect((await call<unknown[]>('GET', '/api/schedule-exceptions')).body).toEqual([]);
+    const actions = h.services.db
+      .all<{ action: string }>(
+        "SELECT action FROM audit_log WHERE action LIKE 'schedule.exception.%' ORDER BY id",
+      )
+      .map((r) => r.action);
+    expect(actions).toEqual([
+      'schedule.exception.create',
+      'schedule.exception.delete',
+      'schedule.exception.create',
+    ]);
+  });
+});
