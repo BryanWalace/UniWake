@@ -59,6 +59,8 @@ export default tseslint.config(
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
+      // Fastify handlers/hooks are async by convention and return values without awaiting.
+      '@typescript-eslint/require-await': 'off',
       eqeqeq: ['error', 'always'],
       'no-console': 'error',
     },
