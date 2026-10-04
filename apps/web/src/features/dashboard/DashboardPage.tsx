@@ -95,6 +95,12 @@ export function DashboardPage() {
         ) : null}
       </p>
 
+      <p className="-mt-4 text-sm text-slate-600">
+        Dica: <kbd className="rounded border border-slate-300 px-1">Ctrl</kbd>+
+        <kbd className="rounded border border-slate-300 px-1">K</kbd> liga qualquer sala, etiqueta
+        ou máquina de qualquer página.
+      </p>
+
       <Notices notices={d.notices} />
 
       <Counters

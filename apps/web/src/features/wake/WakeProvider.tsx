@@ -1,6 +1,7 @@
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { JobDrawer } from './JobDrawer';
+import { QuickWake } from './QuickWake';
 import { type WakeIntent, WakeDialog } from './WakeDialog';
 
 interface WakeUi {
@@ -21,6 +22,7 @@ export function WakeProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={value}>
       {children}
+      <QuickWake onPick={requestWake} />
       <WakeDialog
         intent={intent}
         onClose={() => setIntent(null)}
