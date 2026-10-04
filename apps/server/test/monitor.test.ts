@@ -267,7 +267,7 @@ describe('MonitorService lifecycle', () => {
     db.transaction = original;
   });
 
-  it('stop() waits for a sweep in progress', async () => {
+  it('stop() waits for the probe in flight, then the sweep ends without writing (M4-F2)', async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
     const slow: Prober = {
@@ -285,7 +285,8 @@ describe('MonitorService lifecycle', () => {
     expect(stopped).toBe(false);
     release();
     await Promise.all([sweep, stopping]);
-    expect(statusOf(w, id)).toBe('online');
+    expect(statusOf(w, id)).toBe('desconhecido');
+    expect(eventsOf(w, id)).toEqual([]);
   });
 });
 
@@ -484,5 +485,30 @@ describe('verification counts as a positive probe (FR-004.1)', () => {
     ).not.toBe('online');
     expect(eventsOf(w, id)).toEqual([]);
     expect(w.events).toEqual([]);
+  });
+});
+
+describe('ProbeQueue.cancelPending (M4-F2)', () => {
+  it('answers queued probes of one priority at once and leaves the others', async () => {
+    const gates: (() => void)[] = [];
+    const prober: Prober = {
+      probe: (addresses) =>
+        new Promise((resolve) =>
+          gates.push(() =>
+            resolve(new Map([[addresses[0]!, { alive: true, via: 'icmp', latencyMs: 1 }]])),
+          ),
+        ),
+    };
+    const q = new ProbeQueue(prober, () => 1);
+    const low = q.probe(['a', 'b', 'c'], OPTS, 'low');
+    const high = q.probe(['h'], OPTS, 'high');
+    await flushMicrotasks();
+    expect(q.cancelPending('low')).toBe(2); // 'a' is in flight
+    gates.shift()!();
+    await flushMicrotasks();
+    gates.shift()!();
+    const r = await low;
+    expect([...r.values()].map((x) => x.alive)).toEqual([true, false, false]);
+    expect((await high).get('h')?.alive).toBe(true);
   });
 });

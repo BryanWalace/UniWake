@@ -46,6 +46,13 @@ export class ProbeQueue {
     return { probe: (addresses, opts) => this.probe(addresses, opts, priority) };
   }
 
+  /** Answers every queued (not yet started) probe of that priority as "no answer". */
+  cancelPending(priority: Priority): number {
+    const dropped = this.queues[priority].splice(0);
+    for (const t of dropped) t.resolve(NO_ANSWER);
+    return dropped.length;
+  }
+
   get pending(): { high: number; low: number; active: number } {
     return { high: this.queues.high.length, low: this.queues.low.length, active: this.active };
   }

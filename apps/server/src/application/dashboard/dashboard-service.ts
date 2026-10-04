@@ -189,7 +189,7 @@ export class DashboardService {
   /** Daily uptime for one device or a room (average of its devices, AC-004-16). */
   uptime(q: UptimeQuery): UptimeSeries {
     if (q.deviceId !== undefined && !this.d.repo.deviceExists(q.deviceId)) {
-      throw new AppError('DEVICE_NOT_FOUND');
+      throw new AppError('NOT_FOUND');
     }
     if (q.roomId !== undefined && !this.d.repo.roomExists(q.roomId)) {
       throw new AppError('NOT_FOUND');
@@ -198,6 +198,11 @@ export class DashboardService {
     const now = this.d.clock.now();
     const today = localDay(now, tz);
     const first = addDays(today, -(q.days - 1));
+    // Days before the retention window were purged: unknown, not 0% (M4-F5).
+    const oldestKept = localDay(
+      now - this.d.settings.get('retention.historyDays') * 86_400_000,
+      tz,
+    );
     const devices = this.d.repo.devicesFor(q);
     const ids = devices.map((x) => x.id);
     const stored = this.d.repo.dailyUptime(ids, first, today);
@@ -206,7 +211,7 @@ export class DashboardService {
     for (let day = first; day <= today; day = addDays(day, 1)) {
       const { start, end: dayEnd } = dayRange(day, tz);
       const end = Math.min(dayEnd, now);
-      const alive = devices.filter((x) => x.createdAt < end);
+      const alive = day < oldestKept ? [] : devices.filter((x) => x.createdAt < end);
       const missing = alive.filter((x) => day === today || !stored.has(`${x.id}|${day}`));
       const live =
         missing.length > 0
@@ -227,7 +232,7 @@ export class DashboardService {
 
   /** Status changes, IP drift, moves and wake attempts of one device (FR-004.6). */
   history(deviceId: number, q: DeviceHistoryQuery): DeviceHistoryPage {
-    if (!this.d.repo.deviceExists(deviceId)) throw new AppError('DEVICE_NOT_FOUND');
+    if (!this.d.repo.deviceExists(deviceId)) throw new AppError('NOT_FOUND');
     let rows = this.d.repo.deviceHistory(deviceId, { before: q.before ?? null, limit: q.limit });
     let nextBefore: number | null = null;
     if (rows.length === q.limit) {
@@ -289,6 +294,7 @@ export class DashboardService {
 
   /** Catch up now, then every night at 00:10 local. */
   start(): void {
+    this.stop(); // idempotent (M4-F3)
     this.runRollup();
   }
 

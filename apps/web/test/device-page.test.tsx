@@ -169,7 +169,10 @@ describe('device page (FR-004.6)', () => {
   it('shows a clear message for an unknown device', async () => {
     loggedInApi().on('GET', '/api/devices/77', {
       status: 404,
-      body: { code: 'DEVICE_NOT_FOUND', message: 'Dispositivo não encontrado.' },
+      body: {
+        code: 'NOT_FOUND',
+        message: 'Item não encontrado. Ele pode ter sido removido; atualize a página.',
+      },
     });
     renderApp('/dispositivos/77');
     expect(await screen.findByText('Máquina não encontrada')).toBeInTheDocument();

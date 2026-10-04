@@ -59,21 +59,41 @@ export interface MonitorDeps {
   events: EventsBus;
   logger: Logger;
   transaction: <T>(fn: () => T) => T;
+  /** Drops queued sweep probes so stop() returns quickly (the probe queue's low priority). */
+  cancelProbes?: () => void;
+}
+
+/** Hostname lookups per sweep run at most this many at a time (be kind to the DNS server). */
+export const DNS_CONCURRENCY = 32;
+
+async function forEachLimit<T>(items: readonly T[], limit: number, fn: (t: T) => Promise<void>) {
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) await fn(items[next++]!);
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
 }
 
 export class MonitorService {
   private timer: TimerHandle | null = null;
   private current: Promise<SweepReport> | null = null;
   private stopped = true;
+  /** Set by stop() while a sweep runs: the sweep finishes without writing. */
+  private aborting = false;
   private readonly dnsCache = new Map<string, { ip: string | null; at: number }>();
-  /** Positive verification probes, so a sweep running meanwhile does not undo them. */
-  private readonly aliveAt = new Map<number, number>();
+  /**
+   * Positive verification probes, so a sweep running meanwhile does not undo them. Ordered by a
+   * counter, not the wall clock, so a clock jump cannot lose one (M4-F4).
+   */
+  private readonly aliveSeq = new Map<number, number>();
+  private seq = 0;
   lastSweep: SweepReport | null = null;
 
   constructor(private readonly d: MonitorDeps) {}
 
   /** Resets statuses (AC-004-11) and starts the sweep loop. */
   start(): void {
+    if (!this.stopped) return; // already running (M4-F3)
     const now = this.d.clock.now();
     const cleared = this.d.transaction(() => {
       const rows = this.d.repo.resetAllUnknown();
@@ -99,7 +119,12 @@ export class MonitorService {
     this.stopped = true;
     if (this.timer !== null) this.d.clock.clearTimeout(this.timer);
     this.timer = null;
-    await this.current?.catch(() => undefined);
+    if (this.current) {
+      // M4-F2: a 500-device sweep can take many seconds; drop its queued probes and its write.
+      this.aborting = true;
+      this.d.cancelProbes?.();
+      await this.current.catch(() => undefined);
+    }
   }
 
   private schedule(delayMs: number) {
@@ -116,7 +141,9 @@ export class MonitorService {
     const key = hostname.toLowerCase();
     const cached = this.dnsCache.get(key);
     const now = this.d.clock.now();
-    if (cached && now - cached.at < ttl) return cached.ip;
+    const age = cached ? now - cached.at : -1;
+    // A negative age means the clock went back: treat the entry as expired (M4-F4).
+    if (cached && age >= 0 && age < ttl) return cached.ip;
     const ip = (await this.d.dns.resolve4(hostname).catch(() => []))[0] ?? null;
     this.dnsCache.set(key, { ip, at: now });
     if (this.dnsCache.size > 10_000) this.dnsCache.clear();
@@ -130,7 +157,8 @@ export class MonitorService {
   recordAlive(deviceIds: readonly number[]): void {
     if (deviceIds.length === 0) return;
     const now = this.d.clock.now();
-    for (const id of deviceIds) this.aliveAt.set(id, now);
+    const mark = ++this.seq;
+    for (const id of deviceIds) this.aliveSeq.set(id, mark);
     const offlineAfter = this.d.settings.get('monitor.offlineAfter');
     const changes: { t: ProbeTarget; next: StatusState }[] = [];
     this.d.transaction(() => {
@@ -176,20 +204,23 @@ export class MonitorService {
       return await this.current;
     } finally {
       this.current = null;
+      this.aborting = false;
     }
   }
 
   private async doSweep(): Promise<SweepReport> {
     const startedAt = this.d.clock.now();
+    const seqAtStart = this.seq;
     const s = this.d.settings;
     const targets = this.d.repo.targets();
 
     // 1. Addresses: hostname first (DHCP may have moved the device), stored IP as fallback.
     const drift: { deviceId: number; from: string | null; to: string }[] = [];
     const addressOf = new Map<number, string | null>();
-    await Promise.all(
-      targets.map(async (t) => {
-        if (!t.enabled) return;
+    await forEachLimit(
+      targets.filter((t) => t.enabled),
+      DNS_CONCURRENCY,
+      async (t) => {
         let address = t.ip;
         if (t.hostname) {
           const resolved = await this.resolve(t.hostname);
@@ -199,7 +230,7 @@ export class MonitorService {
           }
         }
         addressOf.set(t.deviceId, address);
-      }),
+      },
     );
 
     // 2. Probe every distinct address once.
@@ -209,6 +240,9 @@ export class MonitorService {
       tcpPorts: s.get('monitor.tcpPorts'),
       tcpTimeoutMs: s.get('monitor.tcpTimeoutMs'),
     });
+    if (this.aborting) {
+      return { startedAt, durationMs: 0, probed: 0, online: 0, offline: 0, unknown: 0, changed: 0 };
+    }
 
     // 3. State machine.
     const now = this.d.clock.now();
@@ -223,7 +257,7 @@ export class MonitorService {
       }
       const address = addressOf.get(t.deviceId) ?? null;
       const r = address ? results.get(address) : undefined;
-      const seenByVerification = (this.aliveAt.get(t.deviceId) ?? 0) >= startedAt;
+      const seenByVerification = (this.aliveSeq.get(t.deviceId) ?? 0) > seqAtStart;
       const outcome: ProbeOutcome = r?.alive
         ? { kind: 'alive', latencyMs: r.latencyMs }
         : seenByVerification
@@ -282,7 +316,7 @@ export class MonitorService {
       changed: events.length,
     };
     this.lastSweep = report;
-    for (const [id, at] of this.aliveAt) if (at < startedAt) this.aliveAt.delete(id);
+    for (const [id, mark] of this.aliveSeq) if (mark <= seqAtStart) this.aliveSeq.delete(id);
     if (report.durationMs > 30_000)
       this.d.logger.warn({ ...report }, 'sweep slower than the 30 s target (NFR-01)');
     return report;

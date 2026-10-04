@@ -52,11 +52,13 @@ export class SqliteMonitorRepo implements MonitorRepo {
       }));
   }
 
+  /** Devices deleted while a sweep was probing are skipped (M4-F1), never a constraint error. */
   saveStates(updates: readonly StatusUpdate[]): void {
     for (const { deviceId, state: s } of updates) {
       this.db.run(
         `INSERT INTO device_state (device_id, status, latency_ms, last_seen_at, online_since, last_probe_at,
-           consecutive_failures, ever_online) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           consecutive_failures, ever_online)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM devices WHERE id = ?1)
          ON CONFLICT(device_id) DO UPDATE SET status = excluded.status, latency_ms = excluded.latency_ms,
            last_seen_at = excluded.last_seen_at, online_since = excluded.online_since,
            last_probe_at = excluded.last_probe_at, consecutive_failures = excluded.consecutive_failures,
@@ -77,12 +79,11 @@ export class SqliteMonitorRepo implements MonitorRepo {
 
   insertEvents(events: readonly DeviceEvent[]): void {
     for (const e of events) {
-      this.db.run('INSERT INTO device_events (device_id, at, type, data) VALUES (?, ?, ?, ?)', [
-        e.deviceId,
-        e.at,
-        e.type,
-        JSON.stringify(e.data),
-      ]);
+      this.db.run(
+        `INSERT INTO device_events (device_id, at, type, data)
+         SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM devices WHERE id = ?1)`,
+        [e.deviceId, e.at, e.type, JSON.stringify(e.data)],
+      );
     }
   }
 

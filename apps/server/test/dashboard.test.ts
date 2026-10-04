@@ -288,9 +288,7 @@ describe('dashboard and uptime API', () => {
     expect((await get('/api/uptime')).status).toBe(422);
     expect((await get('/api/uptime?deviceId=1&roomId=1')).status).toBe(422);
     expect((await get('/api/uptime?deviceId=1&days=400')).status).toBe(422);
-    expect((await get<{ code: string }>('/api/uptime?deviceId=99')).body.code).toBe(
-      'DEVICE_NOT_FOUND',
-    );
+    expect((await get<{ code: string }>('/api/uptime?deviceId=99')).body.code).toBe('NOT_FOUND');
     expect((await get<{ code: string }>('/api/uptime?roomId=99')).body.code).toBe('NOT_FOUND');
     const anon = await h.inject({ url: '/api/dashboard' });
     expect(anon.statusCode).toBe(401);
@@ -350,8 +348,6 @@ describe('dashboard and uptime API', () => {
     );
     expect(p2.body.items).toEqual([]);
 
-    expect((await get<{ code: string }>('/api/devices/999/history')).body.code).toBe(
-      'DEVICE_NOT_FOUND',
-    );
+    expect((await get<{ code: string }>('/api/devices/999/history')).body.code).toBe('NOT_FOUND');
   });
 });

@@ -6,9 +6,24 @@ export class SqliteDemoRepo implements DemoRepo {
 
   isEmpty(): boolean {
     const r = this.db.get<{ n: number }>(
-      'SELECT (SELECT COUNT(*) FROM rooms) + (SELECT COUNT(*) FROM devices) AS n',
+      'SELECT (SELECT COUNT(*) FROM rooms) + (SELECT COUNT(*) FROM devices) + (SELECT COUNT(*) FROM tags) AS n',
     );
     return (r?.n ?? 0) === 0;
+  }
+
+  seededAt(): number | null {
+    const r = this.db.get<{ value: string }>(
+      "SELECT value FROM system_state WHERE key = 'demo.seededAt'",
+    );
+    return r ? Number(r.value) : null;
+  }
+
+  markSeeded(at: number): void {
+    this.db.run(
+      `INSERT INTO system_state (key, value) VALUES ('demo.seededAt', ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      [String(at)],
+    );
   }
 
   backdateInventory(at: number): void {

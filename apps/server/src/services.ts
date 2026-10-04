@@ -105,6 +105,7 @@ export function createServices(
     events,
     logger: ports.logger.child({ module: 'monitor' }),
     transaction: tx,
+    cancelProbes: () => void probes.cancelPending('low'),
   });
 
   const dashboard = new DashboardService({

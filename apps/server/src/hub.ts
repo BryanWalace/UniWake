@@ -236,15 +236,21 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       }
       started = true;
       if (sim && config.demoSeed) {
-        const seeded = seedDemo({
-          ...services,
-          jobs: new SqliteJobsRepo(db),
-          monitor: new SqliteMonitorRepo(db),
-          transaction: (fn) => db.transaction(fn),
-          setPower: (mac, on) => sim.setPower(mac, on),
-          neverWakes: (mac) => SimulatedNetwork.neverWakes(mac),
-          demo: new SqliteDemoRepo(db),
-        });
+        // A demo that cannot seed still starts (M4-F6): an empty panel beats a crash loop.
+        let seeded: ReturnType<typeof seedDemo> = null;
+        try {
+          seeded = seedDemo({
+            ...services,
+            jobs: new SqliteJobsRepo(db),
+            monitor: new SqliteMonitorRepo(db),
+            transaction: (fn) => db.transaction(fn),
+            setPower: (mac, on) => sim.setPower(mac, on),
+            neverWakes: (mac) => SimulatedNetwork.neverWakes(mac),
+            demo: new SqliteDemoRepo(db),
+          });
+        } catch (e) {
+          logger.error({ err: e }, 'demo seed failed');
+        }
         if (seeded) logger.info({ ...seeded }, 'demo data seeded');
       }
       services.runner.recover();

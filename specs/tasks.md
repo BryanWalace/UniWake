@@ -142,6 +142,16 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M4-T14 | `Ctrl+K` quick-wake palette. | FR-004.7 | AC-004-17 [E2E] | — |
 | [x] M4-T15 | E2E: wake a room in demo mode, drawer progress to final counts. | FR-009 | AC-009-01 [E2E] | — |
 | [x] M4-T16 | Retention & cleanup jobs (history 180 d, packet log 30 d, audit 365 d, sessions, tokens, notices), chunked, never during a wake job. | spec §9; plan §5.1 | fake-clock retention tests | — |
+| [x] M4-D | Debug break-it pass → `apps/server/test/breakit-m4.test.ts` (malformed input on new endpoints, delete during a sweep, stop during a 500-device sweep, double start, backwards clock jumps, purged uptime, demo re-seed, DNS load; full suite 3×). | tasks §Break-it | 9 probes | findings filed |
+| [x] M4-F1 | MAJOR: deleting a device while a sweep probed made the sweep's single write transaction fail on the foreign key, so no device got its status that cycle. State/event writes now skip devices that no longer exist. | FR-004.2 | breakit delete-during-sweep probe | — |
+| [x] M4-F2 | MAJOR: `monitor.stop()` waited for every queued probe of a running sweep (≈16 s for 500 devices with timeouts), delaying service stop and updates. Stop now drops queued sweep probes and the sweep ends without writing. | constitution §7 | breakit stop-during-sweep probe | — |
+| [x] M4-F3 | MINOR: calling `start()` twice ran two sweep loops / two rollup timers. Start is idempotent. | FR-004.2 | breakit double-start probe | — |
+| [x] M4-F4 | MINOR: after a backwards clock jump the hostname cache never expired (negative age) and a verification seen during a sweep could be lost. Negative age = expired; verification ordering uses a counter. | FR-004.3, FR-004.1 | breakit clock-jump probes | — |
+| [x] M4-F5 | MINOR: uptime for days older than the history retention read as 0% instead of unknown. Those days are null. | FR-004.6 | breakit purged-uptime probe | — |
+| [x] M4-F6 | MAJOR: a demo user who emptied rooms/devices but kept tags got a re-seed on restart that failed on a duplicate tag and stopped the hub from starting. A data dir is seeded once (system_state), tags count as content, and a seed failure is logged instead of fatal. | FR-015 | breakit demo re-seed probe | — |
+| [x] M4-F7 | MINOR: history/uptime for an unknown device returned the bulk code DEVICE_NOT_FOUND (422) whose pt-BR message showed a raw `{ids}` placeholder. They return NOT_FOUND (404). | constitution §8 | breakit malformed-input probe | — |
+| [x] M4-F8 | MINOR: a sweep resolved every hostname at once (500 concurrent DNS queries). Lookups run at most 32 at a time. | FR-004.3 | breakit DNS-load probe | — |
+| [x] M4-F9 | MINOR (demo): the simulated network re-read the inventory for every single-address probe; it caches it for 1 s. | FR-015 | demo tests | — |
 
 ## M5 — Scheduler
 | ID | Task | Refs | Tests | Done when |

@@ -99,6 +99,19 @@ export class SimulatedNetwork {
     return s;
   }
 
+  private cache: { at: number; byIp: Map<string, string> } | null = null;
+
+  /** IP → MAC, re-read at most once a second: sweeps probe one address per call (M4-F9). */
+  private inventory(): Map<string, string> {
+    const now = this.o.clock.now();
+    if (this.cache && now - this.cache.at >= 0 && now - this.cache.at < 1000)
+      return this.cache.byIp;
+    const byIp = new Map<string, string>();
+    for (const d of this.o.devices()) if (d.ip) byIp.set(d.ip, d.mac.toUpperCase());
+    this.cache = { at: now, byIp };
+    return byIp;
+  }
+
   readonly interfaces: NetworkInterfaces = {
     list: () => Promise.resolve([{ ...DEMO_INTERFACE }]),
   };
@@ -122,8 +135,7 @@ export class SimulatedNetwork {
 
   readonly prober: Prober = {
     probe: (addresses: readonly string[], _opts: ProbeOptions) => {
-      const byIp = new Map<string, string>();
-      for (const d of this.o.devices()) if (d.ip) byIp.set(d.ip, d.mac.toUpperCase());
+      const byIp = this.inventory();
       const out = new Map<string, ProbeResult>();
       const drift = this.o.driftPerProbe ?? 0.003;
       for (const a of addresses) {

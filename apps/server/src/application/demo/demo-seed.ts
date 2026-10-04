@@ -18,6 +18,9 @@ export interface DemoRepo {
   isEmpty(): boolean;
   /** The history predates the seed, so the inventory must too. */
   backdateInventory(at: number): void;
+  /** When this data dir was seeded; a data dir is seeded at most once (M4-F6). */
+  seededAt(): number | null;
+  markSeeded(at: number): void;
 }
 
 export interface DemoSeedDeps {
@@ -81,7 +84,7 @@ export interface DemoSeedResult {
 }
 
 export function seedDemo(d: DemoSeedDeps): DemoSeedResult | null {
-  if (!d.demo.isEmpty()) return null;
+  if (d.demo.seededAt() !== null || !d.demo.isEmpty()) return null;
   const random = d.random ?? Math.random;
   const tz = d.settings.get('scheduler.timezone');
   const now = d.clock.now();
@@ -214,6 +217,7 @@ export function seedDemo(d: DemoSeedDeps): DemoSeedResult | null {
         0,
       ),
     );
+    d.demo.markSeeded(now);
     return { rooms: ROOMS.length, devices: devices.length, events: events.length };
   });
 }
