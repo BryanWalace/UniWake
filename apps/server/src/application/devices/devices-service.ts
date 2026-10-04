@@ -7,6 +7,7 @@ import {
   type DeviceCompact,
   type DeviceCreate,
   deviceCreateSchema,
+  type DeviceBulkParams,
   type DeviceListParams,
   type DeviceSaveResult,
   type DeviceUpdate,
@@ -47,6 +48,13 @@ export interface DevicesRepo {
   setTags(id: number, tagIds: readonly number[]): void;
   delete(id: number): void;
   list(filter: DeviceFilter, limit: number, offset: number): { items: Device[]; total: number };
+  existingIds(ids: readonly number[]): number[];
+  bulkMove(ids: readonly number[], roomId: number | null, now: number): void;
+  bulkAddTags(ids: readonly number[], tagIds: readonly number[]): void;
+  bulkRemoveTags(ids: readonly number[], tagIds: readonly number[]): void;
+  bulkSetEnabled(ids: readonly number[], enabled: boolean, now: number): void;
+  bulkDelete(ids: readonly number[]): void;
+  roomSummary(ids: readonly number[]): { roomId: number | null; count: number }[];
   listCompact(filter: DeviceFilter, limit: number): DeviceCompact[];
 }
 
@@ -163,6 +171,47 @@ export class DevicesService {
       details: { id, changed: Object.keys(patch) },
     });
     return this.result(id);
+  }
+
+  /** FR-002.2: one transaction and one audit entry listing every device (AC-002-07). */
+  bulk(input: DeviceBulkParams, actor: Actor): { affected: number } {
+    const ids = [...new Set(input.deviceIds)];
+    const now = this.clock.now();
+    const details = this.transaction((): Record<string, unknown> => {
+      const existing = new Set(this.repo.existingIds(ids));
+      const missing = ids.filter((id) => !existing.has(id));
+      if (missing.length > 0) {
+        throw new AppError('DEVICE_NOT_FOUND', { ids: missing.join(', ') }, { missing });
+      }
+      const fromRooms = this.repo.roomSummary(ids);
+      switch (input.action) {
+        case 'move':
+          this.checkRefs(input.roomId, undefined);
+          this.repo.bulkMove(ids, input.roomId, now);
+          return { roomId: input.roomId, fromRooms };
+        case 'addTags':
+          this.checkRefs(undefined, input.tagIds);
+          this.repo.bulkAddTags(ids, input.tagIds);
+          return { tagIds: input.tagIds };
+        case 'removeTags':
+          this.repo.bulkRemoveTags(ids, input.tagIds);
+          return { tagIds: input.tagIds };
+        case 'enable':
+        case 'disable':
+          this.repo.bulkSetEnabled(ids, input.action === 'enable', now);
+          return {};
+        case 'delete':
+          this.repo.bulkDelete(ids);
+          return { fromRooms };
+      }
+    });
+    this.audit.record({
+      actor,
+      action: `device.bulk.${input.action}`,
+      target: `devices:${ids.length}`,
+      details: { deviceIds: ids, ...details },
+    });
+    return { affected: ids.length };
   }
 
   delete(id: number, actor: Actor): void {

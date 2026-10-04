@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import {
+  deviceBulkSchema,
   deviceCreateSchema,
   deviceListQuerySchema,
   deviceUpdateSchema,
@@ -24,6 +25,10 @@ export function deviceRoutes(app: FastifyInstance, s: HttpServices): void {
     '/api/devices',
     { config: auth, schema: { body: deviceCreateSchema } },
     async (req, reply) => reply.status(201).send(s.devices.create(req.body, actorOf(req))),
+  );
+
+  r.post('/api/devices/bulk', { config: auth, schema: { body: deviceBulkSchema } }, async (req) =>
+    s.devices.bulk(req.body, actorOf(req)),
   );
 
   r.get('/api/devices/:id', { config: auth, schema: { params: idParamSchema } }, async (req) =>

@@ -213,6 +213,88 @@ export class SqliteDevicesRepo implements DevicesRepo {
     return { items, total };
   }
 
+  existingIds(ids: readonly number[]): number[] {
+    return this.chunked(ids, (chunk, ph) =>
+      this.db
+        .all<{ id: number }>(`SELECT id FROM devices WHERE id IN (${ph})`, chunk)
+        .map((r) => r.id),
+    );
+  }
+
+  bulkMove(ids: readonly number[], roomId: number | null, now: number): void {
+    this.chunked(ids, (chunk, ph) => {
+      this.db.run(`UPDATE devices SET room_id = ?, updated_at = ? WHERE id IN (${ph})`, [
+        roomId,
+        now,
+        ...chunk,
+      ]);
+      return [];
+    });
+  }
+
+  bulkAddTags(ids: readonly number[], tagIdsToAdd: readonly number[]): void {
+    for (const id of ids) {
+      for (const t of tagIdsToAdd) {
+        this.db.run('INSERT OR IGNORE INTO device_tags (device_id, tag_id) VALUES (?, ?)', [id, t]);
+      }
+    }
+  }
+
+  bulkRemoveTags(ids: readonly number[], tagIdsToRemove: readonly number[]): void {
+    for (const t of tagIdsToRemove) {
+      this.chunked(ids, (chunk, ph) => {
+        this.db.run(`DELETE FROM device_tags WHERE tag_id = ? AND device_id IN (${ph})`, [
+          t,
+          ...chunk,
+        ]);
+        return [];
+      });
+    }
+  }
+
+  bulkSetEnabled(ids: readonly number[], enabled: boolean, now: number): void {
+    this.chunked(ids, (chunk, ph) => {
+      this.db.run(`UPDATE devices SET enabled = ?, updated_at = ? WHERE id IN (${ph})`, [
+        enabled ? 1 : 0,
+        now,
+        ...chunk,
+      ]);
+      return [];
+    });
+  }
+
+  bulkDelete(ids: readonly number[]): void {
+    this.chunked(ids, (chunk, ph) => {
+      this.db.run(`DELETE FROM devices WHERE id IN (${ph})`, chunk);
+      return [];
+    });
+  }
+
+  roomSummary(ids: readonly number[]): { roomId: number | null; count: number }[] {
+    const counts = new Map<number | null, number>();
+    const rows = this.chunked(ids, (chunk, ph) =>
+      this.db.all<{ room_id: number | null; n: number }>(
+        `SELECT room_id, COUNT(*) AS n FROM devices WHERE id IN (${ph}) GROUP BY room_id`,
+        chunk,
+      ),
+    );
+    for (const r of rows) counts.set(r.room_id, (counts.get(r.room_id) ?? 0) + r.n);
+    return [...counts].map(([roomId, count]) => ({ roomId, count }));
+  }
+
+  /** SQLite limits bound parameters; split long id lists. */
+  private chunked<T>(
+    ids: readonly number[],
+    fn: (chunk: number[], placeholders: string) => T[],
+  ): T[] {
+    const out: T[] = [];
+    for (let i = 0; i < ids.length; i += 500) {
+      const chunk = ids.slice(i, i + 500);
+      out.push(...fn(chunk, chunk.map(() => '?').join(',')));
+    }
+    return out;
+  }
+
   listCompact(filter: DeviceFilter, limit: number): DeviceCompact[] {
     const w = whereClause(filter);
     return this.db

@@ -63,11 +63,18 @@ export const deviceBulkSchema = z.discriminatedUnion('action', [
     tagIds: z.array(idSchema).min(1).max(50),
   }),
   z.object({
-    action: z.enum(['enable', 'disable', 'delete']),
+    action: z.enum(['enable', 'disable']),
     deviceIds: z.array(idSchema).min(1).max(LIMITS.compactListMax),
+  }),
+  z.object({
+    action: z.literal('delete'),
+    deviceIds: z.array(idSchema).min(1).max(LIMITS.compactListMax),
+    /** Destructive: the caller must confirm explicitly (constitution §1 P2). */
+    confirm: z.literal(true),
   }),
 ]);
 export type DeviceBulk = z.input<typeof deviceBulkSchema>;
+export type DeviceBulkParams = z.output<typeof deviceBulkSchema>;
 
 export interface DeviceState {
   status: DeviceStatus;

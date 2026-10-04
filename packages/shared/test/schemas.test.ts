@@ -115,6 +115,8 @@ describe('entity schemas', () => {
     ok(deviceBulkSchema.safeParse({ action: 'addTags', deviceIds: [1], tagIds: [3] }));
     bad(deviceBulkSchema.safeParse({ action: 'addTags', deviceIds: [1] }));
     bad(deviceBulkSchema.safeParse({ action: 'delete', deviceIds: [] }));
+    bad(deviceBulkSchema.safeParse({ action: 'delete', deviceIds: [1] }));
+    ok(deviceBulkSchema.safeParse({ action: 'delete', deviceIds: [1], confirm: true }));
     bad(deviceBulkSchema.safeParse({ action: 'explode', deviceIds: [1] }));
   });
 });
