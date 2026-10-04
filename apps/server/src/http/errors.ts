@@ -4,6 +4,7 @@
  */
 import type { FastifyError, FastifyInstance } from 'fastify';
 import { hasZodFastifySchemaValidationErrors } from 'fastify-type-provider-zod';
+import { ZodError } from 'zod';
 import { type ApiError, type ErrorCode, formatErrorMessage, httpStatusFor } from '@uniwake/shared';
 import { isAppError } from '../application/errors';
 
@@ -20,6 +21,11 @@ export function registerErrorHandling(app: FastifyInstance): void {
     if (isAppError(error)) {
       if (error.status >= 500) req.log.error({ err: error }, error.code);
       return reply.status(error.status).send(body(error.code, error.message, error.details));
+    }
+    if (error instanceof ZodError) {
+      // Service-level parse of data that did not come through a route schema.
+      const details = error.issues.map((i) => ({ path: i.path.join('.'), message: i.message }));
+      return reply.status(422).send(body('VALIDATION_FAILED', undefined, details));
     }
     if (hasZodFastifySchemaValidationErrors(error)) {
       const details = error.validation.map((v) => ({

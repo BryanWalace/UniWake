@@ -5,6 +5,7 @@
 import cookie from '@fastify/cookie';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { Me } from '@uniwake/shared';
+import type { Actor } from '../application/audit/audit-service';
 import type { AuthService } from '../application/auth/auth-service';
 import { AppError } from '../application/errors';
 
@@ -22,6 +23,12 @@ export function requestContext(req: FastifyRequest) {
     remoteAddress: req.socket.remoteAddress ?? null,
     userAgent: req.headers['user-agent'] ?? null,
   };
+}
+
+/** Audit actor for the logged-in user. */
+export function actorOf(req: FastifyRequest): Actor {
+  const me = currentUser(req);
+  return { id: me.id, label: me.username };
 }
 
 export function currentUser(req: FastifyRequest): Me {

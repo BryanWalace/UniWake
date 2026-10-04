@@ -99,6 +99,11 @@ export const ERROR_DEFS = {
     status: 409,
     message: 'Confirme a ação: {count} máquinas serão ligadas.',
   },
+  DELETE_CONFIRMATION_REQUIRED: {
+    status: 409,
+    message:
+      'Confirme a exclusão: {devices} dispositivo(s) irão para "Sem sala" e {schedules} agendamento(s) usam este item.',
+  },
   WAKE_ALREADY_RUNNING: {
     status: 409,
     message: 'Já existe uma ligação em andamento para estas máquinas. Acompanhe o andamento.',

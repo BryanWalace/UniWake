@@ -5,10 +5,12 @@
 import { AuditService } from './application/audit/audit-service';
 import { AuthService } from './application/auth/auth-service';
 import type { Clock } from './application/ports';
+import { RoomsService } from './application/rooms/rooms-service';
 import { SettingsService } from './application/settings/settings-service';
 import type { Db } from './db/connection';
 import { SqliteAuditRepo } from './db/repositories/audit-repo';
 import { SqliteSessionsRepo, SqliteUsersRepo } from './db/repositories/auth-repos';
+import { SqliteRoomsRepo } from './db/repositories/rooms-repo';
 import { SqliteSettingsRepo } from './db/repositories/settings-repo';
 import type { HttpServices } from './http/context';
 
@@ -28,5 +30,7 @@ export function createServices(db: Db, clock: Clock): Services {
     clock,
     (fn) => db.transaction(fn),
   );
-  return { db, clock, audit, settings, auth };
+  const tx = <T>(fn: () => T): T => db.transaction(fn);
+  const rooms = new RoomsService(new SqliteRoomsRepo(db), audit, clock, tx);
+  return { db, clock, audit, settings, auth, rooms };
 }

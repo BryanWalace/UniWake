@@ -4,10 +4,12 @@
  */
 import type { AuditService } from '../application/audit/audit-service';
 import type { AuthService } from '../application/auth/auth-service';
+import type { RoomsService } from '../application/rooms/rooms-service';
 import type { SettingsService } from '../application/settings/settings-service';
 
 export interface HttpServices {
   auth: AuthService;
   audit: AuditService;
   settings: SettingsService;
+  rooms: RoomsService;
 }
