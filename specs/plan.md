@@ -68,7 +68,7 @@ flowchart LR
 ## 3. Modules and boundaries
 ```
 apps/server/src/
-  domain/          pure: mac.ts, magic-packet.ts, destinations.ts, scope.ts, stagger.ts,
+  domain/          pure: magic-packet.ts, destinations.ts, scope.ts, stagger.ts,
                    status.ts (state machine), schedule.ts (occurrences, DST), uptime.ts,
                    csv.ts (row mapping, formula neutralization), smbios.ts, room-code.ts
   application/     ports.ts, wake/ (wake-service, job-runner), monitor/ (monitor-service,
@@ -90,6 +90,7 @@ apps/server/src/
 apps/server/test/  fakes/ (clock, sender, prober, interfaces, fs, process, release source),
                    helpers/, setup/network-guard.ts
 packages/shared/src/
+  mac.ts           MAC parsing/validation (shared so web forms and server agree; M1-T09)
   schemas/         Zod schemas for entities, requests, responses (with field limits, spec §8)
   errors.ts        ErrorCode + HTTP status + pt-BR catalog
   settings.ts      settings schema + UI metadata (group, label, input type, min/max)
