@@ -1,0 +1,25 @@
+node_modules/
+dist/
+build/
+coverage/
+out/
+*.log
+*.tsbuildinfo
+.vite/
+playwright-report/
+test-results/
+.env
+.env.*
+!.env.example
+# local runtime data (dev)
+data/
+*.db
+*.db-wal
+*.db-shm
+# installer build output
+installer/Output/
+installer/staging/
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
