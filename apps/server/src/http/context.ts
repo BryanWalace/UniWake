@@ -4,6 +4,7 @@
  */
 import type { AuditService } from '../application/audit/audit-service';
 import type { AuthService } from '../application/auth/auth-service';
+import type { CsvImportService } from '../application/devices/csv-import-service';
 import type { DevicesService } from '../application/devices/devices-service';
 import type { RoomsService } from '../application/rooms/rooms-service';
 import type { SettingsService } from '../application/settings/settings-service';
@@ -16,4 +17,5 @@ export interface HttpServices {
   rooms: RoomsService;
   tags: TagsService;
   devices: DevicesService;
+  csv: CsvImportService;
 }

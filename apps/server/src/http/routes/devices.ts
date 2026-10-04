@@ -7,6 +7,7 @@ import {
   deviceUpdateSchema,
   idParamSchema,
 } from '@uniwake/shared';
+import { csvImportSchema } from '../../application/devices/csv-import-service';
 import type { HttpServices } from '../context';
 import { actorOf } from '../session-auth';
 
@@ -26,6 +27,24 @@ export function deviceRoutes(app: FastifyInstance, s: HttpServices): void {
     { config: auth, schema: { body: deviceCreateSchema } },
     async (req, reply) => reply.status(201).send(s.devices.create(req.body, actorOf(req))),
   );
+
+  // FR-002.3 CSV import (preview never writes) and export.
+  const csvRoute = {
+    config: auth,
+    bodyLimit: 3.5 * 1024 * 1024,
+    schema: { body: csvImportSchema },
+  };
+  r.post('/api/devices/import/preview', csvRoute, async (req) => s.csv.preview(req.body));
+  r.post('/api/devices/import/commit', csvRoute, async (req) =>
+    s.csv.commit(req.body, actorOf(req)),
+  );
+  r.get('/api/devices/export.csv', { config: auth }, async (_req, reply) => {
+    const day = new Date().toISOString().slice(0, 10);
+    return reply
+      .header('content-type', 'text/csv; charset=utf-8')
+      .header('content-disposition', `attachment; filename="uniwake-dispositivos-${day}.csv"`)
+      .send(s.csv.exportCsv());
+  });
 
   r.post('/api/devices/bulk', { config: auth, schema: { body: deviceBulkSchema } }, async (req) =>
     s.devices.bulk(req.body, actorOf(req)),

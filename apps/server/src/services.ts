@@ -4,6 +4,7 @@
  */
 import { AuditService } from './application/audit/audit-service';
 import { AuthService } from './application/auth/auth-service';
+import { CsvImportService } from './application/devices/csv-import-service';
 import { DevicesService } from './application/devices/devices-service';
 import type { Clock } from './application/ports';
 import { RoomsService } from './application/rooms/rooms-service';
@@ -35,8 +36,12 @@ export function createServices(db: Db, clock: Clock): Services {
     (fn) => db.transaction(fn),
   );
   const tx = <T>(fn: () => T): T => db.transaction(fn);
-  const rooms = new RoomsService(new SqliteRoomsRepo(db), audit, clock, tx);
-  const tags = new TagsService(new SqliteTagsRepo(db), audit, tx);
-  const devices = new DevicesService(new SqliteDevicesRepo(db), audit, clock, tx);
-  return { db, clock, audit, settings, auth, rooms, tags, devices };
+  const roomsRepo = new SqliteRoomsRepo(db);
+  const tagsRepo = new SqliteTagsRepo(db);
+  const devicesRepo = new SqliteDevicesRepo(db);
+  const rooms = new RoomsService(roomsRepo, audit, clock, tx);
+  const tags = new TagsService(tagsRepo, audit, tx);
+  const devices = new DevicesService(devicesRepo, audit, clock, tx);
+  const csv = new CsvImportService(devicesRepo, roomsRepo, tagsRepo, audit, clock, tx);
+  return { db, clock, audit, settings, auth, rooms, tags, devices, csv };
 }

@@ -113,7 +113,13 @@ export interface CsvRow {
 }
 
 export type CsvParseResult =
-  | { ok: true; rows: CsvRow[]; delimiter: ',' | ';'; ignoredColumns: string[] }
+  | {
+      ok: true;
+      rows: CsvRow[];
+      delimiter: ',' | ';';
+      columns: CsvColumn[];
+      ignoredColumns: string[];
+    }
   | { ok: false; reason: string };
 
 export function parseDevicesCsv(input: string): CsvParseResult {
@@ -163,7 +169,8 @@ export function parseDevicesCsv(input: string): CsvParseResult {
       ativo: get('ativo'),
     };
   });
-  return { ok: true, rows, delimiter, ignoredColumns };
+  const columns = CSV_COLUMNS.filter((c) => mapping.includes(c));
+  return { ok: true, rows, delimiter, columns, ignoredColumns };
 }
 
 export interface CsvExportRow {

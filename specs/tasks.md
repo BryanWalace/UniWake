@@ -76,7 +76,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M2-T04 | Device list: filters, pagination, compact `all=1`; 500-device benchmark. | plan §5.1; NFR-01 | query < 50 ms at 500 | — |
 | [x] M2-T05 | Bulk operations + audit. | FR-002.2 | AC-002-07 | — |
 | [x] M2-T06 | `domain/csv.ts`: delimiter/BOM detection, header aliases, row validation, formula neutralization. | FR-002.3; ADR-016 | AC-002-09, AC-002-11 | — |
-| [ ] M2-T07 | CSV import preview/commit + export routes. | FR-002.3 | AC-002-08, AC-002-10 | — |
+| [x] M2-T07 | CSV import preview/commit + export routes. | FR-002.3 | AC-002-08, AC-002-10 | — |
 | [ ] M2-T08 | Web: devices list (filters, search, bulk select + action bar). | FR-002.1, FR-002.2 | component tests | — |
 | [ ] M2-T09 | Web: device form dialog (MAC warning, duplicate-name warning). | FR-002.1 | component tests | — |
 | [ ] M2-T10 | Web: rooms & tags management (impact confirmations). | FR-008.1, FR-008.2 | component tests | — |
