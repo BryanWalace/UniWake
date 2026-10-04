@@ -27,6 +27,8 @@ export const keys = {
   tags: ['tags'] as const,
   devices: (params: DeviceQueryParams) => ['devices', params] as const,
   devicesAll: ['devices'] as const,
+  dashboard: ['dashboard'] as const,
+  uptime: (q: { deviceId?: number; roomId?: number; days: number }) => ['uptime', q] as const,
 };
 
 export interface DeviceQueryParams {
@@ -72,6 +74,7 @@ function useInvalidateInventory() {
       qc.invalidateQueries({ queryKey: keys.devicesAll }),
       qc.invalidateQueries({ queryKey: keys.rooms }),
       qc.invalidateQueries({ queryKey: keys.tags }),
+      qc.invalidateQueries({ queryKey: keys.dashboard }),
     ]);
 }
 

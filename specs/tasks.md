@@ -135,7 +135,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M4-T07 | Events bus + SSE route (heartbeat, session expiry, buffer cap). | FR-004.4; ADR-020 | AC-004-14 (server side) | — |
 | [x] M4-T08 | Dashboard API, `domain/uptime.ts`, nightly rollup, uptime API. | FR-004.5, FR-004.6 | AC-004-10, AC-004-16 | — |
 | [x] M4-T09 | Simulated prober + demo seed + `--demo` guard. | FR-015 | AC-015-01 | `npm run dev` lively |
-| [ ] M4-T10 | Web: dashboard (counters, room cards, tag filter + wake, search `/`, status filter, notices area). | FR-004.5 | component tests | — |
+| [x] M4-T10 | Web: dashboard (counters, room cards, tag filter + wake, search `/`, status filter, notices area). | FR-004.5 | component tests | — |
 | [ ] M4-T11 | Web: realtime hook (SSE → Query cache, reconnect refetch). | FR-004.4 | hook tests | — |
 | [ ] M4-T12 | Web: device detail (history, uptime). | FR-004.6 | component tests | — |
 | [ ] M4-T13 | E2E in demo mode: dashboard, realtime, search, axe; 500-device dashboard < 2 s. | FR-004.4, FR-004.5; NFR-01, NFR-07 | AC-004-08, AC-004-09, AC-004-15 [E2E] | — |

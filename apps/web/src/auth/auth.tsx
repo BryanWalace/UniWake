@@ -5,6 +5,7 @@ import { api, ApiRequestError } from '../api/client';
 import { ErrorState, LoadingState } from '../components/Banner';
 import { t } from '../i18n/pt-BR';
 import { WakeProvider } from '../features/wake/WakeProvider';
+import { DemoBanner } from '../features/dashboard/DemoBanner';
 import { Layout } from '../routes/Layout';
 
 export const meQueryKey = ['auth', 'me'] as const;
@@ -87,7 +88,7 @@ export function RequireAuth() {
   }
   return (
     <WakeProvider>
-      <Layout userMenu={<UserMenu me={me.data} />} />
+      <Layout banners={<DemoBanner />} userMenu={<UserMenu me={me.data} />} />
     </WakeProvider>
   );
 }
