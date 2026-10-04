@@ -1,18 +1,15 @@
 import { render, screen } from '@testing-library/react';
-import { createMemoryRouter, RouterProvider } from 'react-router';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Banner, EmptyState, ErrorState, LoadingState } from '../src/components/Banner';
-import { routes } from '../src/router';
+import { loggedInApi, renderApp } from './helpers';
 
-function renderAt(path: string) {
-  const router = createMemoryRouter(routes, { initialEntries: [path] });
-  return render(<RouterProvider router={router} />);
-}
+afterEach(() => vi.unstubAllGlobals());
 
 describe('app shell (constitution §8)', () => {
-  it('renders pt-BR navigation, a skip link and the main landmark', () => {
-    renderAt('/');
-    const nav = screen.getByRole('navigation', { name: 'Navegação principal' });
+  it('renders pt-BR navigation, a skip link and the main landmark', async () => {
+    loggedInApi();
+    renderApp('/');
+    const nav = await screen.findByRole('navigation', { name: 'Navegação principal' });
     for (const label of [
       'Painel',
       'Dispositivos',
@@ -31,18 +28,22 @@ describe('app shell (constitution §8)', () => {
     expect(screen.getByRole('main')).toHaveAttribute('id', 'conteudo');
   });
 
-  it('marks the current page in the navigation', () => {
-    renderAt('/dispositivos');
-    expect(screen.getByRole('link', { name: 'Dispositivos' })).toHaveAttribute(
+  it('marks the current page in the navigation', async () => {
+    loggedInApi();
+    renderApp('/dispositivos');
+    expect(await screen.findByRole('link', { name: 'Dispositivos' })).toHaveAttribute(
       'aria-current',
       'page',
     );
     expect(screen.getByRole('heading', { level: 1, name: 'Dispositivos' })).toBeInTheDocument();
   });
 
-  it('shows a not-found page for unknown routes', () => {
-    renderAt('/nao-existe');
-    expect(screen.getByRole('heading', { name: 'Página não encontrada' })).toBeInTheDocument();
+  it('shows a not-found page for unknown routes', async () => {
+    loggedInApi();
+    renderApp('/nao-existe');
+    expect(
+      await screen.findByRole('heading', { name: 'Página não encontrada' }),
+    ).toBeInTheDocument();
   });
 });
 

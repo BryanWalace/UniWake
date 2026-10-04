@@ -50,7 +50,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M1-T16 | Auth core: argon2id (PHC), users + sessions repos, session plugin, setup (loopback + transactional), login/logout/me, role guard, idle/absolute expiry. | FR-006.1; ADR-018; plan §6.4 | AC-006-01, AC-006-02; expiry with fake clock; rehash | — |
 | [x] M1-T17 | Audit service (append-only) + repo. | FR-006.5 | append + query | — |
 | [x] M1-T18 | Web scaffold: Vite 8, React 19, Tailwind 4, Router, Query, layout shell pt-BR, banner slot, typed API client. | plan §6.5 | shell renders | `npm run dev` shows shell |
-| [ ] M1-T19 | Web: `/login`, `/primeiro-acesso`, auth guard, logout. | FR-006.1 | component tests | — |
+| [x] M1-T19 | Web: `/login`, `/primeiro-acesso`, auth guard, logout. | FR-006.1 | component tests | — |
 | [ ] M1-T20 | `check:trace`: spec ACs ↔ test titles ↔ tasks. | IMP-030 | script unit test | in `verify` |
 
 ## M2 — Devices, Rooms, Tags
