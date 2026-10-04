@@ -1,6 +1,7 @@
 import type { RouteObject } from 'react-router';
 import { RequireAuth } from './auth/auth';
 import { DevicesPage } from './features/devices/DevicesPage';
+import { ImportPage } from './features/devices/ImportPage';
 import { RoomPage } from './features/rooms/RoomPage';
 import { RoomsPage } from './features/rooms/RoomsPage';
 import { t } from './i18n/pt-BR';
@@ -18,6 +19,7 @@ export const routes: RouteObject[] = [
     children: [
       { index: true, element: <Placeholder title={t.nav.dashboard} /> },
       { path: 'dispositivos', element: <DevicesPage /> },
+      { path: 'dispositivos/importar', element: <ImportPage /> },
       { path: 'salas', element: <RoomsPage /> },
       { path: 'salas/:id', element: <RoomPage /> },
       { path: 'agendamentos', element: <Placeholder title={t.nav.schedules} /> },
