@@ -3,39 +3,41 @@
 Updated: 2026-10-04 · Mode: single-agent orchestrator (`.agents/06-orchestrator.md`)
 
 ## Current state
-- Phases 0–3 DONE. Phase 4: **M1, M2, M3 DONE**; **M4 in progress** (T01–T09 done).
-- `npm run verify` green (386 tests). Playwright E2E 8/8. CI green on ubuntu and windows.
-- M4 so far:
-  - T01 status state machine · T02 TCP prober · T03/T04 PowerShell ICMP helper (ready-line
-    handshake, single request in flight, restarts, unhealthy cooldown) + `ping.exe` fallback +
-    `CompositeProber`.
-  - T05 `ProbeQueue` (high = wake verification, low = sweeps; `monitor.concurrency`).
-  - T06 `MonitorService` (hub-start reset dated at last probe, DNS TTL cache, IP drift, one-tx
-    sweep, `device.status`/`counters` events, `stop()` awaits the sweep).
-  - T07 SSE `GET /api/events` (`http/sse.ts`, heartbeat 20 s without touching the session,
-    `session.expired`, 1 MB buffer cap, `preClose` ends streams).
-  - T08 `DashboardService` + `GET /api/dashboard`, `GET /api/uptime`, `domain/tz.ts`,
-    `domain/uptime.ts`, nightly rollup 00:10 + catch-up, migration 002 (ADR-027).
-  - T09 `SimulatedNetwork` (demo NIC/sender/prober/DNS), demo seed (`application/demo`),
-    `UNIWAKE_DEMO_SEED`, `UNIWAKE_DEMO_WAKE_MS`; `npm run dev` runs `--demo`; E2E runs unseeded
-    demo with 1–3 s simulated boots.
+- Phases 0–3 DONE. Phase 4: **M1, M2, M3, M4 DONE** (reviews in `specs/reviews/M1-*` … `M4-*`).
+- `npm run verify` green: ≈431 unit/integration tests, then `test:perf` (wall-clock budgets,
+  sequential, uninstrumented), check:deps, check:trace (now also reads `e2e/*.spec.ts`).
+  Playwright 15/15 (`npm run e2e`, unseeded demo hub, simulated boots 1–3 s). CI green.
+- M4 delivered: status state machine; TCP + PowerShell ICMP helper (ready handshake) + `ping.exe`
+  fallback; `ProbeQueue`; `MonitorService` (sweeps, DNS cache/drift, verification counts as a
+  probe, fast abortable stop); SSE `/api/events`; dashboard/uptime/history APIs + nightly rollup;
+  retention jobs; simulated LAN + demo seed; web dashboard, device page, realtime provider (idle
+  header, hidden-tab release), Ctrl+K palette; E2E for AC-004-08/09/15/17, AC-009-01, NFR-01.
 
-## Next: M4-T10 — Web dashboard
-Then T11 (SSE hook; job drawer off polling), T12 (device detail + uptime), T13 (E2E demo + axe:
-AC-004-08/09/15), T14 (Ctrl+K palette, AC-004-17), T15 (E2E AC-009-01), T16 (retention: events,
-`packet_log` 30 d, jobs, audit), then M4-D (break-it), M4-R (review), M4 architect note.
-Notes:
-- Dashboard types live in `packages/shared/src/schemas/dashboard.ts` (`Dashboard`, `Counters`,
-  `UptimeSeries`). SSE `counters` carries `{global, rooms}`; other events carry the bus payload.
-- E2E for AC-004-08 can lower `monitor.intervalSeconds` to 10 via the settings API (min 10).
-- M5-T07 must extend the demo seed with 2 schedules and the morning-result notice.
+## Next: M5 — Scheduler (lead: Senior Fullstack)
+Start at `M5-T01` (`domain/schedule.ts`). Notes:
+- Reuse `domain/tz.ts` (`dayStart`, `addDays`, `localDay`, `nextLocalTime`) for occurrences; add
+  the DST rule from ADR-008 (non-existent local times run at the first valid instant; repeated
+  ones once) and test the matrix (AC-005-06).
+- Wake jobs for schedules: `wake.start(req, actor, { source: 'schedule', scheduleRunId,
+  preConfirmed, networkRetryUntil })` already exists; `JobRunner` has `onFinished` for the morning
+  result (FR-013).
+- `notices` table + dashboard notices area exist; `NOTICE_TEXT` in `DashboardPage.tsx` needs the
+  new notice types. SSE already forwards `notice` and `scheduler` events (invalidate dashboard).
+- M5-T07 must extend the demo seed (`application/demo/demo-seed.ts`) with 2 schedules and a past
+  morning-result notice.
+- Scheduler tick must use the injectable `Clock`; the hub stop order is runner → retention →
+  dashboard → monitor → listeners; add the scheduler first.
 
 ## Working conventions
-- Commit via the verify-gated helper (prettier → `npm run verify` → commit → push → prints last
-  CI result). Check that CI line after every push; investigate any failure immediately.
-- Write files with the editor tool or node scripts in the scratchpad; avoid shell heredocs with
-  backticks. Build BOMs with `String.fromCharCode(0xfeff)`; `String.raw` for regex backslashes.
+- Commit via the verify-gated helper (scratchpad `commit-task.sh <TASK|-> <msg>`: prettier → mark
+  task → `npm run verify` → commit → push → prints the last CI result; reverts the mark on
+  failure). Check that CI line after every push and investigate any failure immediately.
+- Edit with the editor tool or node scripts written to the scratchpad; never put backticks or
+  `${…}` inside bash-quoted node snippets (bash expands them). Build BOMs with
+  `String.fromCharCode(0xfeff)`.
+- Web tests: `findBy*` waits up to 5 s (setup.ts). Wall-clock assertions go in
+  `apps/server/test/perf/*.perf.test.ts`, never in the parallel suite.
 
 ## Files to read first
-`CLAUDE.md`, `specs/tasks.md` (M4), `specs/spec.md` FR-004 + FR-015, `specs/plan.md` §6,
-`specs/decisions.md` ADR-019/020/027.
+`CLAUDE.md`, `specs/tasks.md` (M5), `specs/spec.md` FR-005 + FR-013, `specs/plan.md` §5–6,
+`specs/decisions.md` ADR-008, ADR-027.
