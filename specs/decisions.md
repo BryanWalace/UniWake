@@ -263,3 +263,22 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
   with a random password stored in `%ProgramData%\UniWake\certs\pfx.key`, then removes the cert
   from the store. Admins can upload their own PFX instead.
 - **Consequences:** Self-signed warning in browsers until IT trusts the cert (README explains).
+
+## ADR-027 — Uptime semantics and live-update session handling
+- **Date:** 2026-10-04 · **Status:** Accepted
+- **Context:** FR-004.6 defines uptime as "% of the local day online" but leaves open what happens
+  while the hub is down, how today is shown, and which data wins after retention trims events.
+  ADR-020 SSE heartbeats could also keep a session alive forever.
+- **Decision:**
+  - Local days use `scheduler.timezone` (Intl-based, DST-aware; 23/25 h days count their real length).
+  - At hub start each known status is reset to `desconhecido` with the event dated at the device's
+    `last_probe_at`, so downtime or a crash never counts as uptime.
+  - Today's ratio is over the elapsed part of the day; days before the device existed are `null`.
+  - `daily_uptime` (nightly at 00:10 local, catch-up on start, bounded by `retention.historyDays`)
+    is authoritative for finished days; missing days are computed from events on demand.
+  - Room uptime = average of its *current* devices' known days (AC-004-16).
+  - SSE heartbeats validate the session without touching `last_seen_at`: an open dashboard alone
+    does not defeat the idle timeout.
+- **Consequences:** Moving a device between rooms changes historical room averages (acceptable;
+  the device's own history is unchanged). A wall-display dashboard is logged out after
+  `security.sessionIdleHours` without interaction.

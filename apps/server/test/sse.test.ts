@@ -1,7 +1,13 @@
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { SESSION_COOKIE } from '../src/http/session-auth';
-import { SSE_HEARTBEAT_MS, SseClient, type SseCloseReason, type SseSink } from '../src/http/sse';
+import {
+  formatSse,
+  SSE_HEARTBEAT_MS,
+  SseClient,
+  type SseCloseReason,
+  type SseSink,
+} from '../src/http/sse';
 import { FakeClock } from './fakes/fake-clock';
 import { apiHarness, type ApiHarness } from './helpers/api';
 import { T0 } from './helpers/db';
@@ -36,8 +42,10 @@ describe('SseClient', () => {
   it('opens with a retry hint and forwards bus events as named SSE events', () => {
     const { sink, c } = client();
     expect(sink.text).toBe('retry: 3000\n: connected\n\n');
-    c.send({ type: 'device.status', deviceId: 7, status: 'online', latencyMs: 3, lastSeenAt: T0 });
-    c.send({ type: 'counters' });
+    c.send(
+      formatSse('device.status', { deviceId: 7, status: 'online', latencyMs: 3, lastSeenAt: T0 }),
+    );
+    c.send(formatSse('counters', {}));
     expect(sink.chunks.slice(1)).toEqual([
       `event: device.status\ndata: {"deviceId":7,"status":"online","latencyMs":3,"lastSeenAt":${T0}}\n\n`,
       'event: counters\ndata: {}\n\n',
@@ -63,14 +71,14 @@ describe('SseClient', () => {
     expect(sink.ended).toBe(true);
     expect(closed).toEqual(['session_expired']);
     expect(clock.pendingTimers).toBe(0);
-    c.send({ type: 'counters' });
+    c.send(formatSse('counters', {}));
     expect(sink.chunks.at(-1)).toBe('event: session.expired\ndata: {}\n\n');
   });
 
   it('drops a client whose unsent buffer exceeds the cap', () => {
     const { sink, closed, clock, c } = client();
     sink.bufferedBytes = 101;
-    c.send({ type: 'counters' });
+    c.send(formatSse('counters', {}));
     expect(closed).toEqual(['slow_client']);
     expect(sink.ended).toBe(true);
     expect(sink.chunks).toHaveLength(1);

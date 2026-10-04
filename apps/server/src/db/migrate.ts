@@ -5,6 +5,7 @@
  */
 import type { Db } from './connection';
 import { sql as initial } from './migrations/001_initial';
+import { sql as roomJobIndex } from './migrations/002_room_job_index';
 
 export interface Migration {
   version: number;
@@ -12,7 +13,10 @@ export interface Migration {
   sql: string;
 }
 
-export const MIGRATIONS: readonly Migration[] = [{ version: 1, name: 'initial', sql: initial }];
+export const MIGRATIONS: readonly Migration[] = [
+  { version: 1, name: 'initial', sql: initial },
+  { version: 2, name: 'room_job_index', sql: roomJobIndex },
+];
 
 export interface MigrateOptions {
   now?: () => number;

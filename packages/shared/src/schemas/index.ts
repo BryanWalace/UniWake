@@ -1,4 +1,5 @@
 export * from './common';
+export * from './dashboard';
 export * from './devices';
 export * from './rooms';
 export * from './users';

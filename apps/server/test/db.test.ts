@@ -7,6 +7,7 @@ import {
   currentSchemaVersion,
   latestSchemaVersion,
   migrate,
+  MIGRATIONS,
   type Migration,
 } from '../src/db/migrate';
 
@@ -33,10 +34,15 @@ function insertDevice(db: Db, mac: string, roomId: number | null): number {
 }
 
 describe('migrations (constitution §2.3)', () => {
-  it('applies the initial schema once and is idempotent', () => {
+  it('applies every migration once and is idempotent', () => {
     const db = openMemoryDb();
-    expect(migrate(db, undefined, { now: () => T })).toEqual({ from: 0, to: 1, applied: [1] });
-    expect(migrate(db)).toEqual({ from: 1, to: 1, applied: [] });
+    const latest = latestSchemaVersion();
+    expect(migrate(db, undefined, { now: () => T })).toEqual({
+      from: 0,
+      to: latest,
+      applied: MIGRATIONS.map((m) => m.version),
+    });
+    expect(migrate(db)).toEqual({ from: latest, to: latest, applied: [] });
     expect(currentSchemaVersion(db)).toBe(latestSchemaVersion());
     const tables = db
       .all<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")

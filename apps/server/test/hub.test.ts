@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import pino from 'pino';
 import { afterEach, describe, expect, it } from 'vitest';
 import { CONFIG_DEFAULTS, type Config } from '../src/config';
+import { latestSchemaVersion } from '../src/db/migrate';
 import { createHub, EXIT_CONFIG_ERROR, type Hub, HubStartError } from '../src/hub';
 import { main, parseArgs } from '../src/main';
 
@@ -45,7 +46,9 @@ describe('hub lifecycle (plan §2.1, §9)', () => {
       expect(await res.json()).toEqual({ status: 'ok' });
     }
     // migrations ran against the data dir database
-    expect(hub.db.get<{ v: number }>('SELECT MAX(version) AS v FROM schema_migrations')?.v).toBe(1);
+    expect(hub.db.get<{ v: number }>('SELECT MAX(version) AS v FROM schema_migrations')?.v).toBe(
+      latestSchemaVersion(),
+    );
 
     await hub.stop();
     expect(hub.db.raw.isOpen).toBe(false);

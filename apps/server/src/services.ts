@@ -5,6 +5,7 @@
 import { AuditService } from './application/audit/audit-service';
 import { AuthService } from './application/auth/auth-service';
 import { CsvImportService } from './application/devices/csv-import-service';
+import { DashboardService } from './application/dashboard/dashboard-service';
 import { DevicesService } from './application/devices/devices-service';
 import { EventsBus } from './application/events-bus';
 import { MonitorService } from './application/monitor/monitor-service';
@@ -27,6 +28,7 @@ import { WakeService } from './application/wake/wake-service';
 import type { Db } from './db/connection';
 import { SqliteAuditRepo } from './db/repositories/audit-repo';
 import { SqliteSessionsRepo, SqliteUsersRepo } from './db/repositories/auth-repos';
+import { SqliteDashboardRepo } from './db/repositories/dashboard-repo';
 import { SqliteDevicesRepo } from './db/repositories/devices-repo';
 import { SqliteJobsRepo } from './db/repositories/jobs-repo';
 import { SqliteMonitorRepo } from './db/repositories/monitor-repo';
@@ -101,6 +103,16 @@ export function createServices(
     transaction: tx,
   });
 
+  const dashboard = new DashboardService({
+    repo: new SqliteDashboardRepo(db),
+    settings,
+    clock,
+    logger: ports.logger.child({ module: 'uptime' }),
+    transaction: tx,
+    demo: opts.demo === true,
+    lastSweepAt: () => monitor.lastSweep?.startedAt ?? null,
+  });
+
   const runner = new JobRunner({
     jobs: jobsRepo,
     rooms: roomsRepo,
@@ -155,5 +167,6 @@ export function createServices(
     runner,
     monitor,
     probes,
+    dashboard,
   };
 }

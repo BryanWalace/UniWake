@@ -4,7 +4,6 @@
  * heartbeat (emitting `session.expired` before closing) and drops clients whose unsent buffer
  * exceeds the cap (they reconnect and refetch).
  */
-import type { HubEvent } from '../application/events-bus';
 import type { Clock, TimerHandle } from '../application/ports';
 
 export const SSE_HEARTBEAT_MS = 20_000;
@@ -51,10 +50,10 @@ export class SseClient {
     this.arm();
   }
 
-  send(e: HubEvent): void {
+  /** Sends one pre-formatted SSE chunk (see `formatSse`). */
+  send(chunk: string): void {
     if (this.closedWith) return;
-    const { type, ...data } = e;
-    this.write(formatSse(type, data));
+    this.write(chunk);
   }
 
   /** The socket went away (browser closed the tab or EventSource reconnects). */

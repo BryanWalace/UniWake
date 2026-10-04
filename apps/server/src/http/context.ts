@@ -4,6 +4,7 @@
  */
 import type { AuditService } from '../application/audit/audit-service';
 import type { AuthService } from '../application/auth/auth-service';
+import type { DashboardService } from '../application/dashboard/dashboard-service';
 import type { CsvImportService } from '../application/devices/csv-import-service';
 import type { DevicesService } from '../application/devices/devices-service';
 import type { EventsBus } from '../application/events-bus';
@@ -24,4 +25,5 @@ export interface HttpServices {
   wake: WakeService;
   events: EventsBus;
   clock: Clock;
+  dashboard: DashboardService;
 }

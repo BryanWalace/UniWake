@@ -212,6 +212,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       started = true;
       services.runner.recover();
       services.monitor.start();
+      services.dashboard.start();
       logger.info(
         { version: APP_VERSION, ...hub.addresses(), demo: config.demo },
         'UniWake hub started',
@@ -219,6 +220,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
     },
     async stop() {
       services.runner.stop();
+      services.dashboard.stop();
       await services.monitor.stop();
       await Promise.allSettled([panel.close(), agent.close()]);
       await sender.close();

@@ -1,17 +1,31 @@
 import type { FastifyInstance } from 'fastify';
+import type { HubEvent } from '../../application/events-bus';
 import type { HttpServices } from '../context';
 import { SECURITY_HEADERS } from '../security';
 import { SESSION_COOKIE } from '../session-auth';
-import { SseClient } from '../sse';
+import { formatSse, SseClient } from '../sse';
 
 /** FR-004.4 live updates over SSE (ADR-020). */
 export function eventsRoutes(app: FastifyInstance, s: HttpServices): void {
   const clients = new Set<SseClient>();
 
+  /** Each event is serialized once for every client; `counters` carries the fresh counts. */
+  const encode = (e: HubEvent): string => {
+    if (e.type === 'counters') return formatSse('counters', s.dashboard.counters());
+    const { type, ...data } = e;
+    return formatSse(type, data);
+  };
+  const unsubscribe = s.events.subscribe((e) => {
+    if (clients.size === 0) return;
+    const chunk = encode(e);
+    for (const c of clients) c.send(chunk);
+  });
+
   // Open streams never go idle, so the server could not close while one is connected.
   app.addHook('preClose', async () => {
     for (const c of [...clients]) c.shutdown();
   });
+  app.addHook('onClose', async () => unsubscribe());
 
   app.get('/api/events', { config: { auth: 'operator' } }, (req, reply) => {
     const token = req.cookies[SESSION_COOKIE];
@@ -41,11 +55,9 @@ export function eventsRoutes(app: FastifyInstance, s: HttpServices): void {
       },
       (reason) => {
         clients.delete(client);
-        unsubscribe();
         req.log.debug({ reason }, 'sse client closed');
       },
     );
-    const unsubscribe = s.events.subscribe((e) => client.send(e));
     clients.add(client);
     res.on('close', () => client.disconnected());
     client.open();

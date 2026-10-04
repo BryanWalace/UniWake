@@ -36,7 +36,7 @@ export interface MonitorRepo {
   insertEvents(events: readonly DeviceEvent[]): void;
   updateIp(deviceId: number, ip: string, now: number): void;
   /** At hub start nothing is known (AC-004-11); returns the devices whose status was cleared. */
-  resetAllUnknown(): { deviceId: number; from: DeviceStatus }[];
+  resetAllUnknown(): { deviceId: number; from: DeviceStatus; lastProbeAt: number | null }[];
 }
 
 export interface SweepReport {
@@ -75,9 +75,11 @@ export class MonitorService {
     const cleared = this.d.transaction(() => {
       const rows = this.d.repo.resetAllUnknown();
       this.d.repo.insertEvents(
-        rows.map(({ deviceId, from }) => ({
+        rows.map(({ deviceId, from, lastProbeAt }) => ({
           deviceId,
-          at: now,
+          // The status was only known until the last probe: dating the change there keeps hub
+          // downtime (or a crash) out of the uptime figures (FR-004.6).
+          at: Math.min(now, lastProbeAt ?? now),
           type: 'status' as const,
           data: { from, to: 'desconhecido', reason: 'hub_start' },
         })),

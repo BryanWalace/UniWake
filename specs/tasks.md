@@ -133,7 +133,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M4-T05 | `probe-queue` with priorities and concurrency. | FR-004.2 | AC-004-13 | — |
 | [x] M4-T06 | `monitor-service` sweep: DNS cache, IP drift, one-tx writes, events, SSE emits. | FR-004.2, FR-004.3; NFR-01 | AC-004-06, AC-004-07; **faults**: helper deadline, DNS timeout, DB busy | — |
 | [x] M4-T07 | Events bus + SSE route (heartbeat, session expiry, buffer cap). | FR-004.4; ADR-020 | AC-004-14 (server side) | — |
-| [ ] M4-T08 | Dashboard API, `domain/uptime.ts`, nightly rollup, uptime API. | FR-004.5, FR-004.6 | AC-004-10, AC-004-16 | — |
+| [x] M4-T08 | Dashboard API, `domain/uptime.ts`, nightly rollup, uptime API. | FR-004.5, FR-004.6 | AC-004-10, AC-004-16 | — |
 | [ ] M4-T09 | Simulated prober + demo seed + `--demo` guard. | FR-015 | AC-015-01 | `npm run dev` lively |
 | [ ] M4-T10 | Web: dashboard (counters, room cards, tag filter + wake, search `/`, status filter, notices area). | FR-004.5 | component tests | — |
 | [ ] M4-T11 | Web: realtime hook (SSE → Query cache, reconnect refetch). | FR-004.4 | hook tests | — |

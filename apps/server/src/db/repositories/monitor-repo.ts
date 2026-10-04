@@ -87,12 +87,12 @@ export class SqliteMonitorRepo implements MonitorRepo {
     this.db.run('UPDATE devices SET ip = ?, updated_at = ? WHERE id = ?', [ip, now, deviceId]);
   }
 
-  resetAllUnknown(): { deviceId: number; from: DeviceStatus }[] {
+  resetAllUnknown(): { deviceId: number; from: DeviceStatus; lastProbeAt: number | null }[] {
     const cleared = this.db
-      .all<{ device_id: number; status: DeviceStatus }>(
-        "SELECT device_id, status FROM device_state WHERE status <> 'desconhecido' ORDER BY device_id",
+      .all<{ device_id: number; status: DeviceStatus; last_probe_at: number | null }>(
+        "SELECT device_id, status, last_probe_at FROM device_state WHERE status <> 'desconhecido' ORDER BY device_id",
       )
-      .map((r) => ({ deviceId: r.device_id, from: r.status }));
+      .map((r) => ({ deviceId: r.device_id, from: r.status, lastProbeAt: r.last_probe_at }));
     // last_seen_at and ever_online survive: "visto há 3 h" and "nunca respondeu" stay true (AC-004-12).
     this.db.run(
       "UPDATE device_state SET status = 'desconhecido', latency_ms = NULL, online_since = NULL, consecutive_failures = 0",
