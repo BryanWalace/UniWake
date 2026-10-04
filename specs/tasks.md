@@ -101,8 +101,8 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 ## M3 — WoL engine, scoped wake, verification
 | ID | Task | Refs | Tests | Done when |
 |---|---|---|---|---|
-| [ ] M3-T01 | `domain/magic-packet.ts`. | FR-003.1 | AC-003-01 | — |
-| [ ] M3-T02 | `domain/destinations.ts` (per interface, room directed broadcast, dedupe). | FR-003.2 | AC-003-02, AC-003-03 | — |
+| [x] M3-T01 | `domain/magic-packet.ts`. | FR-003.1 | AC-003-01 | — |
+| [x] M3-T02 | `domain/destinations.ts` (per interface, room directed broadcast, dedupe). | FR-003.2 | AC-003-02, AC-003-03 | — |
 | [ ] M3-T03 | `adapters/network-interfaces` (os + `route print` parser, default selection). | FR-003.2; ADR-019 | fixtures: multi-NIC, VPN, APIPA, no gateway | — |
 | [ ] M3-T04 | `domain/scope.ts` resolver (SR-01..SR-06, SR-10, SR-11). | spec §4 | AC-003-05, AC-003-06, AC-003-07, AC-003-18 (fast-check) | — |
 | [ ] M3-T05 | `domain/stagger.ts` (per room, global cap). | FR-003.4 | AC-003-10, AC-003-19 | — |
