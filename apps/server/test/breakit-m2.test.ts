@@ -134,6 +134,7 @@ describe('M2-D: crash during a large import', () => {
     cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
     const dbPath = join(dir, 'import.db');
     const src = (p: string) => pathToFileURL(join(import.meta.dirname, '..', 'src', p)).href;
+    const helper = pathToFileURL(join(import.meta.dirname, 'helpers', 'ports.ts')).href;
     const script = join(dir, 'importer.ts');
     writeFileSync(
       script,
@@ -141,9 +142,11 @@ describe('M2-D: crash during a large import', () => {
        import { migrate } from '${src('db/migrate.ts')}';
        import { createServices } from '${src('services.ts')}';
        import { SystemClock } from '${src('adapters/system-clock.ts')}';
+       import { fakePorts } from '${helper}';
        const db = new Db(${JSON.stringify(dbPath)});
        migrate(db);
-       const s = createServices(db, new SystemClock());
+       const clock = new SystemClock();
+       const s = createServices(db, clock, fakePorts(clock as never));
        const ROWS = 3000;
        console.log('ready');
        for (let batch = 0; ; batch++) {

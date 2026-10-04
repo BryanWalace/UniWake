@@ -5,7 +5,13 @@
 import { mkdirSync } from 'node:fs';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import { createFileLogger } from './adapters/logger';
+import { OsDnsResolver } from './adapters/dns-resolver';
+import { OsNetworkInterfaces } from './adapters/network-interfaces';
+import { NodeProcessRunner } from './adapters/process-runner';
+import { RecordingPacketSender } from './adapters/recording-packet-sender';
 import { SystemClock } from './adapters/system-clock';
+import { TcpProber } from './adapters/tcp-prober';
+import { UdpPacketSender } from './adapters/udp-packet-sender';
 import type { Clock } from './application/ports';
 import { type Config, dataPaths } from './config';
 import { Db } from './db/connection';
@@ -14,7 +20,7 @@ import { buildApp } from './http/app';
 import { registerAgentRoutes, registerPanelRoutes } from './http/panel';
 import { LOOPBACK_HOSTS } from './http/security';
 import { registerStatic } from './http/static';
-import { createServices, type Services } from './services';
+import { createServices, type ServicePorts, type Services } from './services';
 import { APP_VERSION } from './version';
 
 /** Exit code for configuration/startup errors such as a port already in use (plan §9). */
@@ -35,6 +41,8 @@ export interface HubOptions {
   clock?: Clock;
   /** Built web panel to serve (null/undefined = API only). */
   webDir?: string | null;
+  /** Port overrides (tests); defaults to the real adapters. */
+  ports?: ServicePorts;
 }
 
 export interface Hub {
@@ -91,7 +99,20 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
     throw databaseError(paths.db, paths.backups, e);
   }
 
-  const services = createServices(db, clock);
+  const sender = new UdpPacketSender();
+  const services = createServices(
+    db,
+    clock,
+    opts.ports ?? {
+      interfaces: new OsNetworkInterfaces(new NodeProcessRunner()),
+      sender,
+      dryRunSender: new RecordingPacketSender(),
+      prober: new TcpProber(),
+      dns: new OsDnsResolver(),
+      logger,
+    },
+    { demo: config.demo },
+  );
 
   let panel: FastifyInstance | undefined;
   let agent: FastifyInstance;
@@ -159,6 +180,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
         throw e;
       }
       started = true;
+      services.runner.recover();
       logger.info(
         { version: APP_VERSION, ...hub.addresses(), demo: config.demo },
         'UniWake hub started',
@@ -166,6 +188,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
     },
     async stop() {
       await Promise.allSettled([panel.close(), agent.close()]);
+      await sender.close();
       db.close();
       if (started) logger.info({}, 'UniWake hub stopped');
       started = false;

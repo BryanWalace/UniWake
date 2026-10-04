@@ -107,10 +107,10 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M3-T04 | `domain/scope.ts` resolver (SR-01..SR-06, SR-10, SR-11). | spec §4 | AC-003-05, AC-003-06, AC-003-07, AC-003-18 (fast-check) | — |
 | [x] M3-T05 | `domain/stagger.ts` (per room, global cap). | FR-003.4 | AC-003-10, AC-003-19 | — |
 | [x] M3-T06 | `adapters/udp-packet-sender` (per-interface bind, broadcast, repeats, per-interface failure) + recording sender. | FR-003.2, FR-003.7; plan §7.1 | injected dgram factory; `EADDRNOTAVAIL`; **loopback contract**: real sender → 127.0.0.1 listener receives the exact payload | — |
-| [ ] M3-T07 | `wake-service` preview/start: confirmation, active-job exclusion, keyed per-user limiter, audit. | FR-003.3, FR-003.8 | AC-003-08, AC-003-09, AC-003-14, AC-003-15 | — |
-| [ ] M3-T08 | `job-runner`: lifecycle, stagger (fake clock), packet log, dry-run, no-interface handling. | FR-003.4, FR-003.5, FR-003.6, FR-003.7; NFR-02 | AC-003-04, AC-003-12, AC-003-13, AC-003-16; **faults**: send error on one interface, interface vanishes mid-job, DB busy | — |
-| [ ] M3-T09 | Verification loop via Prober port; restart recovery. | FR-003.5; NFR-02 | AC-003-11, AC-003-17 | — |
-| [ ] M3-T10 | Wake/jobs/packets routes. | FR-003.3, FR-003.6, FR-009 | 409/422/429 paths [API] | — |
+| [x] M3-T07 | `wake-service` preview/start: confirmation, active-job exclusion, keyed per-user limiter, audit. | FR-003.3, FR-003.8 | AC-003-08, AC-003-09, AC-003-14, AC-003-15 | — |
+| [x] M3-T08 | `job-runner`: lifecycle, stagger (fake clock), packet log, dry-run, no-interface handling. | FR-003.4, FR-003.5, FR-003.6, FR-003.7; NFR-02 | AC-003-04, AC-003-12, AC-003-13, AC-003-16; **faults**: send error on one interface, interface vanishes mid-job, DB busy | — |
+| [x] M3-T09 | Verification loop via Prober port; restart recovery. | FR-003.5; NFR-02 | AC-003-11, AC-003-17 | — |
+| [x] M3-T10 | Wake/jobs/packets routes. | FR-003.3, FR-003.6, FR-009 | 409/422/429 paths [API] | — |
 | [ ] M3-T11 | Web: wake buttons → preview summary → confirmation dialog; advanced options (per-job stagger). | FR-003.3, FR-003.4 | component tests | — |
 | [ ] M3-T12 | Web: job progress drawer, jobs history, job detail + packet log. | FR-009, FR-003.6 | component tests | — |
 
@@ -118,7 +118,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | ID | Task | Refs | Tests | Done when |
 |---|---|---|---|---|
 | [ ] M4-T01 | `domain/status.ts` state machine (debounce, ever_online, desconhecido). | FR-004.1; ADR-014 | AC-004-01, AC-004-02, AC-004-03, AC-004-04, AC-004-05, AC-004-11, AC-004-12 | — |
-| [ ] M4-T02 | `adapters/tcp-prober` (timeout, refused = alive). | FR-004.1 | loopback open/closed ports | — |
+| [x] M4-T02 | `adapters/tcp-prober` (timeout, refused = alive). | FR-004.1 | loopback open/closed ports | — |
 | [ ] M4-T03 | `probe-helper.ps1` + `ps-helper-icmp` adapter (JSON lines, deadlines, restart). | ADR-019 | fake process tests; Windows loopback contract test + 10 000-request soak | — |
 | [ ] M4-T04 | `ping-exe-icmp` fallback + composite prober switch rule. | ADR-019 | localized output fixtures (pt-BR, en-US); switch after 3 restarts in 5 min | — |
 | [ ] M4-T05 | `probe-queue` with priorities and concurrency. | FR-004.2 | AC-004-13 | — |

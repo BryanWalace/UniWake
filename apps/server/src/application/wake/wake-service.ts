@@ -1,0 +1,189 @@
+/**
+ * Wake actions (FR-003.3, spec §4). The server resolves the target (SR-01), enforces the
+ * large-action guard (SR-10) and active-job exclusion (SR-11), rate-limits manual wakes
+ * (FR-003.8), records the job + audit atomically and hands it to the runner.
+ */
+import { type WakePreview, type WakeRequestParams, type WakeTarget } from '@uniwake/shared';
+import {
+  type DeviceSnap,
+  needsConfirmation,
+  resolveWake,
+  type Resolution,
+} from '../../domain/scope';
+import type { Actor, AuditService } from '../audit/audit-service';
+import { AppError } from '../errors';
+import type { Clock } from '../ports';
+import type { KeyedLimiter } from '../rate-limit';
+import type { RoomsRepo } from '../rooms/rooms-service';
+import type { SettingsService } from '../settings/settings-service';
+import type { TagsRepo } from '../tags/tags-service';
+import type { JobRunner, RunOptions } from './job-runner';
+import type { JobSource, JobsRepo, StoredJob } from './types';
+
+export interface WakeServiceDeps {
+  snapshot: () => DeviceSnap[];
+  rooms: RoomsRepo;
+  tags: TagsRepo;
+  jobs: JobsRepo;
+  settings: SettingsService;
+  audit: AuditService;
+  clock: Clock;
+  runner: JobRunner;
+  limiter: KeyedLimiter;
+  transaction: <T>(fn: () => T) => T;
+  /** Demo mode forces dry-run (constitution §2.5). */
+  forceDryRun?: boolean;
+}
+
+export interface StartOptions extends RunOptions {
+  source?: JobSource;
+  scheduleRunId?: number | null;
+  /** Schedules were confirmed when saved (SR-10). */
+  preConfirmed?: boolean;
+}
+
+export interface StartResult {
+  jobId: number;
+  count: number;
+  excluded: WakePreview['excluded'];
+}
+
+export class WakeService {
+  constructor(private readonly d: WakeServiceDeps) {}
+
+  private resolve(req: Pick<WakeRequestParams, 'target' | 'onlyOffline'>): Resolution {
+    const res = resolveWake(req, this.d.snapshot(), this.d.jobs.activeDeviceJobs());
+    if (res.unknownIds.length > 0) {
+      throw new AppError(
+        'DEVICE_NOT_FOUND',
+        { ids: res.unknownIds.join(', ') },
+        { unknownIds: res.unknownIds },
+      );
+    }
+    return res;
+  }
+
+  private roomsView(res: Resolution): WakePreview['rooms'] {
+    const names = new Map(this.d.rooms.list().map((r) => [r.id, r.name]));
+    return res.rooms.map((r) => ({
+      roomId: r.roomId,
+      name: r.roomId === null ? 'Sem sala' : (names.get(r.roomId) ?? `Sala ${r.roomId}`),
+      count: r.count,
+    }));
+  }
+
+  preview(req: WakeRequestParams): WakePreview {
+    const res = this.resolve(req);
+    return {
+      count: res.devices.length,
+      rooms: this.roomsView(res),
+      excluded: res.excluded,
+      needsConfirmation: needsConfirmation(
+        req.target,
+        res,
+        this.d.settings.get('wake.confirmThreshold'),
+      ),
+    };
+  }
+
+  /** Human label for history and audit, e.g. "sala Lab 3", "etiqueta professor", "todos". */
+  label(target: WakeTarget, res: Resolution): string {
+    const roomNames = new Map(this.d.rooms.list().map((r) => [r.id, r.name]));
+    switch (target.type) {
+      case 'all':
+        return 'todos';
+      case 'rooms': {
+        const names = target.roomIds.map((id) => roomNames.get(id) ?? `#${id}`);
+        if (target.includeNoRoom) names.push('Sem sala');
+        return `${names.length === 1 ? 'sala' : 'salas'} ${names.join(', ')}`;
+      }
+      case 'tags': {
+        const tagNames = new Map(this.d.tags.list().map((t) => [t.id, t.name]));
+        const names = target.tagIds.map((id) => tagNames.get(id) ?? `#${id}`);
+        return `${names.length === 1 ? 'etiqueta' : 'etiquetas'} ${names.join(', ')}`;
+      }
+      case 'devices':
+        return res.devices.length === 1 && target.deviceIds.length === 1
+          ? res.devices[0]!.name
+          : `${target.deviceIds.length} dispositivos`;
+    }
+  }
+
+  start(req: WakeRequestParams, actor: Actor, opts: StartOptions = {}): StartResult {
+    const source = opts.source ?? 'manual';
+    if (source === 'manual' && actor.id !== null && !this.d.limiter.hit(`wake:${actor.id}`)) {
+      throw new AppError('RATE_LIMITED');
+    }
+    const { jobId, res } = this.d.transaction(() => {
+      const res = this.resolve(req);
+      if (res.devices.length === 0) {
+        const running = [
+          ...new Set(res.excluded.filter((e) => e.reason === 'in_active_job').map((e) => e.jobId)),
+        ];
+        if (running.length > 0) throw new AppError('WAKE_ALREADY_RUNNING', {}, { jobIds: running });
+        throw new AppError('WAKE_TARGET_EMPTY', {}, { excluded: res.excluded });
+      }
+      if (
+        !opts.preConfirmed &&
+        needsConfirmation(req.target, res, this.d.settings.get('wake.confirmThreshold')) &&
+        req.confirm?.count !== res.devices.length
+      ) {
+        throw new AppError(
+          'CONFIRMATION_REQUIRED',
+          { count: res.devices.length },
+          { count: res.devices.length, rooms: this.roomsView(res) },
+        );
+      }
+      const targetLabel = this.label(req.target, res);
+      const dryRun = this.d.forceDryRun === true || this.d.settings.get('wake.dryRun');
+      const jobId = this.d.jobs.create({
+        source,
+        scheduleRunId: opts.scheduleRunId ?? null,
+        requestedBy: actor.id,
+        target: req.target,
+        targetLabel,
+        onlyOffline: req.onlyOffline,
+        dryRun,
+        stagger: req.stagger ?? null,
+        createdAt: this.d.clock.now(),
+        devices: res.devices.map((d) => ({
+          deviceId: d.id,
+          mac: d.mac,
+          roomId: d.roomId,
+          result: d.status === 'online' ? 'ja_estava_ligado' : 'aguardando',
+        })),
+        excludedCount: res.excluded.length,
+      });
+      this.d.audit.record({
+        actor,
+        action: 'wake.start',
+        target: targetLabel,
+        details: {
+          jobId,
+          count: res.devices.length,
+          excluded: res.excluded.length,
+          dryRun,
+          source,
+        },
+      });
+      return { jobId, res };
+    });
+    this.d.runner.start(jobId, opts);
+    return { jobId, count: res.devices.length, excluded: res.excluded };
+  }
+
+  job(id: number): { job: StoredJob; devices: ReturnType<JobsRepo['devices']> } {
+    const job = this.d.jobs.get(id);
+    if (!job) throw new AppError('NOT_FOUND');
+    return { job, devices: this.d.jobs.devices(id) };
+  }
+
+  jobs(limit: number, offset: number) {
+    return this.d.jobs.list(Math.min(limit, 200), offset);
+  }
+
+  packets(jobId: number, limit = 5000) {
+    this.job(jobId);
+    return this.d.jobs.packets(jobId, limit);
+  }
+}

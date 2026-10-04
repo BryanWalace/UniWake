@@ -9,6 +9,7 @@ import type { DevicesService } from '../application/devices/devices-service';
 import type { RoomsService } from '../application/rooms/rooms-service';
 import type { SettingsService } from '../application/settings/settings-service';
 import type { TagsService } from '../application/tags/tags-service';
+import type { WakeService } from '../application/wake/wake-service';
 
 export interface HttpServices {
   auth: AuthService;
@@ -18,4 +19,5 @@ export interface HttpServices {
   tags: TagsService;
   devices: DevicesService;
   csv: CsvImportService;
+  wake: WakeService;
 }

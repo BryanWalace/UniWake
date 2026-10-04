@@ -9,6 +9,7 @@ import { SESSION_COOKIE } from '../../src/http/session-auth';
 import { createServices, type Services } from '../../src/services';
 import { FakeClock } from '../fakes/fake-clock';
 import { T0, testDb } from './db';
+import { type FakePorts, fakePorts } from './ports';
 
 export const TEST_PASSWORD = 'senha-de-teste-123';
 
@@ -16,6 +17,7 @@ export interface ApiHarness {
   app: FastifyInstance;
   services: Services;
   clock: FakeClock;
+  ports: FakePorts;
   createUser(username: string, role: Role, password?: string): Promise<number>;
   login(username: string, password?: string): Promise<string>;
   /** Creates (once) and logs in a user of that role; returns the Cookie header value. */
@@ -29,7 +31,8 @@ export async function apiHarness(
 ): Promise<ApiHarness> {
   const db = testDb();
   const clock = new FakeClock(T0);
-  const services = createServices(db, clock);
+  const ports = fakePorts(clock);
+  const services = createServices(db, clock, ports);
   const app = await buildApp({
     kind: 'panel',
     hosts: () => new Set<string>(LOOPBACK_HOSTS),
@@ -45,6 +48,7 @@ export async function apiHarness(
     app,
     services,
     clock,
+    ports,
     async createUser(username, role, password = TEST_PASSWORD) {
       return users.create({
         username,

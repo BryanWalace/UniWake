@@ -209,7 +209,9 @@ override, per-job override (manual and schedules). Global cap `wake.maxDevicesPe
 **FR-003.5 Job lifecycle and verification.** States: `pendente → enviando → verificando →
 concluído | interrompido | falhou`. After sending, the job probes its devices directly on the
 priority queue every `wake.verifyInterval` (default 15 s) for `wake.verifyWindow` (default 5 min).
-Per-device result: `acordou`, `já estava ligado`, `não respondeu`, `falha no envio`, `excluído`.
+Per-device result: `acordou`, `já estava ligado`, `não respondeu`, `falha no envio`, `sem IP para verificar`
+(no IP and no resolvable hostname; added in M3), and excluded devices are reported by the
+preview/start response (`excluded`).
 - AC-003-11: Given a device that comes online after 90 s, Then its result is `acordou` with wake
   time ≈ 90 s; the job ends when every device has a final result or the window ends.
 - AC-003-17: Given the hub restarts during `verificando` with 3 min of window left, Then
