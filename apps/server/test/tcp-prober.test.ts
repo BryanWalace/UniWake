@@ -3,16 +3,21 @@ import { once } from 'node:events';
 import { describe, expect, it } from 'vitest';
 import { mapLimit, TcpProber, tcpProbeOne } from '../src/adapters/tcp-prober';
 
-async function listener(): Promise<{ port: number; close: () => void }> {
+// Listeners are closed and awaited before each test ends: a socket still closing when the worker
+// exits has crashed the Windows worker natively (0xC0000409) in the full run.
+async function listener(): Promise<{ port: number; close: () => Promise<void> }> {
   const server = net.createServer((c) => c.end());
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
-  return { port: (server.address() as net.AddressInfo).port, close: () => server.close() };
+  return {
+    port: (server.address() as net.AddressInfo).port,
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  };
 }
 
 async function closedPort(): Promise<number> {
   const l = await listener();
-  l.close();
+  await l.close();
   return l.port;
 }
 
@@ -21,7 +26,7 @@ describe('TCP prober (FR-004.1, ADR-014)', () => {
     const l = await listener();
     const r = await tcpProbeOne('127.0.0.1', l.port, 1000);
     expect(r).toMatchObject({ alive: true, via: 'tcp' });
-    l.close();
+    await l.close();
   });
 
   it('AC-004-03 a refused connection (RST) also means the host is on', async () => {
@@ -53,7 +58,7 @@ describe('TCP prober (FR-004.1, ADR-014)', () => {
       tcpTimeoutMs: 1000,
     });
     expect(none.get('127.0.0.1')?.alive).toBe(false);
-    l.close();
+    await l.close();
   });
 
   it('mapLimit never runs more than the limit at once and keeps order', async () => {

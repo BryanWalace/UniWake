@@ -164,7 +164,12 @@ export class AuthService {
       this.dummyHash ??= hashPassword('uniwake-dummy-password');
       await verifyPassword(input.password, await this.dummyHash);
       this.audit.record({
-        actor: { id: null, label: input.username },
+        // R-M6-02: people sometimes type the password into the user field; a value that cannot be
+        // a username is not written to the audit log.
+        actor: {
+          id: null,
+          label: /^[a-z0-9._-]{1,32}$/.test(input.username) ? input.username : '(nome inválido)',
+        },
         action: 'auth.login',
         result: 'denied',
         sourceIp: ctx.ip,

@@ -84,10 +84,12 @@ describe('audit (FR-006.5)', () => {
 
   it('exports CSV with local times, a BOM and neutralized formulas', async () => {
     const { h, cookie } = await setup();
-    await h.inject({
-      method: 'POST',
-      url: '/api/auth/login',
-      payload: { username: '=cmd|calc', password: 'nao-sei-nao-1' },
+    // Logins no longer store such values (R-M6-02); the export must neutralize any stored cell.
+    h.services.audit.record({
+      actor: { id: null, label: '=cmd|calc' },
+      action: 'auth.login',
+      result: 'denied',
+      sourceIp: '127.0.0.1',
     });
     const r = await h.inject({ url: '/api/audit/export.csv?result=denied', cookie });
     expect(r.statusCode).toBe(200);

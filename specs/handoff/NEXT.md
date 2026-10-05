@@ -1,31 +1,29 @@
 # NEXT — handoff
 
-Updated: 2026-10-04 · Mode: single-agent orchestrator (`.agents/06-orchestrator.md`)
+Updated: 2026-10-05 · Mode: single-agent orchestrator (`.agents/06-orchestrator.md`)
 
 ## Current state
-- Phases 0–3 DONE. Phase 4: **M1–M5 DONE** (reviews in `specs/reviews/M1-*` … `M5-*`).
-- `npm run verify` green: ≈495 unit/integration tests (run in UTC by default, like CI), then
-  `test:perf` (wall-clock budgets, sequential, uninstrumented), check:deps, check:trace (reads
-  `e2e/*.spec.ts` too). Playwright 15/15 (`npm run e2e`, unseeded demo hub). CI green.
-- M5 delivered: `domain/schedule.ts` (occurrences, DST, exceptions, run decisions); schedules +
-  exceptions + execution log + pause APIs; `Scheduler` (15 s tick, claim-then-execute, last-tick
-  mark, crash recovery); morning-result notices + ack; demo seed with schedules; web schedules
-  page/form/target picker, holidays, pause banner/dialog, execution log in /historico, morning
-  card on the dashboard.
+- Phases 0–3 DONE. Phase 4: **M1–M6 DONE** (reviews in `specs/reviews/M1-*` … `M6-*`).
+- `npm run verify` green: ≈560 unit/integration tests (UTC by default, like CI), then `test:perf`
+  (sequential), check:deps, check:trace (reads `e2e/*.spec.ts` too). Playwright 18/18 incl. the
+  axe sweep (`npm run e2e`, unseeded demo hub). CI green.
+- M6 delivered: password policy, login backoff + per-IP limit, users API/page (LAST_ADMIN),
+  permission matrix test, audit viewer + CSV, settings admin (DB keys + config.json bootstrap keys,
+  `requiresRestart`), LAN HTTPS listener (`helper/` cert script, PanelCertificateStore), log viewer,
+  health service/page (HostChecks/TimeCheck ports), backups + restore (swap at start, exit 75),
+  GlobalBanners on every page.
 
-## Next: M6 — Auth completion, roles, audit, settings, health, backups
-Start at `M6-T01`. Notes:
-- `AuthService` already has login backoff pieces (`recordLoginFailure`, `LOGIN_THROTTLED`); check
-  what M1 delivered before adding FR-006.3 rules.
-- Route-auth registry exists (`http/route-auth.ts`, `test/route-authz.test.ts`); M6-T03 turns it
-  into the full permission matrix (settings/users/logs/backups = admin).
-- Settings: `SettingsService.update(patch, actorId)` exists; M6-T05 adds the API, audit diff and
-  runtime application (monitor interval, retention, scheduler zone…). R-M5-02: the schedule form
-  should then default to `scheduler.timezone`.
-- Banners: `DemoBanner` and `PauseBanner` live in `RequireAuth`'s Layout; M6-T11 adds dry-run and
-  update-failure banners there.
-- Backups: `openDatabase(path, backupsDir)` and the `backups` table exist (M1); `node:sqlite`
-  backup API or `VACUUM INTO` for online copies.
+## Next: M7 — prepare-target.ps1 and self-enrollment
+Start at `M7-T01`. Notes:
+- The agent listener (ADR-011, plan §6) is separate from the panel; check `hub.ts` for what M1
+  set up (route table must end up with exactly 3 agent routes, M7-T02).
+- Enrollment tokens: store only SHA-256 (like sessions in `auth-service.ts`); value shown once.
+- `KeyedLimiter` (`application/rate-limit.ts`) gives the 10/min per-IP agent limit.
+- Device moves (AC-007-07) raise a 24 h dashboard notice: reuse the notices service from M5.
+- Pester/PSScriptAnalyzer run only in the windows CI job; locally `pwsh` is absent, Windows
+  PowerShell 5.1 is present (check if Pester 3.x ships with it; tests may need Pester 5 via
+  `Install-Module` in CI only). PowerShell files: UTF-8 BOM + CRLF (`scratchpad/fix-bom.cjs`).
+- R-M6-04: document in the README (M8) that `npm run dev` does not restart after a restore.
 
 ## Working conventions
 - Commit via the verify-gated helper (scratchpad `commit-task.sh <TASK|-> <msg>`: prettier → mark
@@ -40,5 +38,5 @@ Start at `M6-T01`. Notes:
   in per request (`h.login('operator-user')`).
 
 ## Files to read first
-`CLAUDE.md`, `specs/tasks.md` (M6), `specs/spec.md` FR-006, FR-011, FR-012, FR-014, FR-016,
-`specs/plan.md` §6, `specs/decisions.md` ADR-012, ADR-026, ADR-027.
+`CLAUDE.md`, `specs/tasks.md` (M7), `specs/spec.md` FR-007, FR-010, `specs/plan.md` §6,
+`specs/decisions.md` ADR-011.

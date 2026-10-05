@@ -97,7 +97,6 @@ export function SchedulesPage({ extra }: { extra?: React.ReactNode }) {
       <ScheduleFormDialog
         open={editing !== null}
         schedule={editing === 'new' || editing === null ? undefined : editing}
-        defaultTimezone={DEFAULT_TZ}
         onClose={() => setEditing(null)}
         onSaved={(s) => {
           setEditing(null);

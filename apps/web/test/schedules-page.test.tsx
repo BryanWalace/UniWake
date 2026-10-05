@@ -110,7 +110,6 @@ describe('schedules page (FR-005.1, FR-005.8)', () => {
       enabled: true,
       weekdays: 31,
       timeLocal: '06:50',
-      timezone: 'America/Sao_Paulo',
       target: { type: 'rooms', roomIds: [3], includeNoRoom: false },
       onlyOffline: false,
       stagger: null,

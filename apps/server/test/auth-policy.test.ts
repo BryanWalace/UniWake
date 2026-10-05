@@ -161,3 +161,23 @@ describe('password change (FR-006.3)', () => {
     expect(JSON.parse(audit!.details)).toEqual({ revokedSessions: 1 });
   });
 });
+
+describe('R-M6-02: login audit privacy', () => {
+  it('a value that cannot be a username (a mistyped password) is not written to the audit log', async () => {
+    const h = await apiHarness();
+    hs.push(h);
+    for (const username of ['ninguem', 'Minha Senha #2026']) {
+      await h.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { username, password: 'qualquer-1234' },
+      });
+    }
+    const labels = h.services.db
+      .all<{ actor_label: string }>(
+        "SELECT actor_label FROM audit_log WHERE action = 'auth.login' ORDER BY id",
+      )
+      .map((r) => r.actor_label);
+    expect(labels).toEqual(['ninguem', '(nome inválido)']);
+  });
+});

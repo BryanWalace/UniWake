@@ -17,7 +17,6 @@ type Field = 'name' | 'weekdays' | 'timeLocal' | 'timezone' | 'target' | 'stagge
 interface Props {
   open: boolean;
   schedule?: Schedule | undefined;
-  defaultTimezone: string;
   onClose: () => void;
   onSaved: (s: Schedule) => void;
 }
@@ -28,12 +27,13 @@ export function ScheduleFormDialog(props: Props) {
   return <ScheduleFormBody key={props.schedule?.id ?? 'new'} {...props} />;
 }
 
-function ScheduleFormBody({ schedule, defaultTimezone, onClose, onSaved }: Props) {
+function ScheduleFormBody({ schedule, onClose, onSaved }: Props) {
   const save = useSaveSchedule();
   const [name, setName] = useState(schedule?.name ?? '');
   const [weekdays, setWeekdays] = useState(schedule?.weekdays ?? 31);
   const [timeLocal, setTimeLocal] = useState(schedule?.timeLocal ?? '06:50');
-  const [timezone, setTimezone] = useState(schedule?.timezone ?? defaultTimezone);
+  // '' = the hub's zone (scheduler.timezone), applied by the server (R-M6-01).
+  const [timezone, setTimezone] = useState(schedule?.timezone ?? '');
   const [target, setTarget] = useState<WakeTarget>(
     schedule?.target ?? { type: 'rooms', roomIds: [], includeNoRoom: false },
   );
@@ -48,9 +48,10 @@ function ScheduleFormBody({ schedule, defaultTimezone, onClose, onSaved }: Props
   /** SR-10: the server asked to confirm this many machines. */
   const [confirmCount, setConfirmCount] = useState<number | null>(null);
 
-  const zones = TIMEZONES.includes(timezone as (typeof TIMEZONES)[number])
-    ? TIMEZONES
-    : [timezone, ...TIMEZONES];
+  const zones =
+    timezone === '' || TIMEZONES.includes(timezone as (typeof TIMEZONES)[number])
+      ? TIMEZONES
+      : [timezone, ...TIMEZONES];
 
   async function submit(confirm?: number) {
     setErrors({});
@@ -64,7 +65,7 @@ function ScheduleFormBody({ schedule, defaultTimezone, onClose, onSaved }: Props
       enabled,
       weekdays,
       timeLocal,
-      timezone,
+      ...(timezone !== '' ? { timezone } : {}),
       target,
       onlyOffline,
       stagger,
@@ -185,6 +186,7 @@ function ScheduleFormBody({ schedule, defaultTimezone, onClose, onSaved }: Props
               value={timezone}
               onChange={(e) => setTimezone(e.target.value)}
             >
+              <option value="">Fuso do UniWake (padrão)</option>
               {zones.map((z) => (
                 <option key={z} value={z}>
                   {z.replace('America/', '').replace('_', ' ')}

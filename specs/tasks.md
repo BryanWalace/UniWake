@@ -194,6 +194,8 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M6-F2 | MINOR: after the clock jumped back, a login failure stamped in the "future" kept the account locked until the clock caught up. Such a failure no longer blocks. | FR-006.3 | breakit clock probe | — |
 | [x] M6-F3 | MINOR: two backups in the same second (double click) collided on the file name and the second failed with a 500. Names get a suffix. | FR-014 | breakit double-backup probe | — |
 | [x] M6-F4 | MINOR: a restore whose backup file vanished or broke before the restart was silently dropped. It is audited as failed and a dashboard notice explains it. | FR-014 | breakit vanished-backup probe | — |
+| [x] M6-R | Code review → `specs/reviews/M6-review.md` (R-M6-01 hub zone default, R-M6-02 login audit privacy fixed). | §9 DoD | auth-policy, schedules-page tests | no open CRITICAL/MAJOR |
+| [x] M6-A | Architect conformance → `specs/reviews/M6-architect.md`. | phase 4 | — | M7 may start |
 
 ## M7 — prepare-target.ps1 and self-enrollment
 | ID | Task | Refs | Tests | Done when |
