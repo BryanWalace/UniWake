@@ -6,7 +6,7 @@ import { authRoutes } from './routes/auth';
 import { dashboardRoutes } from './routes/dashboard';
 import { deviceRoutes } from './routes/devices';
 import { eventsRoutes } from './routes/events';
-import { healthRoutes } from './routes/health';
+import { healthDetailRoutes, healthRoutes } from './routes/health';
 import { logRoutes } from './routes/logs';
 import { roomRoutes } from './routes/rooms';
 import { scheduleRoutes } from './routes/schedules';
@@ -18,7 +18,8 @@ import { registerSessionAuth } from './session-auth';
 
 export async function registerPanelRoutes(app: FastifyInstance, s: HttpServices): Promise<void> {
   await registerSessionAuth(app, s.auth);
-  healthRoutes(app);
+  healthRoutes(app, () => s.health.status());
+  healthDetailRoutes(app, s);
   authRoutes(app, s);
   roomRoutes(app, s);
   tagRoutes(app, s);

@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import { createFileLogger } from './adapters/logger';
 import { JsonConfigFile } from './adapters/config-file';
+import type { HostChecks, TimeCheck } from './application/health/health-service';
 import { LogFileReader } from './adapters/log-reader';
 import { type PanelCertificate, PanelCertificateStore } from './adapters/panel-certificate';
 import { OsDnsResolver } from './adapters/dns-resolver';
@@ -58,6 +59,9 @@ export interface HubOptions {
   helperPath?: string | null;
   /** new-panel-cert.ps1 location (LAN HTTPS certificate, ADR-026). */
   certScriptPath?: string | null;
+  /** Health checks that leave the process (main.ts on a real install); none in tests. */
+  hostChecks?: HostChecks | null;
+  timeCheck?: TimeCheck | null;
   /** Certificate override (tests): skips the store. */
   panelCertificate?: () => Promise<PanelCertificate>;
   /** Port overrides (tests); defaults to the real adapters. */
@@ -180,6 +184,9 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
           }),
     {
       demo: config.demo,
+      hostChecks: opts.hostChecks ?? null,
+      timeCheck: opts.timeCheck ?? null,
+      version: APP_VERSION,
       configFile: opts.ports ? null : new JsonConfigFile(paths.config),
       running: {
         panelPort: config.panelPort,
@@ -313,6 +320,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       services.monitor.start();
       services.dashboard.start();
       services.retention.start();
+      services.health.start();
       logger.info(
         { version: APP_VERSION, ...hub.addresses(), demo: config.demo },
         'UniWake hub started',
@@ -320,6 +328,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
     },
     async stop() {
       services.scheduler.stop();
+      services.health.stop();
       services.runner.stop();
       services.dashboard.stop();
       await services.retention.stop();

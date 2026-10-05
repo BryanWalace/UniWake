@@ -333,3 +333,61 @@ describe('logs (FR-016)', () => {
     expect(calls.calls.some((c) => c.path === '/api/logs')).toBe(true);
   });
 });
+
+describe('health page (FR-012)', () => {
+  const details = (over: Record<string, unknown> = {}) => ({
+    status: 'degraded',
+    version: '1.0.0',
+    startedAt: 0,
+    uptimeMs: 26 * 3_600_000,
+    dbSizeBytes: 3 * 1024 * 1024,
+    lastBackupAt: null,
+    scheduler: {
+      lastTickAt: new Date(2026, 9, 5, 6, 0).getTime(),
+      stalled: true,
+      paused: false,
+      nextRun: null,
+    },
+    monitor: { lastSweepAt: null, durationMs: null, stalled: false },
+    clock: { skewMs: 5 * 60_000, checkedAt: 1 },
+    host: {
+      sleepOnAc: true,
+      pendingReboot: false,
+      activeHours: { start: 8, end: 17 },
+      checkedAt: 1,
+    },
+    warnings: [
+      {
+        code: 'scheduler_stalled',
+        severity: 'error',
+        message: 'Agendador parado: nenhuma verificação nos últimos 2 minutos.',
+      },
+      {
+        code: 'clock_skew',
+        severity: 'warning',
+        message: 'O relógio deste computador está 5 min atrasado.',
+      },
+    ],
+    ...over,
+  });
+
+  it('AC-012-01 / AC-012-03 in the UI: stalled scheduler in red, clock warning, re-check on demand', async () => {
+    const calls = loggedInApi().on('GET', '/api/health/details', { body: details() });
+    const user = userEvent.setup();
+    renderApp('/saude');
+    expect(await screen.findByText('Com problemas')).toBeInTheDocument();
+    const stalled = screen.getByText('Agendador parado');
+    expect(stalled).toHaveClass('text-red-800');
+    const warnings = screen.getByRole('list', { name: 'Avisos' });
+    expect(warnings).toHaveTextContent('5 min atrasado');
+    expect(screen.getByText('1 d 2 h')).toBeInTheDocument();
+    expect(screen.getByText('3.0 MB')).toBeInTheDocument();
+    expect(screen.getByText('pode suspender')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Verificar de novo' }));
+    await waitFor(() =>
+      expect(calls.calls.some((c) => c.path === '/api/health/details' && c.method === 'GET')).toBe(
+        true,
+      ),
+    );
+  });
+});

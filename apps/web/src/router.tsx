@@ -1,6 +1,7 @@
 import type { RouteObject } from 'react-router';
 import { RequireAuth } from './auth/auth';
 import { AuditPage } from './features/admin/AuditPage';
+import { HealthPage } from './features/admin/HealthPage';
 import { LogsPage } from './features/admin/LogsPage';
 import { SettingsPage } from './features/admin/SettingsPage';
 import { UsersPage } from './features/admin/UsersPage';
@@ -39,7 +40,7 @@ export const routes: RouteObject[] = [
       { path: 'usuarios', element: <UsersPage /> },
       { path: 'auditoria', element: <AuditPage /> },
       { path: 'logs', element: <LogsPage /> },
-      { path: 'saude', element: <Placeholder title={t.nav.health} /> },
+      { path: 'saude', element: <HealthPage /> },
       { path: '*', element: <NotFound /> },
     ],
   },

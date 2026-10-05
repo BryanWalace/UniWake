@@ -3,6 +3,9 @@
  *   node server.mjs [--demo] [--data-dir <dir>] [--version]
  */
 import { readFileSync } from 'node:fs';
+import { GitHubTimeCheck } from './adapters/github-time';
+import { NodeProcessRunner } from './adapters/process-runner';
+import { WindowsHostChecks } from './adapters/windows-host';
 import { ConfigError, dataPaths, resolveConfig } from './config';
 import { createHub, EXIT_CONFIG_ERROR, HubStartError, resolveHelperPath } from './hub';
 import { resolveWebDir } from './http/static';
@@ -63,6 +66,14 @@ export async function main(argv: readonly string[]): Promise<number> {
       webDir: resolveWebDir(env, import.meta.dirname),
       helperPath: resolveHelperPath(import.meta.dirname),
       certScriptPath: resolveHelperPath(import.meta.dirname, 'new-panel-cert.ps1'),
+      // Real health checks only for a real hub (never in demo mode or tests).
+      ...(config.demo
+        ? {}
+        : {
+            timeCheck: new GitHubTimeCheck(),
+            hostChecks:
+              process.platform === 'win32' ? new WindowsHostChecks(new NodeProcessRunner()) : null,
+          }),
     });
     await hub.start();
 

@@ -10,6 +10,7 @@ import type { CsvImportService } from '../application/devices/csv-import-service
 import type { DevicesService } from '../application/devices/devices-service';
 import type { EventsBus } from '../application/events-bus';
 import type { Clock } from '../application/ports';
+import type { HealthService } from '../application/health/health-service';
 import type { NetworkPreviewService } from '../application/network/network-preview';
 import type { LogSource } from '../application/ports';
 import type { NoticesService } from '../application/notices/notices-service';
@@ -39,6 +40,7 @@ export interface HttpServices {
   users: UsersService;
   settingsAdmin: SettingsAdminService;
   network: NetworkPreviewService;
+  health: HealthService;
   /** Hub only: the log viewer source (FR-016). */
   logs?: LogSource;
   /** Present on the hub: stores an uploaded PFX for LAN HTTPS (ADR-012). */

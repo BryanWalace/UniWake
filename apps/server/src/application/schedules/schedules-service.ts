@@ -131,6 +131,21 @@ export class SchedulesService {
     return this.view(r, target, this.d.describeTargets([target])[0]!, this.d.repo.exceptions());
   }
 
+  /** The earliest next run over every enabled schedule (health page). */
+  nextRunOverall(): { scheduleName: string; at: number } | null {
+    const exceptions = this.d.repo.exceptions();
+    let best: { scheduleName: string; at: number } | null = null;
+    for (const r of this.d.repo.list()) {
+      if (!r.enabled) continue;
+      const next = nextOccurrences(rule(r), this.d.clock.now(), 1, (day) =>
+        Boolean(exceptionFor(day, exceptions, r.id)),
+      )[0];
+      if (next && (best === null || next.at < best.at))
+        best = { scheduleName: r.name, at: next.at };
+    }
+    return best;
+  }
+
   /** The next runs, skipping exception days (AC-005-01). */
   nextRuns(id: number, count = 5): NextRun[] {
     const r = this.record(id);

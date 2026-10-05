@@ -8,6 +8,11 @@ import { AuthService } from './application/auth/auth-service';
 import { UsersService } from './application/auth/users-service';
 import { CsvImportService } from './application/devices/csv-import-service';
 import { DashboardService } from './application/dashboard/dashboard-service';
+import {
+  HealthService,
+  type HostChecks,
+  type TimeCheck,
+} from './application/health/health-service';
 import { NetworkPreviewService } from './application/network/network-preview';
 import { NoticesService } from './application/notices/notices-service';
 import { DevicesService } from './application/devices/devices-service';
@@ -72,6 +77,10 @@ export interface ServiceOptions {
   configFile?: ConfigFileStore | null;
   /** Bootstrap values the process started with. */
   running?: BootstrapValues;
+  /** Health checks that leave the process (hub on Windows / with network); absent in tests. */
+  hostChecks?: HostChecks | null;
+  timeCheck?: TimeCheck | null;
+  version?: string;
 }
 
 export interface Services extends HttpServices {
@@ -245,6 +254,34 @@ export function createServices(
     running: opts.running ?? { panelPort: 47100, agentPort: 47101, logLevel: 'info' },
   });
 
+  const health = new HealthService({
+    clock,
+    logger: ports.logger.child({ module: 'health' }),
+    version: opts.version ?? '0.0.0-dev',
+    startedAt: clock.now(),
+    dbOk: () => {
+      try {
+        db.get('SELECT 1 AS ok');
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    dbSizeBytes: () => {
+      const pages = db.pragma<number>('page_count');
+      const size = db.pragma<number>('page_size');
+      return typeof pages === 'number' && typeof size === 'number' ? pages * size : null;
+    },
+    lastBackupAt: () =>
+      db.get<{ t: number | null }>('SELECT MAX(created_at) AS t FROM backups')?.t ?? null,
+    schedulerLastTick: () => schedulerRepo.lastTick(),
+    schedulerPaused: () => scheduler.pauseState() !== null,
+    nextRun: () => schedules.nextRunOverall(),
+    lastSweep: () => monitor.lastSweep,
+    monitorIntervalMs: () => settings.get('monitor.intervalSeconds') * 1000,
+    host: opts.hostChecks ?? null,
+    time: opts.timeCheck ?? null,
+  });
   const network = new NetworkPreviewService({
     interfaces: ports.interfaces,
     settings,
@@ -274,5 +311,6 @@ export function createServices(
     users,
     settingsAdmin,
     network,
+    health,
   };
 }
