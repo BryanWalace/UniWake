@@ -21,6 +21,7 @@ const SCHEDULE: Schedule = {
   confirmedCount: null,
   targetCount: 30,
   emptyTarget: false,
+  needsReconfirm: false,
   nextRun: new Date(2026, 9, 6, 6, 50).getTime(), // local time: tests run in any zone
   createdAt: 0,
   updatedAt: 0,
@@ -162,5 +163,15 @@ describe('schedules page (FR-005.1, FR-005.8)', () => {
       within(await screen.findByRole('dialog')).getByRole('button', { name: 'Excluir' }),
     );
     await waitFor(() => expect(calls.calls.some((c) => c.method === 'DELETE')).toBe(true));
+  });
+});
+
+describe('R-M5-01: a target that outgrew its confirmation', () => {
+  it('asks for a review in the list', async () => {
+    api([{ ...SCHEDULE, needsReconfirm: true, targetCount: 120, confirmedCount: 45 }]);
+    renderApp('/agendamentos');
+    expect(
+      await screen.findByText(/O alvo cresceu: agora liga 120 máquinas \(confirmado para 45\)/),
+    ).toBeInTheDocument();
   });
 });

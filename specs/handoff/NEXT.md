@@ -3,41 +3,42 @@
 Updated: 2026-10-04 · Mode: single-agent orchestrator (`.agents/06-orchestrator.md`)
 
 ## Current state
-- Phases 0–3 DONE. Phase 4: **M1, M2, M3, M4 DONE** (reviews in `specs/reviews/M1-*` … `M4-*`).
-- `npm run verify` green: ≈431 unit/integration tests, then `test:perf` (wall-clock budgets,
-  sequential, uninstrumented), check:deps, check:trace (now also reads `e2e/*.spec.ts`).
-  Playwright 15/15 (`npm run e2e`, unseeded demo hub, simulated boots 1–3 s). CI green.
-- M4 delivered: status state machine; TCP + PowerShell ICMP helper (ready handshake) + `ping.exe`
-  fallback; `ProbeQueue`; `MonitorService` (sweeps, DNS cache/drift, verification counts as a
-  probe, fast abortable stop); SSE `/api/events`; dashboard/uptime/history APIs + nightly rollup;
-  retention jobs; simulated LAN + demo seed; web dashboard, device page, realtime provider (idle
-  header, hidden-tab release), Ctrl+K palette; E2E for AC-004-08/09/15/17, AC-009-01, NFR-01.
+- Phases 0–3 DONE. Phase 4: **M1–M5 DONE** (reviews in `specs/reviews/M1-*` … `M5-*`).
+- `npm run verify` green: ≈495 unit/integration tests (run in UTC by default, like CI), then
+  `test:perf` (wall-clock budgets, sequential, uninstrumented), check:deps, check:trace (reads
+  `e2e/*.spec.ts` too). Playwright 15/15 (`npm run e2e`, unseeded demo hub). CI green.
+- M5 delivered: `domain/schedule.ts` (occurrences, DST, exceptions, run decisions); schedules +
+  exceptions + execution log + pause APIs; `Scheduler` (15 s tick, claim-then-execute, last-tick
+  mark, crash recovery); morning-result notices + ack; demo seed with schedules; web schedules
+  page/form/target picker, holidays, pause banner/dialog, execution log in /historico, morning
+  card on the dashboard.
 
-## Next: M5 — Scheduler (lead: Senior Fullstack)
-Start at `M5-T01` (`domain/schedule.ts`). Notes:
-- Reuse `domain/tz.ts` (`dayStart`, `addDays`, `localDay`, `nextLocalTime`) for occurrences; add
-  the DST rule from ADR-008 (non-existent local times run at the first valid instant; repeated
-  ones once) and test the matrix (AC-005-06).
-- Wake jobs for schedules: `wake.start(req, actor, { source: 'schedule', scheduleRunId,
-  preConfirmed, networkRetryUntil })` already exists; `JobRunner` has `onFinished` for the morning
-  result (FR-013).
-- `notices` table + dashboard notices area exist; `NOTICE_TEXT` in `DashboardPage.tsx` needs the
-  new notice types. SSE already forwards `notice` and `scheduler` events (invalidate dashboard).
-- M5-T07 must extend the demo seed (`application/demo/demo-seed.ts`) with 2 schedules and a past
-  morning-result notice.
-- Scheduler tick must use the injectable `Clock`; the hub stop order is runner → retention →
-  dashboard → monitor → listeners; add the scheduler first.
+## Next: M6 — Auth completion, roles, audit, settings, health, backups
+Start at `M6-T01`. Notes:
+- `AuthService` already has login backoff pieces (`recordLoginFailure`, `LOGIN_THROTTLED`); check
+  what M1 delivered before adding FR-006.3 rules.
+- Route-auth registry exists (`http/route-auth.ts`, `test/route-authz.test.ts`); M6-T03 turns it
+  into the full permission matrix (settings/users/logs/backups = admin).
+- Settings: `SettingsService.update(patch, actorId)` exists; M6-T05 adds the API, audit diff and
+  runtime application (monitor interval, retention, scheduler zone…). R-M5-02: the schedule form
+  should then default to `scheduler.timezone`.
+- Banners: `DemoBanner` and `PauseBanner` live in `RequireAuth`'s Layout; M6-T11 adds dry-run and
+  update-failure banners there.
+- Backups: `openDatabase(path, backupsDir)` and the `backups` table exist (M1); `node:sqlite`
+  backup API or `VACUUM INTO` for online copies.
 
 ## Working conventions
 - Commit via the verify-gated helper (scratchpad `commit-task.sh <TASK|-> <msg>`: prettier → mark
   task → `npm run verify` → commit → push → prints the last CI result; reverts the mark on
   failure). Check that CI line after every push and investigate any failure immediately.
 - Edit with the editor tool or node scripts written to the scratchpad; never put backticks or
-  `${…}` inside bash-quoted node snippets (bash expands them). Build BOMs with
-  `String.fromCharCode(0xfeff)`.
-- Web tests: `findBy*` waits up to 5 s (setup.ts). Wall-clock assertions go in
-  `apps/server/test/perf/*.perf.test.ts`, never in the parallel suite.
+  `${…}` inside bash-quoted node snippets (bash expands them). When a scripted edit fails midway,
+  re-read the file: prettier may have reformatted it.
+- Web fixtures use local-time instants (`new Date(y, m, d, h, mi)`), never `Date.UTC` for values
+  shown as wall-clock text. Wall-clock assertions go in `apps/server/test/perf/*.perf.test.ts`.
+- Sessions idle out after 12 h and expire after 7 d: API tests that move the clock by days log
+  in per request (`h.login('operator-user')`).
 
 ## Files to read first
-`CLAUDE.md`, `specs/tasks.md` (M5), `specs/spec.md` FR-005 + FR-013, `specs/plan.md` §5–6,
-`specs/decisions.md` ADR-008, ADR-027.
+`CLAUDE.md`, `specs/tasks.md` (M6), `specs/spec.md` FR-006, FR-011, FR-012, FR-014, FR-016,
+`specs/plan.md` §6, `specs/decisions.md` ADR-012, ADR-026, ADR-027.

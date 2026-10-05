@@ -58,6 +58,11 @@ export interface Schedule {
   targetCount: number;
   /** FR-005.8 "alvo vazio": the target resolves to nothing. */
   emptyTarget: boolean;
+  /**
+   * R-M5-01: the target now needs confirmation (SR-10) and is larger than what was confirmed at
+   * save time. Runs still happen; the list asks someone to review and save again.
+   */
+  needsReconfirm: boolean;
   /** Next run (UTC ms) after now, skipping exceptions; null when disabled. */
   nextRun: number | null;
   createdAt: number;

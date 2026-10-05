@@ -171,6 +171,8 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M5-F1 | MINOR: a crash after the scheduled wake started but before its run was recorded left the run "falhou (interrompido)" although the job ran. Start-up recovery links the job and marks the run executado/atrasado. | FR-005.7 | breakit crash probe | — |
 | [x] M5-F2 | MINOR: a schedule firing while the same machines were being woken by hand logged "falhou" and pinned a false alarm in the morning card. The run now points at the running job ("já em andamento"). | FR-005.7, FR-013 | breakit parallel-wake probe | — |
 | [x] M5-F3 | MINOR: after a week offline, every day got its own morning card full of lost runs. Lost runs are always logged, but only those of the last 24 h are pinned. | FR-013 | breakit outage probe | — |
+| [x] M5-R | Code review → `specs/reviews/M5-review.md` (R-M5-01 targets outgrowing their confirmation flagged; R-M5-03 fixed; R-M5-02 → M6). | §9 DoD | schedules, schedules-page tests | no open CRITICAL/MAJOR |
+| [x] M5-A | Architect conformance → `specs/reviews/M5-architect.md`. | phase 4 | — | M6 may start |
 
 ## M6 — Auth completion, roles, audit, settings, health, backups
 | ID | Task | Refs | Tests | Done when |

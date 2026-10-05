@@ -157,6 +157,12 @@ function ScheduleRow({
             {s.timezone !== DEFAULT_TZ && ` (${s.timezone})`} · {s.targetLabel}
             {s.onlyOffline && ' · só as desligadas'}
           </p>
+          {s.needsReconfirm && (
+            <p className="mt-1 text-sm font-semibold text-amber-900">
+              O alvo cresceu: agora liga {s.targetCount} máquinas (confirmado para{' '}
+              {s.confirmedCount ?? 0}). Abra Editar e salve para confirmar o novo total.
+            </p>
+          )}
           {s.emptyTarget ? (
             <p className="mt-1 text-sm font-semibold text-red-800">
               Alvo vazio: nenhuma máquina corresponde. Edite o alvo, senão a próxima execução vai

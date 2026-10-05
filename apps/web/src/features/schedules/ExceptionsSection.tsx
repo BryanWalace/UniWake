@@ -52,15 +52,12 @@ export function ExceptionsSection() {
   }
 
   return (
-    <section aria-labelledby="excecoes" className="space-y-3">
+    <section aria-label="Feriados e recessos" className="space-y-3">
       <PageHeader level={2} title="Feriados e recessos" />
       <p className="-mt-3 text-sm text-slate-600">
         Nesses dias os agendamentos não ligam nada; a execução fica registrada como "pulado
         (feriado)".
       </p>
-      <h3 id="excecoes" className="sr-only">
-        Feriados e recessos
-      </h3>
       {exceptions.isPending ? (
         <LoadingState />
       ) : exceptions.isError ? (

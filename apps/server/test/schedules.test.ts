@@ -279,3 +279,29 @@ describe('schedule exceptions (FR-005.2)', () => {
     ]);
   });
 });
+
+describe('R-M5-01: targets that outgrow their confirmation', () => {
+  it('flags needsReconfirm when a confirmed or small target grows past the threshold', async () => {
+    const { h, call, room, mac } = await setup();
+    const small = await call<Schedule>('POST', '/api/schedules', {
+      name: 'Pequeno',
+      weekdays: 31,
+      timeLocal: '06:50',
+      target: { type: 'rooms', roomIds: [room] },
+    });
+    expect(small.body.needsReconfirm).toBe(false);
+    for (let i = 100; i < 145; i++)
+      h.services.devices.create({ name: `N-${i}`, mac: mac(i), roomId: room }, ACTOR);
+    const grown = await call<Schedule>('GET', `/api/schedules/${small.body.id}`);
+    expect(grown.body).toMatchObject({
+      targetCount: 48,
+      confirmedCount: null,
+      needsReconfirm: true,
+    });
+    const saved = await call<Schedule>('PATCH', `/api/schedules/${small.body.id}`, {
+      target: { type: 'rooms', roomIds: [room] },
+      confirm: { count: 48 },
+    });
+    expect(saved.body).toMatchObject({ confirmedCount: 48, needsReconfirm: false });
+  });
+});

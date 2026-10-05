@@ -340,6 +340,7 @@ export class SchedulesService {
       confirmedCount: r.confirmedCount,
       targetCount: summary.count,
       emptyTarget: summary.empty,
+      needsReconfirm: summary.needsConfirmation && summary.count > (r.confirmedCount ?? 0),
       nextRun: next?.at ?? null,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
