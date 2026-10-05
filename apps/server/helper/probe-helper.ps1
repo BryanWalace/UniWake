@@ -12,6 +12,14 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
+# Warm up: the first Ping loads assemblies and compiles code, which can take seconds on a cold
+# machine. Doing it before "ready" keeps that delay out of the first real request's deadline.
+try {
+    $warm = New-Object System.Net.NetworkInformation.Ping
+    [void]$warm.SendPingAsync('127.0.0.1', 1000).Wait(5000)
+    $warm.Dispose()
+} catch { }
+
 # Startup can take seconds on a cold machine; the hub waits for this line before sending work.
 [Console]::Out.WriteLine('{"ready":true}')
 [Console]::Out.Flush()
