@@ -25,3 +25,5 @@ Thumbs.db
 !.vscode/extensions.json
 .dev-data/
 .e2e-data/
+# PowerShell test tools fetched by scripts/test-ps.ps1
+.tools/
