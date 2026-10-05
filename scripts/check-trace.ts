@@ -51,7 +51,7 @@ export function parseTasks(tasks: string): TaskRow[] {
  * after `it(` because Prettier wraps long calls (R-M1-07).
  */
 const TITLE_RE =
-  /\b(?:it|test|describe|It|Describe|Context)\b\s*\(?\s*(['"`])((?:(?!\1)[^\n])*)\1/g;
+  /\b(?:it|test|describe|It|Describe|Context)\b(?:\.\w+(?:\([^)\n]*\))?)*\s*\(?\s*(['"`])((?:(?!\1)[^\n])*)\1/g;
 
 export function acsInTestTitles(source: string): Set<string> {
   const found = new Set<string>();

@@ -36,4 +36,6 @@ export interface HttpServices {
   notices: NoticesService;
   users: UsersService;
   settingsAdmin: SettingsAdminService;
+  /** Present on the hub: stores an uploaded PFX for LAN HTTPS (ADR-012). */
+  panelCertificates?: { save(pfx: Buffer, passphrase: string): void };
 }

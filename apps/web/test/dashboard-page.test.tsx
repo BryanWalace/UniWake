@@ -259,3 +259,26 @@ describe('lastActionText', () => {
     );
   });
 });
+
+describe('system notices', () => {
+  it('explains a LAN access failure', async () => {
+    dashApi(
+      dashboard({
+        notices: [
+          {
+            id: 9,
+            type: 'lan_error',
+            createdAt: NOW,
+            data: { message: 'Certificado inválido ou senha incorreta.' },
+          },
+        ],
+      }),
+    );
+    renderApp('/');
+    expect(
+      await screen.findByText(
+        /O acesso ao painel pela rede está ligado, mas não iniciou: Certificado inválido/,
+      ),
+    ).toBeInTheDocument();
+  });
+});

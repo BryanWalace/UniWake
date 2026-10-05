@@ -29,8 +29,10 @@ const SOURCE_TEXT: Record<RoomLastAction['source'], string> = {
   test: 'em teste',
 };
 
-const NOTICE_TEXT: Record<string, string> = {
-  demo: 'Modo demonstração: nenhum pacote real é enviado.',
+const NOTICE_TEXT: Record<string, (data: Record<string, unknown>) => string> = {
+  demo: () => 'Modo demonstração: nenhum pacote real é enviado.',
+  lan_error: (data) =>
+    `O acesso ao painel pela rede está ligado, mas não iniciou: ${typeof data.message === 'string' ? data.message : 'erro desconhecido.'} Corrija em Configurações e reinicie o serviço.`,
 };
 
 /** "Ligada às 06:50 por agendamento — 28/30 acordaram" (FR-004.5). */
@@ -204,7 +206,7 @@ function Notices({ notices }: { notices: DashboardNotice[] }) {
             key={n.id}
             className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
           >
-            {NOTICE_TEXT[n.type] ?? 'Aviso do sistema.'}{' '}
+            {NOTICE_TEXT[n.type]?.(n.data) ?? 'Aviso do sistema.'}{' '}
             <span className="text-amber-800">({formatDateTime(n.createdAt)})</span>
           </p>
         ),

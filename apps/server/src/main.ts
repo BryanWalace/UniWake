@@ -62,6 +62,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       config,
       webDir: resolveWebDir(env, import.meta.dirname),
       helperPath: resolveHelperPath(import.meta.dirname),
+      certScriptPath: resolveHelperPath(import.meta.dirname, 'new-panel-cert.ps1'),
     });
     await hub.start();
 

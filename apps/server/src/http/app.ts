@@ -27,6 +27,8 @@ export interface BuildAppOptions {
   logger?: FastifyBaseLogger;
   hosts: HostPolicy;
   bodyLimit?: number;
+  /** TLS (LAN panel, ADR-012): the listener speaks HTTPS only. */
+  https?: { pfx: Buffer; passphrase: string };
   /**
    * Registers routes and plugins after the core hooks are installed. Route modules call
    * `app.withTypeProvider<ZodTypeProvider>()` for typed request schemas.
@@ -36,6 +38,7 @@ export interface BuildAppOptions {
 
 export async function buildApp(opts: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
+    ...(opts.https ? { https: { pfx: opts.https.pfx, passphrase: opts.https.passphrase } } : {}),
     ...(opts.logger ? { loggerInstance: opts.logger } : { logger: false }),
     logController: new LogController({ disableRequestLogging: true }),
     bodyLimit: opts.bodyLimit ?? 1024 * 1024,

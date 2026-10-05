@@ -55,6 +55,15 @@ describe('check:trace (IMP-030)', () => {
     expect([...acsInTestTitles(src)]).toEqual(['AC-003-05']);
   });
 
+  it('reads titles after call modifiers such as skipIf(...), only and each(...)', () => {
+    const src = [
+      "it.skipIf(!PFX)('AC-006-08: TLS only', async () => {});",
+      "describe.only('AC-006-05 loopback', () => {});",
+      "test.each([1, 2])('AC-004-06 sweep %i', () => {});",
+    ].join('\n');
+    expect([...acsInTestTitles(src)].sort()).toEqual(['AC-004-06', 'AC-006-05', 'AC-006-08']);
+  });
+
   it('passes when done tasks have tests for their automated ACs (manual ACs exempt)', () => {
     const r = checkTrace(SPEC, TASKS, [`it('AC-001-01a smoke', () => {})`]);
     expect(r.errors).toEqual([]);

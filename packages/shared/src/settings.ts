@@ -290,11 +290,14 @@ export const SETTING_DEFS = {
     label: 'Permitir acesso ao painel pela rede (HTTPS)',
     help: 'Desligado = o painel só abre neste computador.',
     input: 'boolean',
+    requiresRestart: true,
   }),
   'panel.lanAddress': def(z.union([z.literal(''), ipv4]), '', {
     group: 'panel',
     label: 'Endereço de rede do painel',
+    help: 'Endereço IPv4 deste computador na rede da faculdade (ex.: 10.0.3.5).',
     input: 'text',
+    requiresRestart: true,
   }),
   // Enrollment
   'enrollment.tokenExpiryHours': def(int(1, 168), 8, {

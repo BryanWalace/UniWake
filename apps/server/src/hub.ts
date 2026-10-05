@@ -3,10 +3,12 @@
  * `main.ts` adds process concerns (CLI, signals, exit codes); tests drive `createHub` directly.
  */
 import { existsSync, mkdirSync } from 'node:fs';
+import { hostname } from 'node:os';
 import { join } from 'node:path';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import { createFileLogger } from './adapters/logger';
 import { JsonConfigFile } from './adapters/config-file';
+import { type PanelCertificate, PanelCertificateStore } from './adapters/panel-certificate';
 import { OsDnsResolver } from './adapters/dns-resolver';
 import { SimulatedNetwork } from './adapters/simulated-network';
 import { seedDemo } from './application/demo/demo-seed';
@@ -53,6 +55,10 @@ export interface HubOptions {
   webDir?: string | null;
   /** probe-helper.ps1 location (Windows ICMP, ADR-019); null = TCP probes only. */
   helperPath?: string | null;
+  /** new-panel-cert.ps1 location (LAN HTTPS certificate, ADR-026). */
+  certScriptPath?: string | null;
+  /** Certificate override (tests): skips the store. */
+  panelCertificate?: () => Promise<PanelCertificate>;
   /** Port overrides (tests); defaults to the real adapters. */
   ports?: ServicePorts;
 }
@@ -64,7 +70,7 @@ export interface Hub {
   readonly agent: FastifyInstance;
   readonly logger: FastifyBaseLogger;
   /** Bound addresses after `start()`. */
-  addresses(): { panel: string; agent: string };
+  addresses(): { panel: string; agent: string; panelLan?: string };
   start(): Promise<void>;
   stop(): Promise<void>;
 }
@@ -89,16 +95,19 @@ function openDatabase(dbPath: string, backupsDir: string): Db {
 }
 
 /** probe-helper.ps1 next to the bundle (installed, plan §9) or in apps/server/helper (source). */
-export function resolveHelperPath(bundleDir: string): string | null {
-  const candidates = [
-    join(bundleDir, 'helper', 'probe-helper.ps1'),
-    join(bundleDir, '..', 'helper', 'probe-helper.ps1'),
-  ];
+export function resolveHelperPath(bundleDir: string, file = 'probe-helper.ps1'): string | null {
+  const candidates = [join(bundleDir, 'helper', file), join(bundleDir, '..', 'helper', file)];
   return candidates.find((c) => existsSync(c)) ?? null;
 }
 
-function panelHosts(): ReadonlySet<string> {
-  return new Set<string>(LOOPBACK_HOSTS);
+/** Loopback always; when LAN access is on, the LAN address and this computer's name too. */
+function panelHosts(lanAddress: string | null): () => ReadonlySet<string> {
+  const hosts = new Set<string>(LOOPBACK_HOSTS);
+  if (lanAddress) {
+    hosts.add(lanAddress);
+    hosts.add(hostname().toLowerCase());
+  }
+  return () => hosts;
 }
 
 export async function createHub(opts: HubOptions): Promise<Hub> {
@@ -179,18 +188,44 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
     },
   );
 
+  // LAN access (FR-006.4, ADR-012): HTTPS only, on its own listener; loopback stays HTTP.
+  const lanAddress =
+    services.settings.get('panel.lanEnabled') && services.settings.get('panel.lanAddress') !== ''
+      ? services.settings.get('panel.lanAddress')
+      : null;
+  const certificates = new PanelCertificateStore(paths.certs, runner, opts.certScriptPath ?? null);
+  services.panelCertificates = certificates;
+  const registerPanel = async (app: FastifyInstance) => {
+    await registerPanelRoutes(app, services);
+    if (opts.webDir) await registerStatic(app, opts.webDir);
+  };
   let panel: FastifyInstance | undefined;
+  let panelLan: FastifyInstance | null = null;
   let agent: FastifyInstance;
   try {
     panel = await buildApp({
       kind: 'panel',
       logger: logger.child({ listener: 'panel' }),
-      hosts: panelHosts,
-      register: async (app) => {
-        await registerPanelRoutes(app, services);
-        if (opts.webDir) await registerStatic(app, opts.webDir);
-      },
+      hosts: panelHosts(lanAddress),
+      register: registerPanel,
     });
+    if (lanAddress) {
+      try {
+        const cert = await (opts.panelCertificate?.() ?? certificates.loadOrCreate(lanAddress));
+        panelLan = await buildApp({
+          kind: 'panel',
+          logger: logger.child({ listener: 'panel-lan' }),
+          hosts: panelHosts(lanAddress),
+          https: cert,
+          register: registerPanel,
+        });
+      } catch (e) {
+        // The local panel must still open: report the problem there instead of not starting.
+        const message = e instanceof Error ? e.message : String(e);
+        logger.error({ err: e }, 'LAN panel access could not start');
+        services.notices.system('lan_error', { message });
+      }
+    }
     agent = await buildApp({
       kind: 'agent',
       logger: logger.child({ listener: 'agent' }),
@@ -201,6 +236,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
   } catch (e) {
     // R-M1-01: release what was opened so the DB file is not left locked.
     await panel?.close();
+    await panelLan?.close();
     db.close();
     await fileLogger?.close();
     throw e;
@@ -234,11 +270,17 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
         const a = app.server.address();
         return a && typeof a === 'object' ? `${a.address}:${a.port}` : '';
       };
-      return { panel: fmt(panel), agent: fmt(agent) };
+      return {
+        panel: fmt(panel),
+        agent: fmt(agent),
+        ...(panelLan ? { panelLan: fmt(panelLan) } : {}),
+      };
     },
     async start() {
       try {
         await listen(panel, 'panel', config.panelBind, config.panelPort);
+        if (panelLan && lanAddress)
+          await listen(panelLan, 'panel (LAN, HTTPS)', lanAddress, config.panelPort);
         await listen(agent, 'agent', config.agentBind, config.agentPort);
       } catch (e) {
         await hub.stop();
@@ -280,7 +322,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       services.dashboard.stop();
       await services.retention.stop();
       await services.monitor.stop();
-      await Promise.allSettled([panel.close(), agent.close()]);
+      await Promise.allSettled([panel.close(), agent.close(), panelLan?.close()]);
       await sender.close();
       icmpHelper?.close();
       db.close();

@@ -65,6 +65,14 @@ export class NoticesService {
     this.d.events.publish({ type: 'notice', id, noticeType: 'ack' });
   }
 
+  /** A system notice such as "LAN access could not start"; one open notice per type. */
+  system(type: string, data: Record<string, unknown>): void {
+    const open = this.d.repo.open(50).find((n) => n.type === type);
+    const id = open ? open.id : this.d.repo.insert(type, data, this.d.clock.now());
+    if (open) this.d.repo.updateData(open.id, data);
+    this.d.events.publish({ type: 'notice', id, noticeType: type });
+  }
+
   /** A scheduled wake reached its final state (JobRunner onFinished). */
   onJobFinished(job: StoredJob): void {
     if (job.source !== 'schedule' || job.scheduleRunId === null) return;
