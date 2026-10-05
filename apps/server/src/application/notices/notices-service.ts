@@ -107,6 +107,9 @@ export class NoticesService {
     status: 'falhou' | 'perdido';
     detail: string | null;
   }): void {
+    // M5-F3: after a long outage (vacation) the log keeps every lost run, but only the last
+    // day's are news worth pinning.
+    if (r.status === 'perdido' && this.d.clock.now() - r.plannedAt > 86_400_000) return;
     this.addRun({ ...r, jobId: null, total: 0, woke: 0, notWoken: [] });
   }
 

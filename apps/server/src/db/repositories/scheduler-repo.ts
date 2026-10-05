@@ -62,9 +62,25 @@ export class SqliteSchedulerRepo implements SchedulerRepo {
     );
   }
 
+  /**
+   * M5-F1: if the wake job did start before the crash, the run is linked to it (on time or late);
+   * only a run without a job is a failure.
+   */
   failStale(before: number): number {
     return this.db.run(
-      "UPDATE schedule_runs SET status = 'falhou', detail = 'interrompido (o serviço reiniciou)' WHERE status = 'executando' AND claimed_at <= ?",
+      `UPDATE schedule_runs SET
+         job_id = (SELECT j.id FROM wake_jobs j WHERE j.schedule_run_id = schedule_runs.id ORDER BY j.id LIMIT 1),
+         status = CASE
+           WHEN NOT EXISTS (SELECT 1 FROM wake_jobs j WHERE j.schedule_run_id = schedule_runs.id) THEN 'falhou'
+           WHEN claimed_at - planned_at > 120000 THEN 'atrasado'
+           ELSE 'executado' END,
+         detail = CASE
+           WHEN NOT EXISTS (SELECT 1 FROM wake_jobs j WHERE j.schedule_run_id = schedule_runs.id)
+             THEN 'interrompido (o serviço reiniciou)'
+           WHEN claimed_at - planned_at > 120000
+             THEN printf('atrasado (%d min)', (claimed_at - planned_at + 30000) / 60000)
+           ELSE NULL END
+       WHERE status = 'executando' AND claimed_at <= ?`,
       [before],
     ).changes;
   }

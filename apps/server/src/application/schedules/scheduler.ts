@@ -212,6 +212,16 @@ export class Scheduler {
       this.d.repo.finish(runId, status, detail, jobId);
       this.d.logger.info({ scheduleId: s.id, runId, jobId, status }, 'scheduled wake started');
     } catch (e) {
+      // M5-F2: someone is already waking these machines (e.g. by hand at 06:49): that job is
+      // this run's result, not a failure for the morning card.
+      const running =
+        e instanceof AppError && e.code === 'WAKE_ALREADY_RUNNING'
+          ? (e.details as { jobIds?: number[] } | undefined)?.jobIds?.[0]
+          : undefined;
+      if (running !== undefined) {
+        this.d.repo.finish(runId, status, `já em andamento (ligação #${running})`, running);
+        return true;
+      }
       const reason = failureDetail(e);
       this.d.repo.finish(runId, 'falhou', reason, null);
       this.d.logger.warn({ scheduleId: s.id, runId, reason }, 'scheduled wake failed');
