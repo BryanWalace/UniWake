@@ -81,7 +81,9 @@ export class BackupService {
       .replace(/[-:]/g, '')
       .replace(/\..*$/, '')
       .replace('T', '-');
-    const file = `uniwake-${stamp}-${kind}.db`;
+    // M6-F3: two backups in the same second (a double click) get distinct names.
+    let file = `uniwake-${stamp}-${kind}.db`;
+    for (let n = 2; this.d.files.exists(file); n++) file = `uniwake-${stamp}-${kind}-${n}.db`;
     const size = this.d.files.snapshot(file);
     const id = this.d.repo.insert({ file, kind, createdAt: at, size });
     if (actor) {

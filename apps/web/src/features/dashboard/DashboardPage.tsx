@@ -31,6 +31,8 @@ const SOURCE_TEXT: Record<RoomLastAction['source'], string> = {
 
 const NOTICE_TEXT: Record<string, (data: Record<string, unknown>) => string> = {
   demo: () => 'Modo demonstração: nenhum pacote real é enviado.',
+  restore_failed: (data) =>
+    `A restauração do backup pedida não aconteceu: ${typeof data.reason === 'string' ? data.reason : 'erro desconhecido'}. O banco atual foi mantido.`,
   lan_error: (data) =>
     `O acesso ao painel pela rede está ligado, mas não iniciou: ${typeof data.message === 'string' ? data.message : 'erro desconhecido.'} Corrija em Configurações e reinicie o serviço.`,
 };

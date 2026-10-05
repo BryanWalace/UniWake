@@ -215,7 +215,20 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
     services.settings.get('panel.lanEnabled') && services.settings.get('panel.lanAddress') !== ''
       ? services.settings.get('panel.lanAddress')
       : null;
-  if (restored) {
+  if (restored?.failed) {
+    services.audit.record({
+      actor: { id: restored.byId, label: restored.by },
+      action: 'backup.restore',
+      target: `backup:${restored.file}`,
+      result: 'error',
+      details: { requestedAt: restored.at, reason: restored.failed },
+    });
+    services.notices.system('restore_failed', { file: restored.file, reason: restored.failed });
+    logger.error(
+      { file: restored.file, reason: restored.failed },
+      'requested restore did not happen',
+    );
+  } else if (restored) {
     services.audit.record({
       actor: { id: restored.byId, label: restored.by },
       action: 'backup.restore',
@@ -311,8 +324,18 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
     async start() {
       try {
         await listen(panel, 'panel', config.panelBind, config.panelPort);
-        if (panelLan && lanAddress)
-          await listen(panelLan, 'panel (LAN, HTTPS)', lanAddress, config.panelPort);
+        if (panelLan && lanAddress) {
+          try {
+            await listen(panelLan, 'panel (LAN, HTTPS)', lanAddress, config.panelPort);
+          } catch (e) {
+            // M6-F1: a wrong LAN address must not take the local panel down with it.
+            const message = e instanceof Error ? e.message : String(e);
+            logger.error({ err: e }, 'LAN panel access could not start');
+            services.notices.system('lan_error', { message });
+            await panelLan.close();
+            panelLan = null;
+          }
+        }
         await listen(agent, 'agent', config.agentBind, config.agentPort);
       } catch (e) {
         await hub.stop();

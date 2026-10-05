@@ -84,6 +84,9 @@ export function loginBackoffMs(failed: number, lastFailedAt: number | null, now:
     return 0;
   }
   const delay = Math.min(MAX_DELAY_MS, BASE_DELAY_MS * 2 ** (failed - FREE_FAILURES));
+  // M6-F2: after the clock went back, a failure "in the future" cannot be timed: do not block on
+  // it (the next failure is stamped with the corrected clock and the backoff resumes from there).
+  if (lastFailedAt > now) return 0;
   return Math.max(0, lastFailedAt + delay - now);
 }
 

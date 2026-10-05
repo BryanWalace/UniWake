@@ -189,6 +189,11 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M6-T10 | Backups: daily/manual/pre-migration, retention, restore + web. | FR-014 | AC-014-01, AC-014-02 | — |
 | [x] M6-T11 | Web: global banners (dry-run/demo, pause, update failure) consistent on all pages. | constitution §8 | component tests | — |
 | [x] M6-T12 | E2E axe sweep: dashboard, room, devices, schedules, settings, login. | NFR-07 | axe [E2E] | — |
+| [x] M6-D | Debug break-it pass → `apps/server/test/breakit-m6.test.ts` (malformed and prototype-polluting bodies on admin endpoints, wrong LAN address, backwards clock vs login backoff, double backups, concurrent username/demotion, restore whose backup vanished; full suite 3×). | tasks §Break-it | 7 probes | findings filed |
+| [x] M6-F1 | MAJOR: a LAN address this computer does not have made the LAN listener fail and the whole hub refuse to start (crash loop, panel unreachable even locally). The local panel now starts and a notice explains the LAN problem. | FR-006.4 | breakit wrong-LAN probe | — |
+| [x] M6-F2 | MINOR: after the clock jumped back, a login failure stamped in the "future" kept the account locked until the clock caught up. Such a failure no longer blocks. | FR-006.3 | breakit clock probe | — |
+| [x] M6-F3 | MINOR: two backups in the same second (double click) collided on the file name and the second failed with a 500. Names get a suffix. | FR-014 | breakit double-backup probe | — |
+| [x] M6-F4 | MINOR: a restore whose backup file vanished or broke before the restart was silently dropped. It is audited as failed and a dashboard notice explains it. | FR-014 | breakit vanished-backup probe | — |
 
 ## M7 — prepare-target.ps1 and self-enrollment
 | ID | Task | Refs | Tests | Done when |

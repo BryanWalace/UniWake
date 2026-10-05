@@ -123,7 +123,7 @@ export function snapshotBefore(db: Db, dir: string, kind: BackupKind, at: number
 export function applyPendingRestore(
   dbPath: string,
   backupsDir: string,
-): { file: string; byId: number | null; by: string; at: number } | null {
+): { file: string; byId: number | null; by: string; at: number; failed?: string } | null {
   const reqPath = join(backupsDir, RESTORE_REQUEST);
   if (!existsSync(reqPath)) return null;
   const req = JSON.parse(readFileSync(reqPath, 'utf8')) as {
@@ -134,7 +134,15 @@ export function applyPendingRestore(
   };
   rmSync(reqPath, { force: true }); // never retried in a loop
   const source = join(backupsDir, req.file);
-  if (!/^[\w.-]+$/.test(req.file) || !isDatabaseIntact(source)) return null;
+  if (!/^[\w.-]+$/.test(req.file) || !existsSync(source) || !isDatabaseIntact(source)) {
+    // M6-F4: the backup vanished or broke after the request; keep the current database.
+    return {
+      ...req,
+      failed: existsSync(source)
+        ? 'o backup está corrompido'
+        : 'o arquivo do backup não existe mais',
+    };
+  }
   const tmp = `${dbPath}.restore`;
   copyFileSync(source, tmp);
   for (const ext of ['-wal', '-shm']) rmSync(`${dbPath}${ext}`, { force: true });
