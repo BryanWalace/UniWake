@@ -391,3 +391,48 @@ describe('health page (FR-012)', () => {
     );
   });
 });
+
+describe('backups (FR-014)', () => {
+  it('lists backups, creates one, and restores only with the typed date', async () => {
+    const b = {
+      id: 4,
+      file: 'f.db',
+      kind: 'daily',
+      createdAt: new Date(2026, 9, 5, 2, 30).getTime(),
+      size: 2 * 1024 * 1024,
+      dateLabel: '05/10/2026',
+    };
+    const calls = settingsApi()
+      .on('GET', '/api/backups', { body: [b] })
+      .on('POST', '/api/backups', { status: 201, body: { ...b, id: 5, kind: 'manual' } })
+      .on('POST', '/api/backups/4/restore', (body) =>
+        (body as { confirm: string }).confirm === '05/10/2026'
+          ? { status: 202, body: { restarting: true } }
+          : {
+              status: 422,
+              body: {
+                code: 'RESTORE_CONFIRMATION_MISMATCH',
+                message: 'Confirmação incorreta: digite a data do backup exatamente como mostrada.',
+              },
+            },
+      );
+    const user = userEvent.setup();
+    renderApp('/configuracoes');
+    const list = await screen.findByRole('list', { name: 'Backups' });
+    expect(list).toHaveTextContent('diário');
+    expect(list).toHaveTextContent('2.0 MB');
+    await user.click(screen.getByRole('button', { name: 'Criar backup agora' }));
+    expect(await screen.findByText('Backup criado.')).toBeInTheDocument();
+    await user.click(within(list).getByRole('button', { name: /^Restaurar backup de/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Restaurar backup' });
+    const field = within(dialog).getByLabelText(/digite a data do backup: 05\/10\/2026/);
+    await user.type(field, '04/10/2026');
+    await user.click(within(dialog).getByRole('button', { name: 'Restaurar e reiniciar' }));
+    expect(await within(dialog).findByText(/Confirmação incorreta/)).toBeInTheDocument();
+    await user.clear(field);
+    await user.type(field, '05/10/2026');
+    await user.click(within(dialog).getByRole('button', { name: 'Restaurar e reiniciar' }));
+    expect(await within(dialog).findByText(/está reiniciando/)).toBeInTheDocument();
+    expect(calls.calls.filter((c) => c.path === '/api/backups/4/restore')).toHaveLength(2);
+  });
+});

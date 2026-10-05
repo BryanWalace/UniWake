@@ -8,6 +8,7 @@ import {
   type SettingsGroup,
 } from '@uniwake/shared';
 import { ApiRequestError } from '../../api/client';
+import { BackupsSection } from './BackupsSection';
 import { Banner, ErrorState, LoadingState } from '../../components/Banner';
 import { FormError, TextField } from '../../components/form';
 import { Button, PageHeader, SelectField } from '../../components/ui';
@@ -79,6 +80,7 @@ function SettingsForm({ view }: { view: SettingsView }) {
       ))}
       <NetworkPreviewSection />
       <CertificateSection />
+      <BackupsSection />
     </section>
   );
 }

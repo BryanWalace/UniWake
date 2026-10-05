@@ -132,3 +132,31 @@ export function useUploadCertificate() {
       api.post<{ restartRequired: boolean }>('/api/settings/certificate', data),
   });
 }
+
+export interface Backup {
+  id: number;
+  file: string;
+  kind: 'daily' | 'pre-migration' | 'pre-update' | 'pre-restore' | 'manual';
+  createdAt: number;
+  size: number;
+  dateLabel: string;
+}
+
+export function useBackups() {
+  return useQuery({ queryKey: ['backups'], queryFn: () => api.get<Backup[]>('/api/backups') });
+}
+
+export function useCreateBackup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<Backup>('/api/backups'),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['backups'] }),
+  });
+}
+
+export function useRestoreBackup() {
+  return useMutation({
+    mutationFn: ({ id, confirm }: { id: number; confirm: string }) =>
+      api.post<{ restarting: true }>(`/api/backups/${id}/restore`, { confirm }),
+  });
+}

@@ -8,6 +8,9 @@ import { NodeProcessRunner } from './adapters/process-runner';
 import { WindowsHostChecks } from './adapters/windows-host';
 import { ConfigError, dataPaths, resolveConfig } from './config';
 import { createHub, EXIT_CONFIG_ERROR, HubStartError, resolveHelperPath } from './hub';
+
+/** Asks the service manager for a restart (WinSW restarts on a non-zero exit). */
+export const EXIT_RESTART = 75;
 import { resolveWebDir } from './http/static';
 import { APP_VERSION } from './version';
 
@@ -65,6 +68,10 @@ export async function main(argv: readonly string[]): Promise<number> {
       config,
       webDir: resolveWebDir(env, import.meta.dirname),
       helperPath: resolveHelperPath(import.meta.dirname),
+      // After a restore request: exit with 75 so the service manager starts us again (FR-014).
+      requestRestart: () => {
+        setTimeout(() => void hub.stop().finally(() => process.exit(EXIT_RESTART)), 500);
+      },
       certScriptPath: resolveHelperPath(import.meta.dirname, 'new-panel-cert.ps1'),
       // Real health checks only for a real hub (never in demo mode or tests).
       ...(config.demo

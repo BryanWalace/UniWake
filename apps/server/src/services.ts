@@ -5,6 +5,7 @@
 import type { WakeTarget } from '@uniwake/shared';
 import { AuditService } from './application/audit/audit-service';
 import { AuthService } from './application/auth/auth-service';
+import { BackupService } from './application/backups/backup-service';
 import { UsersService } from './application/auth/users-service';
 import { CsvImportService } from './application/devices/csv-import-service';
 import { DashboardService } from './application/dashboard/dashboard-service';
@@ -45,6 +46,7 @@ import { JobRunner } from './application/wake/job-runner';
 import { ProberVerifier } from './application/wake/verifier';
 import { WakeService } from './application/wake/wake-service';
 import type { Db } from './db/connection';
+import { DbBackupFiles, SqliteBackupsRepo } from './db/backups';
 import { SqliteAuditRepo } from './db/repositories/audit-repo';
 import { SqliteSessionsRepo, SqliteUsersRepo } from './db/repositories/auth-repos';
 import { SqliteDashboardRepo } from './db/repositories/dashboard-repo';
@@ -81,6 +83,10 @@ export interface ServiceOptions {
   hostChecks?: HostChecks | null;
   timeCheck?: TimeCheck | null;
   version?: string;
+  /** Where backups are written (hub: <dataDir>/backups); no backups without it. */
+  backupsDir?: string | null;
+  /** Restarts the service after a restore request (hub: exit code 75). */
+  requestRestart?: () => void;
 }
 
 export interface Services extends HttpServices {
@@ -254,6 +260,17 @@ export function createServices(
     running: opts.running ?? { panelPort: 47100, agentPort: 47101, logLevel: 'info' },
   });
 
+  const backups = opts.backupsDir
+    ? new BackupService({
+        repo: new SqliteBackupsRepo(db),
+        files: new DbBackupFiles(db, opts.backupsDir),
+        settings,
+        clock,
+        audit,
+        logger: ports.logger.child({ module: 'backup' }),
+        requestRestart: opts.requestRestart ?? (() => undefined),
+      })
+    : null;
   const health = new HealthService({
     clock,
     logger: ports.logger.child({ module: 'health' }),
@@ -312,5 +329,6 @@ export function createServices(
     settingsAdmin,
     network,
     health,
+    backups,
   };
 }

@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import { createFileLogger } from './adapters/logger';
 import { JsonConfigFile } from './adapters/config-file';
+import { applyPendingRestore, snapshotBefore } from './db/backups';
 import type { HostChecks, TimeCheck } from './application/health/health-service';
 import { LogFileReader } from './adapters/log-reader';
 import { type PanelCertificate, PanelCertificateStore } from './adapters/panel-certificate';
@@ -62,6 +63,8 @@ export interface HubOptions {
   /** Health checks that leave the process (main.ts on a real install); none in tests. */
   hostChecks?: HostChecks | null;
   timeCheck?: TimeCheck | null;
+  /** Called after a restore request: stop and start the service again (main.ts). */
+  requestRestart?: () => void;
   /** Certificate override (tests): skips the store. */
   panelCertificate?: () => Promise<PanelCertificate>;
   /** Port overrides (tests); defaults to the real adapters. */
@@ -125,9 +128,18 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
   const logger = opts.logger ?? fileLogger!.logger;
 
   const clock = opts.clock ?? new SystemClock();
+  mkdirSync(paths.backups, { recursive: true });
+  // A restore requested from the panel happens here, before anything opens the database (FR-014).
+  const restored = applyPendingRestore(paths.db, paths.backups);
   const db = openDatabase(paths.db, paths.backups);
   try {
-    const m = migrate(db, undefined, { now: () => clock.now() });
+    const m = migrate(db, undefined, {
+      now: () => clock.now(),
+      beforeMigrate: (from, to) => {
+        const b = snapshotBefore(db, paths.backups, 'pre-migration', clock.now());
+        logger.info({ from, to, file: b.file }, 'pre-migration backup created');
+      },
+    });
     if (m.applied.length > 0) logger.info({ from: m.from, to: m.to }, 'database migrated');
   } catch (e) {
     db.close();
@@ -188,6 +200,8 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       timeCheck: opts.timeCheck ?? null,
       version: APP_VERSION,
       configFile: opts.ports ? null : new JsonConfigFile(paths.config),
+      backupsDir: opts.ports ? null : paths.backups,
+      requestRestart: () => opts.requestRestart?.(),
       running: {
         panelPort: config.panelPort,
         agentPort: config.agentPort,
@@ -201,6 +215,15 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
     services.settings.get('panel.lanEnabled') && services.settings.get('panel.lanAddress') !== ''
       ? services.settings.get('panel.lanAddress')
       : null;
+  if (restored) {
+    services.audit.record({
+      actor: { id: restored.byId, label: restored.by },
+      action: 'backup.restore',
+      target: `backup:${restored.file}`,
+      details: { requestedAt: restored.at },
+    });
+    logger.warn({ file: restored.file }, 'database restored from backup');
+  }
   const certificates = new PanelCertificateStore(paths.certs, runner, opts.certScriptPath ?? null);
   services.panelCertificates = certificates;
   services.logs = new LogFileReader(paths.logs);
@@ -321,6 +344,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       services.dashboard.start();
       services.retention.start();
       services.health.start();
+      services.backups?.start();
       logger.info(
         { version: APP_VERSION, ...hub.addresses(), demo: config.demo },
         'UniWake hub started',
@@ -329,6 +353,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
     async stop() {
       services.scheduler.stop();
       services.health.stop();
+      services.backups?.stop();
       services.runner.stop();
       services.dashboard.stop();
       await services.retention.stop();
