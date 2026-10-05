@@ -15,6 +15,7 @@ import { formatDateTime } from '../../lib/format';
 import { useUptime } from '../dashboard/api';
 import { useWakeUi } from '../wake/WakeProvider';
 import { DeviceFormDialog } from './DeviceFormDialog';
+import { TestWolDialog } from './TestWolDialog';
 import { noticeFromSave, SaveNotice } from './DevicesPage';
 
 const SOURCE_TEXT = { manual: 'manual', schedule: 'agendamento', test: 'teste' } as const;
@@ -50,6 +51,7 @@ export function DevicePage() {
   const device = useDevice(id);
   const { requestWake } = useWakeUi();
   const [editing, setEditing] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [notice, setNotice] = useState<{ text: string; warnings: string[] } | null>(null);
 
   if (device.isPending) return <LoadingState />;
@@ -90,6 +92,9 @@ export function DevicePage() {
             >
               Ligar
             </Button>
+            <Button disabled={!d.enabled} onClick={() => setTesting(true)}>
+              Testar WoL
+            </Button>
             <Button onClick={() => setEditing(true)}>Editar</Button>
           </>
         }
@@ -99,6 +104,12 @@ export function DevicePage() {
       <Uptime deviceId={d.id} />
       <History deviceId={d.id} />
       <Diagnostics device={d} />
+      <TestWolDialog
+        deviceId={d.id}
+        deviceName={d.name}
+        open={testing}
+        onClose={() => setTesting(false)}
+      />
       <DeviceFormDialog
         open={editing}
         device={d}

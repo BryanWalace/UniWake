@@ -43,6 +43,7 @@ import {
 } from './application/settings/settings-admin';
 import { SettingsService } from './application/settings/settings-service';
 import { TagsService } from './application/tags/tags-service';
+import { TestWolService } from './application/test-wol/test-wol-service';
 import { JobRunner } from './application/wake/job-runner';
 import { ProberVerifier } from './application/wake/verifier';
 import { WakeService } from './application/wake/wake-service';
@@ -62,6 +63,7 @@ import { SqliteSchedulerRepo } from './db/repositories/scheduler-repo';
 import { SqliteSchedulesRepo } from './db/repositories/schedules-repo';
 import { SqliteSettingsRepo } from './db/repositories/settings-repo';
 import { SqliteTagsRepo } from './db/repositories/tags-repo';
+import { SqliteTestWolRepo } from './db/repositories/test-wol-repo';
 import type { HttpServices } from './http/context';
 
 export interface ServicePorts {
@@ -181,7 +183,10 @@ export function createServices(
     events,
     logger: ports.logger.child({ module: 'wake' }),
     transaction: tx,
-    onFinished: (job) => notices.onJobFinished(job),
+    onFinished: (job) => {
+      notices.onJobFinished(job);
+      testWol.onJobFinished(job);
+    },
     auditTarget: (target: WakeTarget): string => wake.auditTarget(target),
   });
   const retention = new RetentionService({
@@ -215,6 +220,23 @@ export function createServices(
     limiter: new KeyedLimiter(clock, 60_000, () => settings.get('wake.rateLimitPerMinute')),
     transaction: tx,
     forceDryRun: opts.demo === true,
+  });
+
+  const testWol = new TestWolService({
+    repo: new SqliteTestWolRepo(db),
+    device: (id) => devicesRepo.get(id),
+    verifier: new ProberVerifier(probes.at('high'), ports.dns, settings),
+    startWake: (deviceId, actor) =>
+      wake.start(
+        { target: { type: 'devices', deviceIds: [deviceId] }, onlyOffline: false },
+        actor,
+        { source: 'test', preConfirmed: true, assumeOffline: true },
+      ).jobId,
+    jobResult: (jobId, deviceId) =>
+      jobsRepo.devices(jobId).find((x) => x.deviceId === deviceId)?.result,
+    audit,
+    clock,
+    logger: ports.logger.child({ module: 'test-wol' }),
   });
 
   const refs = {
@@ -349,5 +371,6 @@ export function createServices(
     health,
     backups,
     enrollment,
+    testWol,
   };
 }

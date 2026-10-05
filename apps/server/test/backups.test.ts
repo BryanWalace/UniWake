@@ -179,9 +179,8 @@ describe('restore and pre-migration backups on a real hub', () => {
   it('a migration on an existing database is preceded by a pre-migration backup', async () => {
     const dir = tempDir();
     const first = await createHub({ config: config(dir), logger: silent });
-    first.db.exec(
-      'DELETE FROM schema_migrations WHERE version = 2; DROP INDEX wake_job_devices_room_job;',
-    );
+    // Undo the newest migration (003_test_wol) so the next start has one pending.
+    first.db.exec('DELETE FROM schema_migrations WHERE version = 3; DROP TABLE test_wol_runs;');
     await first.stop();
     const second = await createHub({ config: config(dir), logger: silent });
     hubs.push(second);

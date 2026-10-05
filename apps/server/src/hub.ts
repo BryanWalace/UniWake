@@ -366,6 +366,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
         if (seeded) logger.info({ ...seeded }, 'demo data seeded');
       }
       services.runner.recover();
+      services.testWol.recover();
       services.scheduler.start();
       services.monitor.start();
       services.dashboard.start();
@@ -381,6 +382,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       services.scheduler.stop();
       services.health.stop();
       services.backups?.stop();
+      services.testWol.stop();
       services.runner.stop();
       services.dashboard.stop();
       await services.retention.stop();

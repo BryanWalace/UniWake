@@ -6,5 +6,6 @@ export * from './enrollment';
 export * from './notices';
 export * from './rooms';
 export * from './schedules';
+export * from './test-wol';
 export * from './users';
 export * from './wake';

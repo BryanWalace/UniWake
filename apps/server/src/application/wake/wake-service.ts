@@ -40,6 +40,11 @@ export interface StartOptions extends RunOptions {
   scheduleRunId?: number | null;
   /** Schedules were confirmed when saved (SR-10). */
   preConfirmed?: boolean;
+  /**
+   * The caller has just seen the devices off (test-WoL probes them itself): send even when the
+   * last sweep still says online.
+   */
+  assumeOffline?: boolean;
 }
 
 export interface TargetSummary {
@@ -208,7 +213,7 @@ export class WakeService {
           deviceId: d.id,
           mac: d.mac,
           roomId: d.roomId,
-          result: d.status === 'online' ? 'ja_estava_ligado' : 'aguardando',
+          result: d.status === 'online' && !opts.assumeOffline ? 'ja_estava_ligado' : 'aguardando',
         })),
         excludedCount: res.excluded.length,
       });

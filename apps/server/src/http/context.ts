@@ -22,6 +22,7 @@ import type { SchedulesService } from '../application/schedules/schedules-servic
 import type { SettingsAdminService } from '../application/settings/settings-admin';
 import type { SettingsService } from '../application/settings/settings-service';
 import type { TagsService } from '../application/tags/tags-service';
+import type { TestWolService } from '../application/test-wol/test-wol-service';
 import type { WakeService } from '../application/wake/wake-service';
 
 export interface HttpServices {
@@ -44,6 +45,7 @@ export interface HttpServices {
   network: NetworkPreviewService;
   health: HealthService;
   enrollment: EnrollmentService;
+  testWol: TestWolService;
   /** null when the hub has no backups directory (API tests). */
   backups: BackupService | null;
   /** Hub only: the log viewer source (FR-016). */

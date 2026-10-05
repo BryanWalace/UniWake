@@ -209,3 +209,93 @@ describe('historyText', () => {
     for (const [item, text] of cases) expect(historyText(item)).toBe(text);
   });
 });
+
+describe('Testar WoL desta máquina (FR-007.4)', () => {
+  const RUN = {
+    id: 21,
+    deviceId: 5,
+    deviceName: 'LAB1-PC05',
+    state: 'aguardando_desligar',
+    requestedBy: 'admin',
+    startedAt: at(9),
+    offlineAt: null,
+    sentAt: null,
+    finishedAt: null,
+    jobId: null,
+    detail: null,
+  };
+
+  it('guides the test and shows the result with a link to the job', async () => {
+    let gets = 0;
+    const api = deviceApi()
+      .on('POST', '/api/devices/5/test-wol', { status: 201, body: RUN })
+      .on('GET', '/api/test-wol/21', () =>
+        gets++ === 0
+          ? { body: RUN }
+          : {
+              body: {
+                ...RUN,
+                state: 'sucesso',
+                offlineAt: at(9) + 20_000,
+                sentAt: at(9) + 50_000,
+                finishedAt: at(9) + 120_000,
+                jobId: 40,
+              },
+            },
+      );
+    const user = userEvent.setup();
+    renderApp('/dispositivos/5');
+    await user.click(await screen.findByRole('button', { name: 'Testar WoL' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Testar WoL: LAB1-PC05' });
+    expect(dialog).toHaveTextContent('desligue a máquina pelo menu Iniciar');
+    await user.click(within(dialog).getByRole('button', { name: 'Começar teste' }));
+    expect(api.calls.some((c) => c.method === 'POST' && c.path === '/api/devices/5/test-wol')).toBe(
+      true,
+    );
+    expect(await within(dialog).findByRole('status')).toHaveTextContent(
+      'Aguardando o computador desligar: desligue a máquina pelo menu Iniciar.',
+    );
+    // Progress is polled every 2 s while the test runs.
+    await waitFor(() => expect(within(dialog).getByRole('status')).toHaveTextContent('Sucesso'), {
+      timeout: 5_000,
+    });
+    expect(dialog).toHaveTextContent('Máquina desligada às');
+    expect(dialog).toHaveTextContent('Magic Packet enviado às');
+    expect(
+      within(dialog).getByRole('link', { name: 'Ver a ligação no histórico' }),
+    ).toHaveAttribute('href', '/historico/jobs/40');
+  });
+
+  it('can be cancelled, and "não acordou" points to the preparation help', async () => {
+    const api = deviceApi()
+      .on('POST', '/api/devices/5/test-wol', { status: 201, body: RUN })
+      .on('GET', '/api/test-wol/21', { body: RUN })
+      .on('POST', '/api/test-wol/21/cancel', {
+        body: { ...RUN, state: 'cancelado', finishedAt: at(9) + 5_000 },
+      });
+    const user = userEvent.setup();
+    renderApp('/dispositivos/5');
+    await user.click(await screen.findByRole('button', { name: 'Testar WoL' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Começar teste' }));
+    await user.click(await within(dialog).findByRole('button', { name: 'Cancelar teste' }));
+    expect(await within(dialog).findByRole('status')).toHaveTextContent('Cancelado');
+    expect(api.calls.some((c) => c.path === '/api/test-wol/21/cancel')).toBe(true);
+  });
+
+  it('shows why a test cannot start', async () => {
+    deviceApi().on('POST', '/api/devices/5/test-wol', {
+      status: 422,
+      body: {
+        code: 'VALIDATION_FAILED',
+        message: 'Dados inválidos.',
+        details: [{ path: 'ip', message: 'Cadastre o IP ou o nome do computador.' }],
+      },
+    });
+    const user = userEvent.setup();
+    renderApp('/dispositivos/5');
+    await user.click(await screen.findByRole('button', { name: 'Testar WoL' }));
+    await user.click(await screen.findByRole('button', { name: 'Começar teste' }));
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+  });
+});

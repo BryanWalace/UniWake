@@ -171,6 +171,7 @@ Times: epoch ms UTC `INTEGER`; booleans `INTEGER 0/1`; JSON as `TEXT`. Migration
 | `system_state` | key PK, value JSON | pause, scheduler lastTick, update state |
 | `enrollment_tokens` | id PK, token_hash UNIQUE, room_id FK CASCADE, created_by, created_at, expires_at, max_uses, uses, revoked_at | |
 | `notices` | id PK, type, created_at, data JSON, acknowledged_at, acknowledged_by | |
+| `test_wol_runs` | id PK, device_id FK CASCADE, state, requested_by, started_at, offline_at, sent_at, finished_at, job_id FK→wake_jobs SET NULL, detail | idx (device_id, started_at), job_id (FR-007.4) |
 | `backups` | id PK, file, kind (`daily`,`pre-migration`,`pre-update`,`pre-restore`,`manual`), created_at, size | |
 
 ### 5.1 Database performance rules (synchronous driver)

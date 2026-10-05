@@ -207,7 +207,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M7-T05 | Script: enrollment POST, exit codes; one-liner hash check. | FR-007.1, FR-007.3 | AC-007-14 [Pester] | — |
 | [x] M7-T06 | PSScriptAnalyzer settings + Pester in the windows CI job. | IMP-018 | CI | — |
 | [x] M7-T07 | Web: "Preparar máquinas" page. | FR-007.3 | component tests | — |
-| [ ] M7-T08 | Test-WoL flow service/routes/web. | FR-007.4 | AC-007-10 | — |
+| [x] M7-T08 | Test-WoL flow service/routes/web. | FR-007.4 | AC-007-10 | — |
 | [ ] M7-T09 | Diagnostics service/page + help pages. | FR-010, FR-007.5 | AC-010-01, AC-010-02, AC-007-15 | — |
 
 ## M8 — Service, installer, auto-update, release
