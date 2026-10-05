@@ -1,5 +1,9 @@
 import { defineConfig } from 'vitest/config';
 
+// Same zone as CI (ubuntu runners are UTC): a test that only passes in the developer's zone
+// (America/Sao_Paulo) fails here first. Set TZ explicitly to try another zone.
+process.env.TZ ??= 'UTC';
+
 /** Core modules (constitution §5): coverage must stay ≥ 80% on all four metrics. */
 const CORE = [
   'apps/server/src/domain/**/*.ts',
