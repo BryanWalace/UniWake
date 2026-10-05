@@ -71,10 +71,12 @@ export class SqliteUsersRepo implements UsersRepo {
     }
   }
 
-  recordLoginFailure(id: number, now: number): void {
+  recordLoginFailure(id: number, now: number, windowStart: number): void {
     this.db.run(
-      'UPDATE users SET failed_logins = failed_logins + 1, last_failed_at = ? WHERE id = ?',
-      [now, id],
+      `UPDATE users SET last_failed_at = ?,
+         failed_logins = CASE WHEN last_failed_at IS NULL OR last_failed_at < ? THEN 1 ELSE failed_logins + 1 END
+       WHERE id = ?`,
+      [now, windowStart, id],
     );
   }
 

@@ -4,6 +4,8 @@
  * timeouts come from settings. First-run setup only from a loopback socket, race-safe.
  */
 import { createHash, randomBytes } from 'node:crypto';
+import { isWeakPassword } from '../../domain/password-policy';
+import { KeyedLimiter } from '../rate-limit';
 import type { Me, Role } from '@uniwake/shared';
 import type { AuditService } from '../audit/audit-service';
 import { AppError } from '../errors';
@@ -29,7 +31,8 @@ export interface UsersRepo {
   findByUsername(username: string): UserRecord | undefined;
   create(u: { username: string; passwordHash: string; role: Role; now: number }): number;
   setPasswordHash(id: number, hash: string, now: number, changed: boolean): void;
-  recordLoginFailure(id: number, now: number): void;
+  /** Counts a failure; failures before `windowStart` no longer count (the count restarts). */
+  recordLoginFailure(id: number, now: number, windowStart: number): void;
   resetLoginFailures(id: number): void;
 }
 
@@ -65,9 +68,24 @@ export function isLoopbackAddress(addr: string | null | undefined): boolean {
 export const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
 const TOUCH_INTERVAL_MS = 60_000;
+/** FR-006.3: after 5 failures within 15 min, wait 30 s, doubling per failure, up to 15 min. */
+const FAILURE_WINDOW_MS = 15 * 60_000;
+const FREE_FAILURES = 5;
+const BASE_DELAY_MS = 30_000;
+const MAX_DELAY_MS = 15 * 60_000;
+
+/** How long this account must still wait before another login attempt (0 = none). */
+export function loginBackoffMs(failed: number, lastFailedAt: number | null, now: number): number {
+  if (lastFailedAt === null || failed < FREE_FAILURES || now - lastFailedAt > FAILURE_WINDOW_MS) {
+    return 0;
+  }
+  const delay = Math.min(MAX_DELAY_MS, BASE_DELAY_MS * 2 ** (failed - FREE_FAILURES));
+  return Math.max(0, lastFailedAt + delay - now);
+}
 
 export class AuthService {
   private dummyHash: Promise<string> | null = null;
+  private readonly ipLimiter: KeyedLimiter;
 
   constructor(
     private readonly users: UsersRepo,
@@ -76,7 +94,16 @@ export class AuthService {
     private readonly audit: AuditService,
     private readonly clock: Clock,
     private readonly transaction: <T>(fn: () => T) => T,
-  ) {}
+  ) {
+    this.ipLimiter = new KeyedLimiter(clock, 60_000, () =>
+      this.settings.get('security.loginRatePerMinute'),
+    );
+  }
+
+  /** FR-006.3: length is checked by the schema; this rejects guessable passwords. */
+  assertStrongPassword(password: string, username?: string): void {
+    if (isWeakPassword(password, username)) throw new AppError('PASSWORD_TOO_WEAK');
+  }
 
   needsSetup(): boolean {
     return this.users.count() === 0;
@@ -94,6 +121,7 @@ export class AuthService {
       throw new AppError('SETUP_NOT_ALLOWED');
     }
     if (!this.needsSetup()) throw new AppError('SETUP_ALREADY_DONE');
+    this.assertStrongPassword(input.password, input.username);
     const passwordHash = await hashPassword(input.password);
     const now = this.clock.now();
     const id = this.transaction(() => {
@@ -121,6 +149,8 @@ export class AuthService {
     input: { username: string; password: string },
     ctx: RequestContext,
   ): Promise<{ token: string; user: Me; expiresAt: number }> {
+    // Per source IP (FR-006.3): 20 attempts a minute, whatever the account.
+    if (!this.ipLimiter.hit(`login:${ctx.ip}`)) throw new AppError('RATE_LIMITED');
     const user = this.users.findByUsername(input.username);
     if (!user) {
       // Equalize timing so response time does not reveal whether the user exists.
@@ -135,10 +165,22 @@ export class AuthService {
       });
       throw new AppError('LOGIN_INVALID');
     }
-    const ok = await verifyPassword(input.password, user.passwordHash);
     const now = this.clock.now();
+    const waitMs = loginBackoffMs(user.failedLogins, user.lastFailedAt, now);
+    if (waitMs > 0) {
+      // Per account (AC-006-04): refused before the password is even checked, and audited.
+      this.audit.record({
+        actor: { id: user.id, label: user.username },
+        action: 'auth.login',
+        result: 'denied',
+        sourceIp: ctx.ip,
+        details: { reason: 'throttled', waitSeconds: Math.ceil(waitMs / 1000) },
+      });
+      throw new AppError('LOGIN_THROTTLED', { seconds: Math.ceil(waitMs / 1000) });
+    }
+    const ok = await verifyPassword(input.password, user.passwordHash);
     if (!ok) {
-      this.users.recordLoginFailure(user.id, now);
+      this.users.recordLoginFailure(user.id, now, now - FAILURE_WINDOW_MS);
       this.audit.record({
         actor: { id: user.id, label: user.username },
         action: 'auth.login',
@@ -206,6 +248,44 @@ export class AuthService {
       this.sessions.touch(idHash, now);
     }
     return { id: user.id, username: user.username, role: user.role };
+  }
+
+  /** AC-006-07: changing one's password revokes every other session of that user. */
+  async changePassword(
+    userId: number,
+    input: { currentPassword: string; newPassword: string },
+    currentToken: string | undefined,
+    ctx: RequestContext,
+  ): Promise<{ revokedSessions: number }> {
+    const user = this.users.findById(userId);
+    if (!user) throw new AppError('UNAUTHENTICATED');
+    if (!(await verifyPassword(input.currentPassword, user.passwordHash))) {
+      throw new AppError('VALIDATION_FAILED', {}, [
+        { path: 'currentPassword', message: 'Senha atual incorreta.' },
+      ]);
+    }
+    if (input.newPassword === input.currentPassword) {
+      throw new AppError('VALIDATION_FAILED', {}, [
+        { path: 'newPassword', message: 'A nova senha precisa ser diferente da atual.' },
+      ]);
+    }
+    this.assertStrongPassword(input.newPassword, user.username);
+    const hash = await hashPassword(input.newPassword);
+    return this.transaction(() => {
+      this.users.setPasswordHash(user.id, hash, this.clock.now(), true);
+      const revokedSessions = this.sessions.deleteForUser(
+        user.id,
+        currentToken ? sha256(currentToken) : undefined,
+      );
+      this.audit.record({
+        actor: { id: user.id, label: user.username },
+        action: 'auth.password_change',
+        target: `user:${user.username}`,
+        sourceIp: ctx.ip,
+        details: { revokedSessions },
+      });
+      return { revokedSessions };
+    });
   }
 
   logout(token: string | undefined, ctx: RequestContext): void {

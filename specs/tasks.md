@@ -177,7 +177,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 ## M6 — Auth completion, roles, audit, settings, health, backups
 | ID | Task | Refs | Tests | Done when |
 |---|---|---|---|---|
-| [ ] M6-T01 | Password policy + per-account backoff + per-IP login limit + password change revokes sessions. | FR-006.3 | AC-006-04, AC-006-07 | — |
+| [x] M6-T01 | Password policy + per-account backoff + per-IP login limit + password change revokes sessions. | FR-006.3 | AC-006-04, AC-006-07 | — |
 | [ ] M6-T02 | Users API (admin). | FR-006.2 | API tests | — |
 | [ ] M6-T03 | Permission matrix in the route-table test (all routes). | FR-006.2 | AC-006-03 | — |
 | [ ] M6-T04 | Audit API + CSV export. | FR-006.5 | AC-006-06 | — |

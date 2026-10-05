@@ -271,11 +271,9 @@ export class Scheduler {
     const now = this.d.clock.now();
     const resumeAt = data.resumeAt ?? null;
     if (resumeAt !== null && resumeAt <= now) {
-      throw new AppError(
-        'VALIDATION_FAILED',
-        {},
-        { fields: { resumeAt: 'A retomada automática precisa ser no futuro.' } },
-      );
+      throw new AppError('VALIDATION_FAILED', {}, [
+        { path: 'resumeAt', message: 'A retomada automática precisa ser no futuro.' },
+      ]);
     }
     const state: PauseState = { since: now, reason, resumeAt, by: actor.label };
     this.d.transaction(() => {

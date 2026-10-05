@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { loginSchema, setupSchema } from '@uniwake/shared';
+import { loginSchema, passwordChangeSchema, setupSchema } from '@uniwake/shared';
 import type { HttpServices } from '../context';
 import {
   clearSessionCookie,
@@ -44,4 +44,18 @@ export function authRoutes(app: FastifyInstance, s: HttpServices): void {
   });
 
   r.get('/api/auth/me', { config: { auth: 'operator' } }, async (req) => currentUser(req));
+
+  r.post(
+    '/api/auth/password',
+    { config: { auth: 'operator' }, schema: { body: passwordChangeSchema } },
+    async (req, reply) => {
+      await s.auth.changePassword(
+        currentUser(req).id,
+        req.body,
+        req.cookies[SESSION_COOKIE],
+        requestContext(req),
+      );
+      return reply.status(204).send();
+    },
+  );
 }

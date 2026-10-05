@@ -3,10 +3,18 @@
  * errors, uncaught exceptions or CSP violations (constitution §5, §6.1).
  */
 import AxeBuilder from '@axe-core/playwright';
-import { type APIRequestContext, expect, type Page, test as base } from '@playwright/test';
+import {
+  type APIRequestContext,
+  type Cookie,
+  expect,
+  type Page,
+  test as base,
+} from '@playwright/test';
 import { SimulatedNetwork } from '../apps/server/src/adapters/simulated-network';
 
 export const ADMIN = { username: 'admin', password: 'senha-e2e-12345' };
+
+let sessionCookie: Cookie | null = null;
 
 /** Chrome logs failed fetches as console errors; expected 4xx responses are not bugs. */
 const IGNORED = [/Failed to load resource: the server responded with a status of 4\d\d/];
@@ -37,12 +45,20 @@ interface Fixtures {
 }
 
 export const test = base.extend<Fixtures>({
-  page: async ({ page }, use) => {
+  page: async ({ page, baseURL }, use) => {
     const errors = guardConsole(page);
-    const request = page.context().request;
-    await ensureAdmin(request);
-    const login = await request.post('/api/auth/login', { data: ADMIN });
-    expect(login.status(), await login.text()).toBe(200);
+    const context = page.context();
+    // One login for the whole run: the hub allows 20 logins a minute per IP (FR-006.3).
+    if (!sessionCookie) {
+      await ensureAdmin(context.request);
+      const login = await context.request.post('/api/auth/login', { data: ADMIN });
+      expect(login.status(), await login.text()).toBe(200);
+      sessionCookie = (await context.cookies()).find((c) => c.name === 'uw_session') ?? null;
+    } else {
+      await context.addCookies(
+        [{ ...sessionCookie, url: baseURL! }].map(({ domain: _d, path: _p, ...c }) => c),
+      );
+    }
     await use(page);
     expect(errors, 'console errors / CSP violations').toEqual([]);
   },
