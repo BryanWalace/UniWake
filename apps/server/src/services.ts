@@ -17,6 +17,7 @@ import {
 import { NetworkPreviewService } from './application/network/network-preview';
 import { NoticesService } from './application/notices/notices-service';
 import { DevicesService } from './application/devices/devices-service';
+import { EnrollmentService, type PrepareScript } from './application/enrollment/enrollment-service';
 import { EventsBus } from './application/events-bus';
 import { MonitorService } from './application/monitor/monitor-service';
 import { RetentionService } from './application/maintenance/retention-service';
@@ -51,6 +52,7 @@ import { SqliteAuditRepo } from './db/repositories/audit-repo';
 import { SqliteSessionsRepo, SqliteUsersRepo } from './db/repositories/auth-repos';
 import { SqliteDashboardRepo } from './db/repositories/dashboard-repo';
 import { SqliteDevicesRepo } from './db/repositories/devices-repo';
+import { SqliteEnrollmentRepo } from './db/repositories/enrollment-repo';
 import { SqliteJobsRepo } from './db/repositories/jobs-repo';
 import { SqliteMonitorRepo } from './db/repositories/monitor-repo';
 import { SqliteNoticesRepo } from './db/repositories/notices-repo';
@@ -87,6 +89,8 @@ export interface ServiceOptions {
   backupsDir?: string | null;
   /** Restarts the service after a restore request (hub: exit code 75). */
   requestRestart?: () => void;
+  /** prepare-target.ps1 as served by the agent listener (FR-007.3); absent = not installed. */
+  prepareScript?: PrepareScript;
 }
 
 export interface Services extends HttpServices {
@@ -305,6 +309,18 @@ export function createServices(
     rooms: roomsRepo,
   });
 
+  const enrollment = new EnrollmentService({
+    repo: new SqliteEnrollmentRepo(db),
+    rooms: roomsRepo,
+    interfaces: ports.interfaces,
+    script: opts.prepareScript ?? { bytes: () => null },
+    settings,
+    audit,
+    clock,
+    transaction: tx,
+    agentPort: opts.running?.agentPort ?? 47101,
+  });
+
   return {
     db,
     clock,
@@ -330,5 +346,6 @@ export function createServices(
     network,
     health,
     backups,
+    enrollment,
   };
 }

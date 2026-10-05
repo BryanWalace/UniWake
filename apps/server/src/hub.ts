@@ -6,6 +6,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
+import { PrepareScriptFile } from './adapters/prepare-script';
 import { createFileLogger } from './adapters/logger';
 import { JsonConfigFile } from './adapters/config-file';
 import { applyPendingRestore, snapshotBefore } from './db/backups';
@@ -60,6 +61,8 @@ export interface HubOptions {
   helperPath?: string | null;
   /** new-panel-cert.ps1 location (LAN HTTPS certificate, ADR-026). */
   certScriptPath?: string | null;
+  /** scripts/prepare-target.ps1 served to target PCs (FR-007.3); null = not available. */
+  prepareScriptPath?: string | null;
   /** Health checks that leave the process (main.ts on a real install); none in tests. */
   hostChecks?: HostChecks | null;
   timeCheck?: TimeCheck | null;
@@ -202,6 +205,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       configFile: opts.ports ? null : new JsonConfigFile(paths.config),
       backupsDir: opts.ports ? null : paths.backups,
       requestRestart: () => opts.requestRestart?.(),
+      prepareScript: new PrepareScriptFile(opts.prepareScriptPath ?? null),
       running: {
         panelPort: config.panelPort,
         agentPort: config.agentPort,
@@ -276,7 +280,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       logger: logger.child({ listener: 'agent' }),
       hosts: 'any',
       bodyLimit: 8 * 1024,
-      register: (app) => registerAgentRoutes(app),
+      register: (app) => registerAgentRoutes(app, services),
     });
   } catch (e) {
     // R-M1-01: release what was opened so the DB file is not left locked.

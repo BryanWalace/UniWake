@@ -3,6 +3,7 @@
  *   node server.mjs [--demo] [--data-dir <dir>] [--version]
  */
 import { readFileSync } from 'node:fs';
+import { resolvePrepareScriptPath } from './adapters/prepare-script';
 import { GitHubTimeCheck } from './adapters/github-time';
 import { NodeProcessRunner } from './adapters/process-runner';
 import { WindowsHostChecks } from './adapters/windows-host';
@@ -73,6 +74,7 @@ export async function main(argv: readonly string[]): Promise<number> {
         setTimeout(() => void hub.stop().finally(() => process.exit(EXIT_RESTART)), 500);
       },
       certScriptPath: resolveHelperPath(import.meta.dirname, 'new-panel-cert.ps1'),
+      prepareScriptPath: resolvePrepareScriptPath(import.meta.dirname),
       // Real health checks only for a real hub (never in demo mode or tests).
       ...(config.demo
         ? {}

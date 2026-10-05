@@ -6,7 +6,7 @@ import { buildApp } from '../../src/http/app';
 import { registerPanelRoutes } from '../../src/http/panel';
 import { LOOPBACK_HOSTS } from '../../src/http/security';
 import { SESSION_COOKIE } from '../../src/http/session-auth';
-import { createServices, type Services } from '../../src/services';
+import { createServices, type ServiceOptions, type Services } from '../../src/services';
 import { FakeClock } from '../fakes/fake-clock';
 import { T0, testDb } from './db';
 import { type FakePorts, fakePorts } from './ports';
@@ -28,11 +28,12 @@ export interface ApiHarness {
 
 export async function apiHarness(
   extraRoutes?: (app: FastifyInstance, s: Services) => void,
+  opts: ServiceOptions = {},
 ): Promise<ApiHarness> {
   const db = testDb();
   const clock = new FakeClock(T0);
   const ports = fakePorts(clock);
-  const services = createServices(db, clock, ports);
+  const services = createServices(db, clock, ports, opts);
   const app = await buildApp({
     kind: 'panel',
     hosts: () => new Set<string>(LOOPBACK_HOSTS),

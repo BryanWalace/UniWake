@@ -8,6 +8,7 @@ import type { UsersService } from '../application/auth/users-service';
 import type { DashboardService } from '../application/dashboard/dashboard-service';
 import type { CsvImportService } from '../application/devices/csv-import-service';
 import type { DevicesService } from '../application/devices/devices-service';
+import type { EnrollmentService } from '../application/enrollment/enrollment-service';
 import type { EventsBus } from '../application/events-bus';
 import type { Clock } from '../application/ports';
 import type { BackupService } from '../application/backups/backup-service';
@@ -42,6 +43,7 @@ export interface HttpServices {
   settingsAdmin: SettingsAdminService;
   network: NetworkPreviewService;
   health: HealthService;
+  enrollment: EnrollmentService;
   /** null when the hub has no backups directory (API tests). */
   backups: BackupService | null;
   /** Hub only: the log viewer source (FR-016). */

@@ -154,6 +154,11 @@ export const ERROR_DEFS = {
     message:
       'O código da sala não corresponde ao código de cadastro. Confira o comando copiado do painel.',
   },
+  PREPARE_SCRIPT_MISSING: {
+    status: 503,
+    message:
+      'O arquivo prepare-target.ps1 não foi encontrado na instalação do UniWake. Reinstale o UniWake.',
+  },
   UPDATE_NOT_AVAILABLE: { status: 409, message: 'Nenhuma atualização disponível.' },
   UPDATE_IN_PROGRESS: { status: 409, message: 'Uma atualização já está em andamento.' },
   UPDATE_BLOCKED_BY_SCHEDULE: {

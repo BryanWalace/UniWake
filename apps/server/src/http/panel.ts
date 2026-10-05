@@ -1,11 +1,13 @@
 /** All panel-listener routes (plan §6.1). Shared by the hub and API tests. */
 import type { FastifyInstance } from 'fastify';
 import type { HttpServices } from './context';
+import { prepareScriptRoute } from './routes/agent';
 import { auditRoutes } from './routes/audit';
 import { authRoutes } from './routes/auth';
 import { backupRoutes } from './routes/backups';
 import { dashboardRoutes } from './routes/dashboard';
 import { deviceRoutes } from './routes/devices';
+import { enrollmentRoutes } from './routes/enrollment';
 import { eventsRoutes } from './routes/events';
 import { healthDetailRoutes, healthRoutes } from './routes/health';
 import { logRoutes } from './routes/logs';
@@ -34,10 +36,15 @@ export async function registerPanelRoutes(app: FastifyInstance, s: HttpServices)
   settingsRoutes(app, s);
   logRoutes(app, s);
   backupRoutes(app, s);
+  enrollmentRoutes(app, s);
 }
 
 /** Agent listener: exactly health, enrollment and the script download (ADR-011). */
-export function registerAgentRoutes(app: FastifyInstance): void {
+export function registerAgentRoutes(
+  app: FastifyInstance,
+  s: Pick<HttpServices, 'enrollment'>,
+): void {
   healthRoutes(app);
-  // M7-T02: POST /agent/enroll; M7-T01: GET /agent/prepare-target.ps1
+  prepareScriptRoute(app, s);
+  // M7-T02: POST /agent/enroll
 }
