@@ -14,6 +14,7 @@ import type { NoticesService } from '../application/notices/notices-service';
 import type { RoomsService } from '../application/rooms/rooms-service';
 import type { Scheduler } from '../application/schedules/scheduler';
 import type { SchedulesService } from '../application/schedules/schedules-service';
+import type { SettingsAdminService } from '../application/settings/settings-admin';
 import type { SettingsService } from '../application/settings/settings-service';
 import type { TagsService } from '../application/tags/tags-service';
 import type { WakeService } from '../application/wake/wake-service';
@@ -34,4 +35,5 @@ export interface HttpServices {
   scheduler: Scheduler;
   notices: NoticesService;
   users: UsersService;
+  settingsAdmin: SettingsAdminService;
 }

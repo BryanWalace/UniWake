@@ -6,6 +6,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import { createFileLogger } from './adapters/logger';
+import { JsonConfigFile } from './adapters/config-file';
 import { OsDnsResolver } from './adapters/dns-resolver';
 import { SimulatedNetwork } from './adapters/simulated-network';
 import { seedDemo } from './application/demo/demo-seed';
@@ -167,7 +168,15 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
             dns: new OsDnsResolver(),
             logger,
           }),
-    { demo: config.demo },
+    {
+      demo: config.demo,
+      configFile: opts.ports ? null : new JsonConfigFile(paths.config),
+      running: {
+        panelPort: config.panelPort,
+        agentPort: config.agentPort,
+        logLevel: config.logLevel,
+      },
+    },
   );
 
   let panel: FastifyInstance | undefined;

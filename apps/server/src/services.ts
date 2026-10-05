@@ -27,6 +27,11 @@ import { KeyedLimiter } from './application/rate-limit';
 import { RoomsService } from './application/rooms/rooms-service';
 import { Scheduler } from './application/schedules/scheduler';
 import { SchedulesService } from './application/schedules/schedules-service';
+import {
+  type BootstrapValues,
+  type ConfigFileStore,
+  SettingsAdminService,
+} from './application/settings/settings-admin';
 import { SettingsService } from './application/settings/settings-service';
 import { TagsService } from './application/tags/tags-service';
 import { JobRunner } from './application/wake/job-runner';
@@ -61,6 +66,10 @@ export interface ServicePorts {
 export interface ServiceOptions {
   /** Demo mode: every wake is a dry run (constitution §2.5). */
   demo?: boolean;
+  /** config.json for bootstrap settings (hub); absent in API tests = read-only. */
+  configFile?: ConfigFileStore | null;
+  /** Bootstrap values the process started with. */
+  running?: BootstrapValues;
 }
 
 export interface Services extends HttpServices {
@@ -223,6 +232,14 @@ export function createServices(
     onRunProblem: (r) => notices.onRunProblem(r),
   });
 
+  const settingsAdmin = new SettingsAdminService({
+    settings,
+    audit,
+    transaction: tx,
+    configFile: opts.configFile ?? null,
+    running: opts.running ?? { panelPort: 47100, agentPort: 47101, logLevel: 'info' },
+  });
+
   return {
     db,
     clock,
@@ -244,5 +261,6 @@ export function createServices(
     scheduler,
     notices,
     users,
+    settingsAdmin,
   };
 }
