@@ -72,6 +72,8 @@ export interface Dashboard {
   tags: DashboardTag[];
   notices: DashboardNotice[];
   demo: boolean;
+  /** `wake.dryRun` is on: wakes are simulated (banner on every page). */
+  dryRun: boolean;
   lastSweepAt: number | null;
   /** Global scheduler pause (FR-005.6): a red banner on every page while set. */
   pause: SchedulerPause | null;

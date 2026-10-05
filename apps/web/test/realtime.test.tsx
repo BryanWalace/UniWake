@@ -92,6 +92,7 @@ const DASH: Dashboard = {
   tags: [],
   notices: [],
   demo: false,
+  dryRun: false,
   lastSweepAt: null,
   pause: null,
 };

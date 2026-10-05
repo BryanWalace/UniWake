@@ -65,6 +65,7 @@ function dashboard(over: Partial<Dashboard> = {}): Dashboard {
     tags: [{ id: 7, name: 'Projetor', color: '#0891b2', total: 3 }],
     notices: [],
     demo: false,
+    dryRun: false,
     lastSweepAt: NOW,
     pause: null,
     ...over,

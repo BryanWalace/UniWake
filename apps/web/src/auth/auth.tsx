@@ -8,8 +8,7 @@ import { ErrorState, LoadingState } from '../components/Banner';
 import { t } from '../i18n/pt-BR';
 import { WakeProvider } from '../features/wake/WakeProvider';
 import { PasswordDialog } from '../features/admin/PasswordDialog';
-import { DemoBanner } from '../features/dashboard/DemoBanner';
-import { PauseBanner } from '../features/schedules/Pause';
+import { GlobalBanners } from '../features/dashboard/GlobalBanners';
 import { RealtimeProvider } from '../realtime/RealtimeProvider';
 import { Layout } from '../routes/Layout';
 
@@ -104,12 +103,7 @@ export function RequireAuth() {
     <RealtimeProvider>
       <WakeProvider>
         <Layout
-          banners={
-            <>
-              <PauseBanner />
-              <DemoBanner />
-            </>
-          }
+          banners={<GlobalBanners />}
           userMenu={<UserMenu me={me.data} />}
           isAdmin={me.data.role === 'admin'}
         />

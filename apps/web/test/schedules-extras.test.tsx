@@ -13,6 +13,7 @@ const DASH: Dashboard = {
   tags: [],
   notices: [],
   demo: false,
+  dryRun: false,
   lastSweepAt: null,
   pause: null,
 };
@@ -204,5 +205,57 @@ describe('morning result (FR-013)', () => {
     );
     await user.click(within(card).getByRole('button', { name: 'Ciente' }));
     await waitFor(() => expect(api.calls.some((c) => c.path === '/api/notices/3/ack')).toBe(true));
+  });
+});
+
+describe('global banners (constitution §8)', () => {
+  it('every page shows the same banners, problems first: update failure, pause, simulation', async () => {
+    for (const path of ['/salas', '/agendamentos', '/historico']) {
+      loggedInApi()
+        .on('GET', '/api/dashboard', {
+          body: {
+            ...DASH,
+            dryRun: true,
+            pause: { since: at(8), reason: 'Férias', resumeAt: null, by: 'ana' },
+            notices: [
+              {
+                id: 1,
+                type: 'update_failed',
+                createdAt: at(4),
+                data: { message: 'Download interrompido.' },
+              },
+            ],
+          },
+        })
+        .on('GET', '/api/rooms', { body: [] })
+        .on('GET', '/api/tags', { body: [] })
+        .on('GET', '/api/schedules', { body: [] })
+        .on('GET', '/api/schedule-exceptions', { body: [] })
+        .on('GET', '/api/jobs', { body: { items: [], total: 0, page: 1, pageSize: 50 } })
+        .on('GET', '/api/schedule-runs', { body: { items: [], total: 0, page: 1, pageSize: 50 } });
+      const { unmount, container } = renderApp(path);
+      await screen.findByText('Agendamentos pausados:');
+      const texts = [...container.querySelectorAll('[role=alert], [role=status]')]
+        .map((e) => e.textContent ?? '')
+        .filter((t) => /atualização|pausados|simulação/i.test(t));
+      expect(
+        texts.map((t) =>
+          t.includes('atualização') ? 'update' : t.includes('pausados') ? 'pause' : 'dryRun',
+        ),
+        path,
+      ).toEqual(['update', 'pause', 'dryRun']);
+      unmount();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('demo mode replaces the simulation banner', async () => {
+    loggedInApi()
+      .on('GET', '/api/dashboard', { body: { ...DASH, demo: true, dryRun: true } })
+      .on('GET', '/api/rooms', { body: [] })
+      .on('GET', '/api/tags', { body: [] });
+    renderApp('/salas');
+    expect(await screen.findByText('Modo demonstração.')).toBeInTheDocument();
+    expect(screen.queryByText(/Modo simulação ativo/)).not.toBeInTheDocument();
   });
 });

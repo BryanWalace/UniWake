@@ -189,6 +189,7 @@ export class DashboardService {
       tags: this.d.repo.tags(),
       notices: this.d.repo.openNotices(20),
       demo: this.d.demo,
+      dryRun: this.d.settings.get('wake.dryRun'),
       lastSweepAt: this.d.lastSweepAt(),
       pause: this.d.pause(),
     };
