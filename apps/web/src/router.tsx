@@ -8,14 +8,14 @@ import { UsersPage } from './features/admin/UsersPage';
 import { DashboardPage } from './features/dashboard/DashboardPage';
 import { DevicePage } from './features/devices/DevicePage';
 import { DevicesPage } from './features/devices/DevicesPage';
+import { PreparePage } from './features/enrollment/PreparePage';
 import { ImportPage } from './features/devices/ImportPage';
 import { RoomPage } from './features/rooms/RoomPage';
 import { HistoryPage, JobPage } from './features/wake/HistoryPage';
 import { RoomsPage } from './features/rooms/RoomsPage';
 import { SchedulesPage } from './features/schedules/SchedulesPage';
-import { t } from './i18n/pt-BR';
 import { LoginPage } from './routes/LoginPage';
-import { NotFound, Placeholder } from './routes/NotFound';
+import { NotFound } from './routes/NotFound';
 import { SetupPage } from './routes/SetupPage';
 
 /** Route table (plan §6.5). Pages are filled in by later milestones. */
@@ -35,7 +35,7 @@ export const routes: RouteObject[] = [
       { path: 'agendamentos', element: <SchedulesPage /> },
       { path: 'historico', element: <HistoryPage /> },
       { path: 'historico/jobs/:id', element: <JobPage /> },
-      { path: 'preparar', element: <Placeholder title={t.nav.prepare} /> },
+      { path: 'preparar', element: <PreparePage /> },
       { path: 'configuracoes', element: <SettingsPage /> },
       { path: 'usuarios', element: <UsersPage /> },
       { path: 'auditoria', element: <AuditPage /> },
