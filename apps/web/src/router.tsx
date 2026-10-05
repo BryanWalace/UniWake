@@ -7,6 +7,7 @@ import { ImportPage } from './features/devices/ImportPage';
 import { RoomPage } from './features/rooms/RoomPage';
 import { HistoryPage, JobPage } from './features/wake/HistoryPage';
 import { RoomsPage } from './features/rooms/RoomsPage';
+import { SchedulesPage } from './features/schedules/SchedulesPage';
 import { t } from './i18n/pt-BR';
 import { LoginPage } from './routes/LoginPage';
 import { NotFound, Placeholder } from './routes/NotFound';
@@ -26,7 +27,7 @@ export const routes: RouteObject[] = [
       { path: 'dispositivos/:id', element: <DevicePage /> },
       { path: 'salas', element: <RoomsPage /> },
       { path: 'salas/:id', element: <RoomPage /> },
-      { path: 'agendamentos', element: <Placeholder title={t.nav.schedules} /> },
+      { path: 'agendamentos', element: <SchedulesPage /> },
       { path: 'historico', element: <HistoryPage /> },
       { path: 'historico/jobs/:id', element: <JobPage /> },
       { path: 'preparar', element: <Placeholder title={t.nav.prepare} /> },
