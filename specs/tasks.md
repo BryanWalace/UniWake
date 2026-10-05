@@ -188,7 +188,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M6-T09 | Health service/routes/page + `windows-host` read-only checks (power plan, pending reboot, active hours) + clock skew. | FR-012 | AC-012-01, AC-012-02, AC-012-03 | — |
 | [x] M6-T10 | Backups: daily/manual/pre-migration, retention, restore + web. | FR-014 | AC-014-01, AC-014-02 | — |
 | [x] M6-T11 | Web: global banners (dry-run/demo, pause, update failure) consistent on all pages. | constitution §8 | component tests | — |
-| [ ] M6-T12 | E2E axe sweep: dashboard, room, devices, schedules, settings, login. | NFR-07 | axe [E2E] | — |
+| [x] M6-T12 | E2E axe sweep: dashboard, room, devices, schedules, settings, login. | NFR-07 | axe [E2E] | — |
 
 ## M7 — prepare-target.ps1 and self-enrollment
 | ID | Task | Refs | Tests | Done when |
