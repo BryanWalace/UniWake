@@ -4,6 +4,7 @@
 
 BeforeAll {
   . (Join-Path $PSScriptRoot '..\prepare-target.ps1')
+  . (Join-Path $PSScriptRoot 'FakeSystem.ps1')
 
   function New-TestAdapter {
     param(
@@ -46,12 +47,23 @@ Describe 'Select-UwWiredAdapter (FR-007.1 step 1)' {
   }
 }
 
+Describe 'test safety net' {
+  It 'every function that reads or changes the computer is faked by Register-UwFakeSystem' {
+    $script = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\prepare-target.ps1')
+    $tokens = $null
+    $errors = $null
+    $ast = [Management.Automation.Language.Parser]::ParseInput($script, [ref]$tokens, [ref]$errors)
+    $pure = @('Add-UwStep', 'Select-UwWiredAdapter', 'Get-UwWantedValue', 'Write-UwSummary')
+    $defined = $ast.FindAll({ $args[0] -is [Management.Automation.Language.FunctionDefinitionAst] }, $false) |
+      ForEach-Object { $_.Name } |
+      Where-Object { $_ -notlike 'Invoke-Uw*' -and $pure -notcontains $_ }
+    $defined | Where-Object { $UwSystemFunctions -notcontains $_ } | Should -BeNullOrEmpty
+  }
+}
+
 Describe 'Invoke-UwPrepare' {
   BeforeEach {
-    Mock Write-Host {}
-    Mock Test-UwElevated { $true }
-    Mock Open-UwTranscript { 'C:\ProgramData\UniWake-Prepare\prepare-test.log' }
-    Mock Close-UwTranscript {}
+    Register-UwFakeSystem
     Mock Get-UwNetAdapter { @($WiFi, $Ethernet) }
     Mock Get-UwDefaultRouteIndex { @(7) }
   }

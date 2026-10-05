@@ -396,8 +396,8 @@ export (with formula neutralization). Append-only. Retention default 365 days.
 3. Disable Fast Startup (`HiberbootEnabled = 0`).
 4. Advanced NIC properties when present: Wake on Magic Packet on; Shutdown Wake-On-LAN / Wake from
    power-off state on; Energy Efficient Ethernet / Green Ethernet off.
-5. Unless `-NoFirewallChange`, enable the built-in "Echo Request – ICMPv4-In" rule for Domain and
-   Private profiles (IMP-021).
+5. Unless `-NoFirewallChange`, allow inbound ICMPv4 echo for the Domain and Private profiles
+   with a dedicated `UniWake-ICMPv4-In` rule (IMP-021, ADR-028).
 6. Print a pt-BR summary (OK / FALHOU / NÃO SE APLICA / MANUAL) and the BIOS checklist; write a
    transcript to `%ProgramData%\UniWake-Prepare\`.
 7. Enroll (unless `-SkipEnrollment`).

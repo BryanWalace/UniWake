@@ -286,3 +286,16 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
 - **Consequences:** Moving a device between rooms changes historical room averages (acceptable;
   the device's own history is unchanged). A wall-display dashboard is logged out after
   `security.sessionIdleHours` without interaction.
+
+## ADR-028 — Dedicated ICMP rule instead of the built-in echo rule
+- **Date:** 2026-10-05 · **Status:** Accepted · **Amends:** FR-007.1 step 5, IMP-021
+- **Context:** The built-in "Compartilhamento de Arquivo e Impressora (Solicitação de Eco -
+  ICMPv4-In)" rule differs between Windows builds and languages: on many it is one rule for the
+  Private *and Public* profiles, so enabling it also answers pings on public networks (a laptop in
+  a café). Its name and grouping also depend on the build.
+- **Decision:** prepare-target.ps1 creates (or repairs) its own inbound rule `UniWake-ICMPv4-In`
+  ("UniWake - Ping (ICMPv4)"): ICMPv4 type 8, Allow, profiles Domain and Private only. Built-in
+  rules are left untouched. `-NoFirewallChange` skips the step.
+- **Consequences:** Same end state on every build, idempotent by rule name, nothing opened on
+  Public. IT can find and remove the rule by its name. Group Policy that blocks local rules still
+  wins; the monitor's TCP probe (incl. refused) covers that case.

@@ -77,6 +77,78 @@ function Close-UwTranscript {
   try { Stop-Transcript | Out-Null } catch { Write-Verbose 'Nenhum registro em andamento.' }
 }
 
+function Get-UwPowerManagement([string]$Name) {
+  return Get-NetAdapterPowerManagement -Name $Name -ErrorAction Stop
+}
+
+function Set-UwPowerManagement {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param([string]$Name)
+  if ($PSCmdlet.ShouldProcess($Name, 'Wake on Magic Packet ativado, Wake on Pattern desativado')) {
+    Set-NetAdapterPowerManagement -Name $Name -WakeOnMagicPacket Enabled -WakeOnPattern Disabled -NoRestart -ErrorAction Stop
+  }
+}
+
+function Get-UwWakeArmedDevice {
+  return @(& powercfg.exe /devicequery wake_armed 2>$null)
+}
+
+function Enable-UwDeviceWake {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param([string]$Description)
+  if ($PSCmdlet.ShouldProcess($Description, 'Permitir que este dispositivo ative o computador')) {
+    & powercfg.exe /deviceenablewake $Description | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "powercfg /deviceenablewake terminou com código $LASTEXITCODE." }
+  }
+}
+
+$script:UwPowerKey = 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power'
+
+function Get-UwHiberboot {
+  $p = Get-ItemProperty -Path $script:UwPowerKey -Name HiberbootEnabled -ErrorAction SilentlyContinue
+  if ($null -eq $p) { return $null }
+  return [int]$p.HiberbootEnabled
+}
+
+function Set-UwHiberboot {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param()
+  if ($PSCmdlet.ShouldProcess('HiberbootEnabled', 'Desativar a Inicialização Rápida')) {
+    Set-ItemProperty -Path $script:UwPowerKey -Name HiberbootEnabled -Value 0 -Type DWord -ErrorAction Stop
+  }
+}
+
+function Get-UwAdvancedProperty([string]$Name) {
+  return @(Get-NetAdapterAdvancedProperty -Name $Name -AllProperties -ErrorAction SilentlyContinue)
+}
+
+function Set-UwAdvancedProperty {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param([string]$Name, [string]$Keyword, [string]$Value)
+  if ($PSCmdlet.ShouldProcess("$Name $Keyword", "valor $Value")) {
+    # -NoRestart: restarting the adapter would drop the network before enrollment; the new value
+    # applies from the next boot, which is when it matters.
+    Set-NetAdapterAdvancedProperty -Name $Name -RegistryKeyword $Keyword -RegistryValue $Value -NoRestart -ErrorAction Stop
+  }
+}
+
+$script:UwIcmpRuleName = 'UniWake-ICMPv4-In'
+
+function Get-UwIcmpRule {
+  return Get-NetFirewallRule -Name $script:UwIcmpRuleName -ErrorAction SilentlyContinue
+}
+
+function Set-UwIcmpRule {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param([bool]$Exists)
+  if (-not $PSCmdlet.ShouldProcess($script:UwIcmpRuleName, 'Permitir ping (ICMPv4) nas redes de domínio e privadas')) { return }
+  if ($Exists) {
+    Set-NetFirewallRule -Name $script:UwIcmpRuleName -Enabled True -Action Allow -Profile Domain, Private -ErrorAction Stop
+  } else {
+    New-NetFirewallRule -Name $script:UwIcmpRuleName -DisplayName 'UniWake - Ping (ICMPv4)' -Description 'Criada pelo prepare-target.ps1 do UniWake (ADR-028).' -Direction Inbound -Protocol ICMPv4 -IcmpType 8 -Action Allow -Profile Domain, Private -Enabled True -ErrorAction Stop | Out-Null
+  }
+}
+
 # ------------------------------------------------------------------ logic
 
 function Add-UwStep {
@@ -100,6 +172,161 @@ function Select-UwWiredAdapter {
   return [pscustomobject]@{
     Chosen = $chosen
     Others = @($wired | Where-Object { -not $chosen -or $_.ifIndex -ne $chosen.ifIndex })
+  }
+}
+
+<# FR-007.1 step 2: "Permitir que este dispositivo ative o computador" + "Somente Magic Packet". #>
+function Invoke-UwWakeStep {
+  param([object]$Nic)
+  $name = 'Placa pode ligar o computador (somente Magic Packet)'
+  try {
+    $pm = Get-UwPowerManagement $Nic.Name
+  } catch {
+    Add-UwStep $name $script:UwStatus.NotApplies 'a placa não informa opções de energia'
+    return
+  }
+  if ("$($pm.WakeOnMagicPacket)" -eq 'Unsupported') {
+    Add-UwStep $name $script:UwStatus.NotApplies 'a placa não suporta Magic Packet'
+    return
+  }
+  $armed = @(Get-UwWakeArmedDevice) -contains $Nic.InterfaceDescription
+  $magicOk = "$($pm.WakeOnMagicPacket)" -eq 'Enabled'
+  $patternOk = @('Disabled', 'Unsupported') -contains "$($pm.WakeOnPattern)"
+  if ($armed -and $magicOk -and $patternOk) {
+    Add-UwStep $name $script:UwStatus.Ok 'já estava configurado'
+    return
+  }
+  if ($WhatIfPreference) {
+    Add-UwStep $name $script:UwStatus.Planned 'ativar ligar pela rede e aceitar só Magic Packet'
+    return
+  }
+  try {
+    if (-not ($magicOk -and $patternOk)) { Set-UwPowerManagement -Name $Nic.Name }
+    if (-not $armed) { Enable-UwDeviceWake -Description $Nic.InterfaceDescription }
+    Add-UwStep $name $script:UwStatus.Ok 'ativado'
+  } catch {
+    Add-UwStep $name $script:UwStatus.Failed $_.Exception.Message
+  }
+}
+
+<# FR-007.1 step 3: Fast Startup keeps the NIC from arming for wake on shutdown. #>
+function Invoke-UwFastStartupStep {
+  $name = 'Inicialização Rápida (Fast Startup) desativada'
+  if ((Get-UwHiberboot) -eq 0) {
+    Add-UwStep $name $script:UwStatus.Ok 'já estava desativada'
+    return
+  }
+  if ($WhatIfPreference) {
+    Add-UwStep $name $script:UwStatus.Planned 'desativar (HiberbootEnabled = 0)'
+    return
+  }
+  try {
+    Set-UwHiberboot
+    Add-UwStep $name $script:UwStatus.Ok 'desativada'
+  } catch {
+    Add-UwStep $name $script:UwStatus.Failed $_.Exception.Message
+  }
+}
+
+$script:UwOnValue = '^(Enabled|On|Ativado|Ativada|Habilitado|Habilitada|Ligado|Ligada)$'
+$script:UwOffValue = '^(Disabled|Off|Desativado|Desativada|Desabilitado|Desabilitada|Desligado|Desligada)$'
+
+# FR-007.1 step 4. Drivers name these differently; standard keywords first, display names second.
+$script:UwAdvancedTargets = @(
+  @{
+    Label = 'Wake on Magic Packet'; Want = 'on'
+    Keywords = @('*WakeOnMagicPacket')
+    Display = 'Wake on Magic Packet$|^Magic Packet'
+  },
+  @{
+    Label = 'Ligar a partir do desligamento (Shutdown Wake-On-LAN)'; Want = 'on'
+    Keywords = @('S5WakeOnLan', '*S5WakeOnLan', 'WakeFromS5', 'EnablePME')
+    Display = 'Shutdown Wake|Wake from (power.?off|S5)|power off state|Enable PME'
+  },
+  @{
+    Label = 'Ethernet com eficiência energética desligada (EEE / Green Ethernet)'; Want = 'off'
+    Keywords = @('*EEE', 'EEE', 'AdvancedEEE', 'EEELinkAdvertisement', 'EnableGreenEthernet', '*GreenEthernet')
+    Display = 'Energy.?Efficient|Green Ethernet|\bEEE\b'
+  }
+)
+
+<# The registry value that means on/off for this property, or $null when it cannot be told. #>
+function Get-UwWantedValue {
+  param([object]$Property, [string]$Want)
+  $pattern = if ($Want -eq 'on') { $script:UwOnValue } else { $script:UwOffValue }
+  $display = @($Property.ValidDisplayValues)
+  $values = @($Property.ValidRegistryValues)
+  for ($i = 0; $i -lt $display.Count -and $i -lt $values.Count; $i++) {
+    if ("$($display[$i])" -match $pattern) { return "$($values[$i])" }
+  }
+  $fallback = if ($Want -eq 'on') { '1' } else { '0' }
+  if ($values -contains $fallback) { return $fallback }
+  return $null
+}
+
+function Invoke-UwAdvancedStep {
+  param([object]$Nic)
+  $all = @(Get-UwAdvancedProperty $Nic.Name)
+  foreach ($t in $script:UwAdvancedTargets) {
+    $props = @($all | Where-Object {
+        $t.Keywords -contains $_.RegistryKeyword -or "$($_.DisplayName)" -match $t.Display
+      })
+    if ($props.Count -eq 0) {
+      Add-UwStep $t.Label $script:UwStatus.NotApplies 'a placa não tem esta opção'
+      continue
+    }
+    $changes = @()
+    $manual = @()
+    foreach ($p in $props) {
+      $wanted = Get-UwWantedValue -Property $p -Want $t.Want
+      if ($null -eq $wanted) { $manual += "$($p.DisplayName)"; continue }
+      if ("$(@($p.RegistryValue)[0])" -ne $wanted) {
+        $changes += [pscustomobject]@{ Keyword = $p.RegistryKeyword; Value = $wanted; Display = $p.DisplayName }
+      }
+    }
+    if ($manual.Count -gt 0 -and $changes.Count -eq 0) {
+      Add-UwStep $t.Label $script:UwStatus.Manual ('ajuste manualmente em Gerenciador de Dispositivos: {0}' -f ($manual -join ', '))
+      continue
+    }
+    if ($changes.Count -eq 0) {
+      Add-UwStep $t.Label $script:UwStatus.Ok 'já estava configurado'
+      continue
+    }
+    if ($WhatIfPreference) {
+      Add-UwStep $t.Label $script:UwStatus.Planned (($changes | ForEach-Object { $_.Display }) -join ', ')
+      continue
+    }
+    try {
+      foreach ($c in $changes) { Set-UwAdvancedProperty -Name $Nic.Name -Keyword $c.Keyword -Value $c.Value }
+      Add-UwStep $t.Label $script:UwStatus.Ok 'ajustado (vale a partir da próxima inicialização)'
+    } catch {
+      Add-UwStep $t.Label $script:UwStatus.Failed $_.Exception.Message
+    }
+  }
+}
+
+<# FR-007.1 step 5 (ADR-028): our own ping rule, Domain and Private only. #>
+function Invoke-UwIcmpStep {
+  param([switch]$NoFirewallChange)
+  $name = 'Ping (ICMPv4) liberado nas redes de domínio e privadas'
+  if ($NoFirewallChange) {
+    Add-UwStep $name $script:UwStatus.NotApplies 'ignorado (-NoFirewallChange)'
+    return
+  }
+  $rule = Get-UwIcmpRule
+  if ($rule -and "$($rule.Enabled)" -eq 'True' -and "$($rule.Action)" -eq 'Allow' -and "$($rule.Profile)" -eq 'Domain, Private') {
+    Add-UwStep $name $script:UwStatus.Ok 'já estava liberado'
+    return
+  }
+  if ($WhatIfPreference) {
+    Add-UwStep $name $script:UwStatus.Planned "regra $($script:UwIcmpRuleName)"
+    return
+  }
+  try {
+    Set-UwIcmpRule -Exists ([bool]$rule)
+    Add-UwStep $name $script:UwStatus.Ok "regra $($script:UwIcmpRuleName)"
+  } catch {
+    Add-UwStep $name $script:UwStatus.Failed $_.Exception.Message
   }
 }
 
@@ -163,7 +390,11 @@ function Invoke-UwPrepare {
       foreach ($o in $pick.Others) {
         Write-Host ('Outra placa cabeada encontrada: {0} ({1}, {2}).' -f $o.Name, $o.InterfaceDescription, $o.Status)
       }
+      Invoke-UwWakeStep -Nic $nic
     }
+    Invoke-UwFastStartupStep
+    if ($pick.Chosen) { Invoke-UwAdvancedStep -Nic $pick.Chosen }
+    Invoke-UwIcmpStep -NoFirewallChange:$NoFirewallChange
     Write-UwSummary
     Write-Host "Registro desta execução: $log"
     $failed = @($script:UwSteps | Where-Object { $_.Resultado -eq $script:UwStatus.Failed }).Count
