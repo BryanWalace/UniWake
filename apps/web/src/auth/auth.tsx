@@ -7,6 +7,7 @@ import { ErrorState, LoadingState } from '../components/Banner';
 import { t } from '../i18n/pt-BR';
 import { WakeProvider } from '../features/wake/WakeProvider';
 import { DemoBanner } from '../features/dashboard/DemoBanner';
+import { PauseBanner } from '../features/schedules/Pause';
 import { RealtimeProvider } from '../realtime/RealtimeProvider';
 import { Layout } from '../routes/Layout';
 
@@ -91,7 +92,15 @@ export function RequireAuth() {
   return (
     <RealtimeProvider>
       <WakeProvider>
-        <Layout banners={<DemoBanner />} userMenu={<UserMenu me={me.data} />} />
+        <Layout
+          banners={
+            <>
+              <PauseBanner />
+              <DemoBanner />
+            </>
+          }
+          userMenu={<UserMenu me={me.data} />}
+        />
       </WakeProvider>
     </RealtimeProvider>
   );

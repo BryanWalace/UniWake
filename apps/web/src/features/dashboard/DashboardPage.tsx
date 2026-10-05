@@ -15,6 +15,7 @@ import { useDebounced } from '../devices/DevicesPage';
 import { useRealtimeState } from '../../realtime/RealtimeProvider';
 import { useWakeUi } from '../wake/WakeProvider';
 import { useDashboard } from './api';
+import { MorningResultCard } from './MorningResultCard';
 
 const STATUS_FILTERS: { value: DeviceStatus; label: string }[] = [
   { value: 'online', label: 'Ligadas' },
@@ -195,15 +196,19 @@ function Notices({ notices }: { notices: DashboardNotice[] }) {
   if (notices.length === 0) return null;
   return (
     <section aria-label="Avisos" className="space-y-2">
-      {notices.map((n) => (
-        <p
-          key={n.id}
-          className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
-        >
-          {NOTICE_TEXT[n.type] ?? 'Aviso do sistema.'}{' '}
-          <span className="text-amber-800">({formatDateTime(n.createdAt)})</span>
-        </p>
-      ))}
+      {notices.map((n) =>
+        n.type === 'morning_result' ? (
+          <MorningResultCard key={n.id} notice={n} />
+        ) : (
+          <p
+            key={n.id}
+            className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
+          >
+            {NOTICE_TEXT[n.type] ?? 'Aviso do sistema.'}{' '}
+            <span className="text-amber-800">({formatDateTime(n.createdAt)})</span>
+          </p>
+        ),
+      )}
     </section>
   );
 }

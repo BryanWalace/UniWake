@@ -5,6 +5,7 @@ import { ApiRequestError } from '../../api/client';
 import { EmptyState, ErrorState, LoadingState } from '../../components/Banner';
 import { Button, PageHeader } from '../../components/ui';
 import { formatDateTime, formatTime, useNow } from '../../lib/format';
+import { RunsSection } from '../schedules/RunsSection';
 import { useJob, useJobPackets, useJobs } from './api';
 import { JobProgress } from './JobDrawer';
 
@@ -88,6 +89,7 @@ export function HistoryPage() {
           </nav>
         </>
       )}
+      <RunsSection />
     </section>
   );
 }

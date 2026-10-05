@@ -5,7 +5,16 @@ import { EmptyState, ErrorState, LoadingState } from '../../components/Banner';
 import { FormError } from '../../components/form';
 import { Button, ConfirmDialog, PageHeader } from '../../components/ui';
 import { formatDateTime } from '../../lib/format';
-import { useDeleteSchedule, useNextRuns, useSchedules, useSaveSchedule } from './api';
+import { useDashboard } from '../dashboard/api';
+import {
+  useDeleteSchedule,
+  useNextRuns,
+  useResumeScheduler,
+  useSaveSchedule,
+  useSchedules,
+} from './api';
+import { ExceptionsSection } from './ExceptionsSection';
+import { PauseDialog } from './Pause';
 import { weekdaysLabel } from './format';
 import { ScheduleFormDialog } from './ScheduleFormDialog';
 
@@ -20,6 +29,9 @@ export function SchedulesPage({ extra }: { extra?: React.ReactNode }) {
   const [deleting, setDeleting] = useState<Schedule | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pausing, setPausing] = useState(false);
+  const paused = Boolean(useDashboard().data?.pause);
+  const resume = useResumeScheduler();
 
   async function toggle(s: Schedule) {
     setError(null);
@@ -36,9 +48,20 @@ export function SchedulesPage({ extra }: { extra?: React.ReactNode }) {
       <PageHeader
         title="Agendamentos"
         actions={
-          <Button variant="primary" onClick={() => setEditing('new')}>
-            Novo agendamento
-          </Button>
+          <>
+            {paused ? (
+              <Button onClick={() => resume.mutate()} disabled={resume.isPending}>
+                Retomar agendamentos
+              </Button>
+            ) : (
+              <Button variant="danger" onClick={() => setPausing(true)}>
+                Pausar agendamentos
+              </Button>
+            )}
+            <Button variant="primary" onClick={() => setEditing('new')}>
+              Novo agendamento
+            </Button>
+          </>
         }
       />
       {message && (
@@ -68,7 +91,9 @@ export function SchedulesPage({ extra }: { extra?: React.ReactNode }) {
           ))}
         </ul>
       )}
+      <ExceptionsSection />
       {extra}
+      <PauseDialog open={pausing} onClose={() => setPausing(false)} />
       <ScheduleFormDialog
         open={editing !== null}
         schedule={editing === 'new' || editing === null ? undefined : editing}

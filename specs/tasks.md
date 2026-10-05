@@ -166,7 +166,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M5-T06 | Execution log API. | FR-005.7 | AC-005-10 | — |
 | [x] M5-T07 | Morning result notices + notices API + ack. Extend the demo seed (M4-T09) with 2 schedules and the past morning-result notice. | FR-013, FR-015 | AC-013-01 | — |
 | [x] M5-T08 | Web: schedules list/form (target picker, weekdays, tz, stagger, next runs, "alvo vazio"). | FR-005.1, FR-005.8 | component tests | — |
-| [ ] M5-T09 | Web: exceptions, pause dialog/banner, execution log, morning-result card. | FR-005.2, FR-005.6, FR-005.7, FR-013 | component tests | — |
+| [x] M5-T09 | Web: exceptions, pause dialog/banner, execution log, morning-result card. | FR-005.2, FR-005.6, FR-005.7, FR-013 | component tests | — |
 
 ## M6 — Auth completion, roles, audit, settings, health, backups
 | ID | Task | Refs | Tests | Done when |
