@@ -4,6 +4,7 @@
  */
 import { AuditService } from './application/audit/audit-service';
 import { AuthService } from './application/auth/auth-service';
+import { UsersService } from './application/auth/users-service';
 import { CsvImportService } from './application/devices/csv-import-service';
 import { DashboardService } from './application/dashboard/dashboard-service';
 import { NoticesService } from './application/notices/notices-service';
@@ -81,14 +82,17 @@ export function createServices(
   const tx = <T>(fn: () => T): T => db.transaction(fn);
   const audit = new AuditService(new SqliteAuditRepo(db), clock);
   const settings = new SettingsService(new SqliteSettingsRepo(db), clock);
-  const auth = new AuthService(
-    new SqliteUsersRepo(db),
-    new SqliteSessionsRepo(db),
-    settings,
+  const usersRepo = new SqliteUsersRepo(db);
+  const sessionsRepo = new SqliteSessionsRepo(db);
+  const auth = new AuthService(usersRepo, sessionsRepo, settings, audit, clock, tx);
+  const users = new UsersService({
+    users: usersRepo,
+    sessions: sessionsRepo,
+    auth,
     audit,
     clock,
-    tx,
-  );
+    transaction: tx,
+  });
   const events = new EventsBus();
 
   const roomsRepo = new SqliteRoomsRepo(db);
@@ -237,5 +241,6 @@ export function createServices(
     schedules,
     scheduler,
     notices,
+    users,
   };
 }

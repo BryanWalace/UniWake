@@ -42,6 +42,8 @@ export const userUpdateSchema = z.object({
   enabled: z.boolean().optional(),
 });
 export const passwordResetSchema = z.object({ newPassword: passwordSchema });
+export type UserCreate = z.input<typeof userCreateSchema>;
+export type UserUpdate = z.input<typeof userUpdateSchema>;
 
 export interface User {
   id: number;

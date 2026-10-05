@@ -58,6 +58,23 @@ export class SqliteUsersRepo implements UsersRepo {
     ).lastInsertRowid;
   }
 
+  list(): UserRecord[] {
+    return this.db.all<UserRow>('SELECT * FROM users ORDER BY username').map(toUser);
+  }
+
+  setRoleEnabled(id: number, role: Role, enabled: boolean): void {
+    this.db.run('UPDATE users SET role = ?, enabled = ? WHERE id = ?', [role, enabled ? 1 : 0, id]);
+  }
+
+  enabledAdmins(exceptId?: number): number {
+    return (
+      this.db.get<{ n: number }>(
+        "SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND enabled = 1 AND id <> ?",
+        [exceptId ?? -1],
+      )?.n ?? 0
+    );
+  }
+
   setPasswordHash(id: number, hash: string, now: number, changed: boolean): void {
     if (changed) {
       this.db.run('UPDATE users SET password_hash = ?, password_changed_at = ? WHERE id = ?', [

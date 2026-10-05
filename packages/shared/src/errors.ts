@@ -63,6 +63,11 @@ export const ERROR_DEFS = {
     status: 403,
     message: 'Este usuário está desativado. Fale com um administrador.',
   },
+  LAST_ADMIN: {
+    status: 409,
+    message:
+      'Este é o último administrador ativo. Promova outro usuário a administrador antes de alterá-lo.',
+  },
   USERNAME_DUPLICATE: {
     status: 409,
     message: 'Já existe um usuário com este nome. Escolha outro.',

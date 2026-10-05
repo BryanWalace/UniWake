@@ -4,6 +4,7 @@
  */
 import type { AuditService } from '../application/audit/audit-service';
 import type { AuthService } from '../application/auth/auth-service';
+import type { UsersService } from '../application/auth/users-service';
 import type { DashboardService } from '../application/dashboard/dashboard-service';
 import type { CsvImportService } from '../application/devices/csv-import-service';
 import type { DevicesService } from '../application/devices/devices-service';
@@ -32,4 +33,5 @@ export interface HttpServices {
   schedules: SchedulesService;
   scheduler: Scheduler;
   notices: NoticesService;
+  users: UsersService;
 }

@@ -34,6 +34,10 @@ export interface UsersRepo {
   /** Counts a failure; failures before `windowStart` no longer count (the count restarts). */
   recordLoginFailure(id: number, now: number, windowStart: number): void;
   resetLoginFailures(id: number): void;
+  list(): UserRecord[];
+  setRoleEnabled(id: number, role: Role, enabled: boolean): void;
+  /** Enabled admins, optionally ignoring one user (would they still exist without it?). */
+  enabledAdmins(exceptId?: number): number;
 }
 
 export interface SessionRecord {
