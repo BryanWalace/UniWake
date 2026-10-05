@@ -1,4 +1,5 @@
 import type {
+  EnrolledDeviceWrite,
   EnrollmentRepo,
   EnrollmentTokenRow,
   EnrollmentTokenView,
@@ -76,6 +77,88 @@ export class SqliteEnrollmentRepo implements EnrollmentRepo {
     this.db.run('UPDATE enrollment_tokens SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL', [
       at,
       id,
+    ]);
+  }
+
+  consumeUse(id: number): boolean {
+    return (
+      this.db.run('UPDATE enrollment_tokens SET uses = uses + 1 WHERE id = ? AND uses < max_uses', [
+        id,
+      ]).changes === 1
+    );
+  }
+
+  deviceByMac(
+    mac: string,
+  ): { id: number; name: string; roomId: number | null; ip: string | null } | undefined {
+    return this.db.get<{ id: number; name: string; roomId: number | null; ip: string | null }>(
+      'SELECT id, name, room_id AS roomId, ip FROM devices WHERE mac = ?',
+      [mac],
+    );
+  }
+
+  insertDevice(d: EnrolledDeviceWrite & { name: string }, now: number): number {
+    const id = this.db.run(
+      `INSERT INTO devices (name, mac, ip, hostname, room_id, manufacturer, model, serial, os,
+         other_macs, prepared_at, prepare_results, enrolled_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        d.name,
+        d.mac,
+        d.ip,
+        d.hostname,
+        d.roomId,
+        d.manufacturer,
+        d.model,
+        d.serial,
+        d.os,
+        JSON.stringify(d.otherMacs),
+        d.preparedAt,
+        d.prepareResults ? JSON.stringify(d.prepareResults) : null,
+        now,
+        now,
+        now,
+      ],
+    ).lastInsertRowid;
+    this.db.run('INSERT INTO device_state (device_id) VALUES (?)', [id]);
+    return id;
+  }
+
+  updateDevice(id: number, d: EnrolledDeviceWrite, now: number): void {
+    // A missing IP in the request keeps the known one (the monitor may have resolved it).
+    this.db.run(
+      `UPDATE devices SET ip = COALESCE(?, ip), hostname = ?, room_id = ?, manufacturer = ?,
+         model = ?, serial = ?, os = ?, other_macs = ?, prepared_at = ?, prepare_results = ?,
+         enrolled_at = ?, updated_at = ? WHERE id = ?`,
+      [
+        d.ip,
+        d.hostname,
+        d.roomId,
+        d.manufacturer,
+        d.model,
+        d.serial,
+        d.os,
+        JSON.stringify(d.otherMacs),
+        d.preparedAt,
+        d.prepareResults ? JSON.stringify(d.prepareResults) : null,
+        now,
+        now,
+        id,
+      ],
+    );
+  }
+
+  addDeviceEvent(
+    deviceId: number,
+    at: number,
+    type: 'enrolled' | 'moved' | 'ip_changed',
+    data: object,
+  ): void {
+    this.db.run('INSERT INTO device_events (device_id, at, type, data) VALUES (?, ?, ?, ?)', [
+      deviceId,
+      at,
+      type,
+      JSON.stringify(data),
     ]);
   }
 }

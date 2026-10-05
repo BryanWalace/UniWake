@@ -54,7 +54,6 @@ export interface DashboardRepo {
   rooms(): RoomRow[];
   lastActions(): Map<number, RoomLastAction>;
   tags(): DashboardTag[];
-  openNotices(limit: number): DashboardNotice[];
   deviceExists(id: number): boolean;
   roomExists(id: number): boolean;
   /** Devices (id, created_at) currently in the room, or the single device. */
@@ -95,6 +94,8 @@ export interface DashboardDeps {
   demo: boolean;
   lastSweepAt: () => number | null;
   pause: () => Dashboard['pause'];
+  /** Open notices as the notices service presents them (e.g. moves of the last 24 h only). */
+  notices: () => DashboardNotice[];
 }
 
 const ROLLUP_AT = '00:10';
@@ -187,7 +188,7 @@ export class DashboardService {
             }
           : null,
       tags: this.d.repo.tags(),
-      notices: this.d.repo.openNotices(20),
+      notices: this.d.notices().slice(0, 20),
       demo: this.d.demo,
       dryRun: this.d.settings.get('wake.dryRun'),
       lastSweepAt: this.d.lastSweepAt(),

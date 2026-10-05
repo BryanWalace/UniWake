@@ -4,7 +4,21 @@
  */
 import type { DeviceResult } from './wake';
 
-export const NOTICE_TYPES = ['morning_result'] as const;
+export const NOTICE_TYPES = ['morning_result', 'enrollment_moves'] as const;
+
+/** One machine moved to another room by self-enrollment (AC-007-07). */
+export interface EnrollMove {
+  deviceId: number;
+  deviceName: string;
+  from: string;
+  to: string;
+  at: number;
+}
+
+/** `data` of an `enrollment_moves` notice: moves of the last 24 h. */
+export interface EnrollmentMoves {
+  moves: EnrollMove[];
+}
 
 /** One scheduled run that needs attention in the "Resultado da manhã" card. */
 export interface MorningRun {

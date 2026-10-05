@@ -8,7 +8,7 @@ export type AuditResult = 'ok' | 'error' | 'denied';
 
 export interface Actor {
   id: number | null;
-  /** Username, or "sistema", "agendamento", "inscrição" for automatic actions. */
+  /** Username, or "sistema", "agendamento", "cadastro (PC-01)" for automatic actions. */
   label: string;
 }
 

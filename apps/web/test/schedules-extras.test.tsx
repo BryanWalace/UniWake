@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Dashboard, MorningResult } from '@uniwake/shared';
+import type { Dashboard, EnrollmentMoves, MorningResult } from '@uniwake/shared';
 import { loggedInApi, renderApp } from './helpers';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -205,6 +205,30 @@ describe('morning result (FR-013)', () => {
     );
     await user.click(within(card).getByRole('button', { name: 'Ciente' }));
     await waitFor(() => expect(api.calls.some((c) => c.path === '/api/notices/3/ack')).toBe(true));
+  });
+
+  it('AC-007-07: machines moved by enrollment are listed with their old and new room', async () => {
+    const data: EnrollmentMoves = {
+      moves: [{ deviceId: 7, deviceName: 'PC-07', from: 'Lab 2', to: 'Lab 3', at: at(9, 15) }],
+    };
+    const api = loggedInApi()
+      .on('GET', '/api/dashboard', {
+        body: {
+          ...DASH,
+          notices: [{ id: 4, type: 'enrollment_moves', createdAt: at(9, 15), data }],
+        },
+      })
+      .on('POST', '/api/notices/4/ack', { status: 204 });
+    const user = userEvent.setup();
+    renderApp('/');
+    const card = await screen.findByRole('article', { name: 'Computadores que mudaram de sala' });
+    expect(card).toHaveTextContent('PC-07: Lab 2 → Lab 3 (05/10/2026 09:15)');
+    expect(within(card).getByRole('link', { name: 'PC-07' })).toHaveAttribute(
+      'href',
+      '/dispositivos/7',
+    );
+    await user.click(within(card).getByRole('button', { name: 'Ciente' }));
+    await waitFor(() => expect(api.calls.some((c) => c.path === '/api/notices/4/ack')).toBe(true));
   });
 });
 

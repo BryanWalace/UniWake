@@ -162,6 +162,7 @@ export function createServices(
     demo: opts.demo === true,
     lastSweepAt: () => monitor.lastSweep?.startedAt ?? null,
     pause: () => scheduler.pauseState(),
+    notices: () => notices.list(),
   });
 
   const runner = new JobRunner({
@@ -319,6 +320,7 @@ export function createServices(
     clock,
     transaction: tx,
     agentPort: opts.running?.agentPort ?? 47101,
+    onMoved: (move) => notices.onDeviceMoved(move),
   });
 
   return {

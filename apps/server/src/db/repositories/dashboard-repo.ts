@@ -1,5 +1,4 @@
 import type {
-  DashboardNotice,
   DashboardTag,
   DeviceStatus,
   JobState,
@@ -104,21 +103,6 @@ export class SqliteDashboardRepo implements DashboardRepo {
        FROM tags t LEFT JOIN device_tags dt ON dt.tag_id = t.id
        GROUP BY t.id ORDER BY t.name`,
     );
-  }
-
-  openNotices(limit: number): DashboardNotice[] {
-    return this.db
-      .all<{ id: number; type: string; created_at: number; data: string }>(
-        `SELECT id, type, created_at, data FROM notices WHERE acknowledged_at IS NULL
-         ORDER BY created_at DESC, id DESC LIMIT ?`,
-        [limit],
-      )
-      .map((r) => ({
-        id: r.id,
-        type: r.type,
-        createdAt: r.created_at,
-        data: JSON.parse(r.data) as Record<string, unknown>,
-      }));
   }
 
   deviceExists(id: number): boolean {

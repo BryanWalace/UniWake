@@ -3,7 +3,13 @@
  * attention (machines that did not wake, failed or lost runs). Pinned on the dashboard until
  * someone acknowledges it ("Ciente"); the acknowledgement is audited.
  */
-import type { DashboardNotice, MorningResult, MorningRun } from '@uniwake/shared';
+import type {
+  DashboardNotice,
+  EnrollMove,
+  EnrollmentMoves,
+  MorningResult,
+  MorningRun,
+} from '@uniwake/shared';
 import { localDay } from '../../domain/tz';
 import type { Actor, AuditService } from '../audit/audit-service';
 import { AppError } from '../errors';
@@ -38,12 +44,43 @@ export interface NoticesDeps {
 }
 
 const NOT_WOKEN = new Set(['nao_respondeu', 'falha_no_envio']);
+/** AC-007-07: an enrollment move is listed on the dashboard for 24 h. */
+const MOVES_SHOWN_MS = 86_400_000;
 
 export class NoticesService {
   constructor(private readonly d: NoticesDeps) {}
 
   list(): DashboardNotice[] {
-    return this.d.repo.open(50);
+    const since = this.d.clock.now() - MOVES_SHOWN_MS;
+    return this.d.repo.open(50).flatMap((n) => {
+      if (n.type !== 'enrollment_moves') return [n];
+      const moves = (n.data as unknown as EnrollmentMoves).moves.filter((m) => m.at >= since);
+      return moves.length > 0 ? [{ ...n, data: { moves } }] : [];
+    });
+  }
+
+  /** A machine changed rooms by enrolling (AC-007-07): one open notice collects the moves. */
+  onDeviceMoved(move: EnrollMove): void {
+    const since = move.at - MOVES_SHOWN_MS;
+    const id = this.d.transaction(() => {
+      const open = this.d.repo.open(50).find((n) => n.type === 'enrollment_moves');
+      if (!open) {
+        return this.d.repo.insert(
+          'enrollment_moves',
+          { moves: [move] } satisfies EnrollmentMoves,
+          move.at,
+        );
+      }
+      const moves = [
+        ...(open.data as unknown as EnrollmentMoves).moves.filter(
+          (m) => m.at >= since && m.deviceId !== move.deviceId,
+        ),
+        move,
+      ];
+      this.d.repo.updateData(open.id, { moves } satisfies EnrollmentMoves);
+      return open.id;
+    });
+    this.d.events.publish({ type: 'notice', id, noticeType: 'enrollment_moves' });
   }
 
   acknowledge(id: number, actor: Actor): void {

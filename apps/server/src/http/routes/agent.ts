@@ -1,4 +1,6 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { EnrollRequest } from '@uniwake/shared';
+import { AppError } from '../../application/errors';
 import type { HttpServices } from '../context';
 
 /**
@@ -17,4 +19,31 @@ export function prepareScriptRoute(
       .header('cache-control', 'no-store')
       .send(bytes);
   });
+}
+
+const BEARER = /^Bearer ([A-Za-z0-9_-]{16,64})$/;
+
+function bearerToken(req: FastifyRequest): string {
+  const m = BEARER.exec(req.headers.authorization ?? '');
+  if (!m) throw new AppError('ENROLL_TOKEN_INVALID');
+  return m[1]!;
+}
+
+/**
+ * Self-enrollment (FR-007.2, plan §7.3). The per-IP limit and the token's presence are checked in
+ * `onRequest`, before the body is parsed; the body is validated after the token is known valid.
+ */
+export function enrollRoute(app: FastifyInstance, s: Pick<HttpServices, 'enrollment'>): void {
+  app.post(
+    '/agent/enroll',
+    {
+      config: { auth: 'enrollment' },
+      onRequest: async (req) => {
+        if (!s.enrollment.allowEnrollFrom(req.ip)) throw new AppError('RATE_LIMITED');
+        bearerToken(req);
+      },
+    },
+    async (req) =>
+      s.enrollment.enroll(bearerToken(req), (req.body ?? {}) as EnrollRequest, { ip: req.ip }),
+  );
 }

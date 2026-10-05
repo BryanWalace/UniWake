@@ -2,20 +2,31 @@
  * Enrollment tokens and the "Preparar máquinas" command (FR-007.3, ADR-011, ADR-013).
  * A token is shown once; only its SHA-256 is stored (AC-007-09). The command downloads the script
  * from the agent listener and checks it against the SHA-256 of the exact bytes that listener
- * serves (AC-007-13) before running it.
+ * serves (AC-007-13) before running it. Target PCs enroll through the agent listener (FR-007.2):
+ * create, update or move the device with that MAC, in one transaction with the token use and the
+ * audit entry.
  */
 import { createHash, randomBytes } from 'node:crypto';
-import type {
-  CreatedEnrollmentToken,
-  EnrollmentAddresses,
-  EnrollmentCommand,
-  EnrollmentToken,
-  EnrollmentTokenState,
+import {
+  type CreatedEnrollmentToken,
+  type EnrollMove,
+  type EnrollOutcome,
+  type EnrollRequest,
+  enrollRequestSchema,
+  type EnrollResponse,
+  parseMac,
+  type EnrollmentAddresses,
+  type EnrollmentCommand,
+  type EnrollmentToken,
+  type EnrollmentTokenState,
+  LIMITS,
 } from '@uniwake/shared';
 import { isApipa, isLoopback } from '../../domain/network';
+import { cleanSmbios } from '../../domain/smbios';
 import type { Actor, AuditService } from '../audit/audit-service';
 import { AppError } from '../errors';
 import type { Clock, NetworkInterfaces } from '../ports';
+import { KeyedLimiter } from '../rate-limit';
 import type { SettingsService } from '../settings/settings-service';
 
 export interface EnrollmentTokenRow {
@@ -44,6 +55,34 @@ export interface EnrollmentRepo {
   /** Tokens created since `since`, plus any still usable, newest first. */
   listTokens(since: number, now: number, limit: number): EnrollmentTokenView[];
   revoke(id: number, at: number): void;
+  /** Counts one use unless the token is used up meanwhile (race-safe); false = exhausted. */
+  consumeUse(id: number): boolean;
+  deviceByMac(
+    mac: string,
+  ): { id: number; name: string; roomId: number | null; ip: string | null } | undefined;
+  insertDevice(d: EnrolledDeviceWrite & { name: string }, now: number): number;
+  updateDevice(id: number, d: EnrolledDeviceWrite, now: number): void;
+  addDeviceEvent(
+    deviceId: number,
+    at: number,
+    type: 'enrolled' | 'moved' | 'ip_changed',
+    data: object,
+  ): void;
+}
+
+/** What enrollment may set (FR-007.2); the name only on create. */
+export interface EnrolledDeviceWrite {
+  mac: string;
+  ip: string | null;
+  hostname: string;
+  roomId: number;
+  manufacturer: string | null;
+  model: string | null;
+  serial: string | null;
+  os: string | null;
+  otherMacs: string[];
+  preparedAt: number;
+  prepareResults: Record<string, string> | null;
 }
 
 /** The prepare script as served by the agent listener; null when the file is missing. */
@@ -61,7 +100,17 @@ export interface EnrollmentDeps {
   clock: Clock;
   transaction: <T>(fn: () => T) => T;
   agentPort: number;
+  /** AC-007-07: moved machines are listed on the dashboard for 24 h. */
+  onMoved: (move: EnrollMove) => void;
 }
+
+/** FR-007.2: enrollment requests per source IP per minute. */
+const ENROLL_PER_MINUTE = 10;
+const AGENT_ACTOR = (hostname?: string): Actor => ({
+  id: null,
+  label: hostname ? `cadastro (${hostname})` : 'cadastro',
+});
+const ROOM_LABEL = (name: string | null | undefined) => name ?? 'Sem sala';
 
 const HOUR = 3_600_000;
 /** How long ended tokens stay in the list. */
@@ -120,8 +169,11 @@ export function buildCommand(p: {
 
 export class EnrollmentService {
   private hashed: { bytes: Buffer; sha256: string } | null = null;
+  private readonly limiter: KeyedLimiter;
 
-  constructor(private readonly d: EnrollmentDeps) {}
+  constructor(private readonly d: EnrollmentDeps) {
+    this.limiter = new KeyedLimiter(d.clock, 60_000, () => ENROLL_PER_MINUTE);
+  }
 
   private view(t: EnrollmentTokenView, now: number): EnrollmentToken {
     return {
@@ -252,5 +304,122 @@ export class EnrollmentService {
       });
     });
     return { command, hubUrl, scriptUrl, sha256, roomCode: t.roomCode };
+  }
+
+  /** FR-007.2 rate limit, checked before the token or body is looked at. */
+  allowEnrollFrom(ip: string): boolean {
+    return this.limiter.hit(`enroll:${ip}`);
+  }
+
+  /** `POST /agent/enroll` (plan §7.3). `body` is validated here so the token is checked first. */
+  enroll(token: string, body: EnrollRequest, ctx: { ip: string | null }): EnrollResponse {
+    const now = this.d.clock.now();
+    const t = this.d.repo.findByHash(sha256Hex(token));
+    const deny = (e: AppError, hostname?: string): never => {
+      this.d.audit.record({
+        actor: AGENT_ACTOR(hostname),
+        action: 'enrollment.enroll',
+        target: t ? `room:${t.roomName}` : null,
+        result: 'denied',
+        sourceIp: ctx.ip,
+        details: { reason: e.code, ...(t ? { tokenId: t.id } : {}) },
+      });
+      throw e;
+    };
+    if (!t) return deny(new AppError('ENROLL_TOKEN_INVALID'));
+    const stateError = tokenError(tokenState(t, now));
+    if (stateError) return deny(stateError);
+    const parsed = enrollRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new AppError(
+        'VALIDATION_FAILED',
+        {},
+        parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+      );
+    }
+    const req = parsed.data;
+    if (req.roomCode.toUpperCase() !== t.roomCode) {
+      return deny(new AppError('ENROLL_ROOM_MISMATCH'), req.hostname);
+    }
+    const otherMacs = [
+      ...new Set(
+        req.otherMacs
+          .map((m) => parseMac(m))
+          .flatMap((r) => (r.ok && r.mac !== req.mac ? [r.mac] : [])),
+      ),
+    ];
+    const write: EnrolledDeviceWrite = {
+      mac: req.mac,
+      ip: req.ip || null,
+      hostname: req.hostname,
+      roomId: t.roomId,
+      manufacturer: cleanSmbios(req.manufacturer),
+      model: cleanSmbios(req.model),
+      serial: cleanSmbios(req.serial),
+      os: cleanSmbios(req.os),
+      otherMacs,
+      preparedAt: now,
+      prepareResults: req.prepareResults ?? null,
+    };
+
+    const done = this.d.transaction(() => {
+      if (!this.d.repo.consumeUse(t.id)) return null; // used up by a concurrent enrollment
+      const existing = this.d.repo.deviceByMac(req.mac);
+      let result: EnrollOutcome;
+      let deviceId: number;
+      let name: string;
+      let from: string | null = null;
+      if (!existing) {
+        name = req.hostname.slice(0, LIMITS.name);
+        deviceId = this.d.repo.insertDevice({ ...write, name }, now);
+        result = 'created';
+      } else {
+        ({ id: deviceId, name } = existing);
+        this.d.repo.updateDevice(deviceId, write, now);
+        if (existing.roomId !== t.roomId) {
+          result = 'moved';
+          from = ROOM_LABEL(
+            existing.roomId === null ? null : this.d.rooms.get(existing.roomId)?.name,
+          );
+          this.d.repo.addDeviceEvent(deviceId, now, 'moved', {
+            fromRoomId: existing.roomId,
+            toRoomId: t.roomId,
+          });
+        } else {
+          result = 'updated';
+        }
+        if (existing.ip !== write.ip && write.ip !== null) {
+          this.d.repo.addDeviceEvent(deviceId, now, 'ip_changed', {
+            from: existing.ip,
+            to: write.ip,
+          });
+        }
+      }
+      this.d.repo.addDeviceEvent(deviceId, now, 'enrolled', { result, tokenId: t.id });
+      const message =
+        result === 'created'
+          ? `Computador cadastrado na sala ${t.roomName}.`
+          : result === 'moved'
+            ? `Computador movido de ${from} para ${t.roomName}.`
+            : `Cadastro atualizado na sala ${t.roomName}.`;
+      this.d.audit.record({
+        actor: AGENT_ACTOR(req.hostname),
+        action: 'enrollment.enroll',
+        target: `device:${name}`,
+        sourceIp: ctx.ip,
+        details: {
+          result,
+          room: t.roomName,
+          mac: req.mac,
+          tokenId: t.id,
+          ...(from !== null ? { message: `movida de ${from} para ${t.roomName}` } : {}),
+        },
+      });
+      if (from !== null) {
+        this.d.onMoved({ deviceId, deviceName: name, from, to: t.roomName, at: now });
+      }
+      return { result, deviceId, room: t.roomName, message };
+    });
+    return done ?? deny(new AppError('ENROLL_TOKEN_EXHAUSTED'), req.hostname);
   }
 }

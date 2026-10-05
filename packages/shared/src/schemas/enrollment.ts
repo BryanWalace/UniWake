@@ -3,7 +3,8 @@
  * returned once, at creation; only its SHA-256 is stored (AC-007-09).
  */
 import { z } from 'zod';
-import { idSchema, ipv4Schema } from './common';
+import { macSchema } from '../mac';
+import { hostnameSchema, idSchema, ipv4Schema } from './common';
 
 export const ENROLLMENT_TOKEN_STATES = ['ativo', 'expirado', 'revogado', 'esgotado'] as const;
 export type EnrollmentTokenState = (typeof ENROLLMENT_TOKEN_STATES)[number];
@@ -68,4 +69,38 @@ export interface EnrollmentCommand {
   scriptUrl: string;
   sha256: string;
   roomCode: string;
+}
+
+const smbiosText = z.string().max(128).nullable().optional();
+
+/**
+ * `POST /agent/enroll` body from prepare-target.ps1 (FR-007.2). The token travels in
+ * `Authorization: Bearer`; the whole body is limited to 8 KB by the agent listener.
+ */
+export const enrollRequestSchema = z.object({
+  roomCode: z.string().trim().max(16),
+  mac: macSchema,
+  otherMacs: z.array(z.string().max(32)).max(16).default([]),
+  hostname: hostnameSchema,
+  ip: z
+    .union([z.literal(''), ipv4Schema])
+    .nullable()
+    .optional(),
+  manufacturer: smbiosText,
+  model: smbiosText,
+  serial: smbiosText,
+  os: smbiosText,
+  /** Step → result from the script summary (OK / FALHOU / NÃO SE APLICA / MANUAL). */
+  prepareResults: z.record(z.string().max(64), z.string().max(256)).optional(),
+});
+export type EnrollRequest = z.input<typeof enrollRequestSchema>;
+
+export type EnrollOutcome = 'created' | 'updated' | 'moved';
+
+export interface EnrollResponse {
+  result: EnrollOutcome;
+  deviceId: number;
+  room: string;
+  /** pt-BR line the script prints. */
+  message: string;
 }

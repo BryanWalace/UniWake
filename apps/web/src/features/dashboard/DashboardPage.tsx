@@ -15,6 +15,7 @@ import { useDebounced } from '../devices/DevicesPage';
 import { useRealtimeState } from '../../realtime/RealtimeProvider';
 import { useWakeUi } from '../wake/WakeProvider';
 import { useDashboard } from './api';
+import { EnrollmentMovesCard } from './EnrollmentMovesCard';
 import { MorningResultCard } from './MorningResultCard';
 
 const STATUS_FILTERS: { value: DeviceStatus; label: string }[] = [
@@ -203,6 +204,8 @@ function Notices({ notices }: { notices: DashboardNotice[] }) {
       {notices.map((n) =>
         n.type === 'morning_result' ? (
           <MorningResultCard key={n.id} notice={n} />
+        ) : n.type === 'enrollment_moves' ? (
+          <EnrollmentMovesCard key={n.id} notice={n} />
         ) : (
           <p
             key={n.id}
