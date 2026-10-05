@@ -5,6 +5,7 @@
   as a password-protected PFX and removes it from the certificate store. The password is read
   from stdin (never from the command line). Writes nothing else.
 #>
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingConvertToSecureStringWithPlainText', '', Justification = 'The hub generates the PFX password and passes it on stdin; it never appears on a command line or on disk.')]
 param(
     [Parameter(Mandatory = $true)][ValidatePattern('^\d{1,3}(\.\d{1,3}){3}$')][string]$Address,
     [Parameter(Mandatory = $true)][string]$OutFile

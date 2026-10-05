@@ -18,6 +18,7 @@
     "lint": "eslint --max-warnings=0 .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "test:ps": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-ps.ps1",
     "test": "vitest run --project root --project shared --project web --project server",
     "test:coverage": "vitest run --coverage --project root --project shared --project web --project server",
     "test:perf": "vitest run --project perf --no-file-parallelism",

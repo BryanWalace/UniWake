@@ -67,3 +67,6 @@ jobs:
       - run: npm ci
       - name: Unit and integration tests
         run: npm test
+      - name: PowerShell scripts (PSScriptAnalyzer + Pester)
+        shell: powershell
+        run: npm run test:ps

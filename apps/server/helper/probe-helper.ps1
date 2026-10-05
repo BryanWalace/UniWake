@@ -18,7 +18,7 @@ try {
     $warm = New-Object System.Net.NetworkInformation.Ping
     [void]$warm.SendPingAsync('127.0.0.1', 1000).Wait(5000)
     $warm.Dispose()
-} catch { }
+} catch { Write-Verbose "warm-up ping failed: $_" }
 
 # Startup can take seconds on a cold machine; the hub waits for this line before sending work.
 [Console]::Out.WriteLine('{"ready":true}')
@@ -40,7 +40,7 @@ while ($true) {
             $tasks.Add($p.SendPingAsync([string]$t, $timeout))
         }
         if ($tasks.Count -gt 0) {
-            try { [void][System.Threading.Tasks.Task]::WaitAll($tasks.ToArray(), $timeout + 2000) } catch { }
+            try { [void][System.Threading.Tasks.Task]::WaitAll($tasks.ToArray(), $timeout + 2000) } catch { Write-Verbose "some pings failed: $_" }
         }
         $results = New-Object System.Collections.Generic.List[object]
         for ($i = 0; $i -lt $tasks.Count; $i++) {
