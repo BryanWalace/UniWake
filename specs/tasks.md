@@ -184,7 +184,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M6-T05 | Settings API + audit diff; services apply changes at runtime; restart-required keys flagged; schema ↔ form test. | FR-016; NFR-03 | AC-016-01, AC-016-02 | — |
 | [x] M6-T06 | LAN exposure: HTTPS binding with PFX, cert-generator adapter, Secure cookies, allowlist. | FR-006.4; ADR-012, ADR-026 | AC-006-05, AC-006-08 | — |
 | [x] M6-T07 | Web: users, audit, settings (generated form), network preview. | FR-006.2, FR-006.5, FR-011, FR-016 | AC-011-01 | — |
-| [ ] M6-T08 | Log viewer API + page. | FR-016; NFR-04 | API tests | — |
+| [x] M6-T08 | Log viewer API + page. | FR-016; NFR-04 | API tests | — |
 | [ ] M6-T09 | Health service/routes/page + `windows-host` read-only checks (power plan, pending reboot, active hours) + clock skew. | FR-012 | AC-012-01, AC-012-02, AC-012-03 | — |
 | [ ] M6-T10 | Backups: daily/manual/pre-migration, retention, restore + web. | FR-014 | AC-014-01, AC-014-02 | — |
 | [ ] M6-T11 | Web: global banners (dry-run/demo, pause, update failure) consistent on all pages. | constitution §8 | component tests | — |

@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import { createFileLogger } from './adapters/logger';
 import { JsonConfigFile } from './adapters/config-file';
+import { LogFileReader } from './adapters/log-reader';
 import { type PanelCertificate, PanelCertificateStore } from './adapters/panel-certificate';
 import { OsDnsResolver } from './adapters/dns-resolver';
 import { SimulatedNetwork } from './adapters/simulated-network';
@@ -195,6 +196,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       : null;
   const certificates = new PanelCertificateStore(paths.certs, runner, opts.certScriptPath ?? null);
   services.panelCertificates = certificates;
+  services.logs = new LogFileReader(paths.logs);
   const registerPanel = async (app: FastifyInstance) => {
     await registerPanelRoutes(app, services);
     if (opts.webDir) await registerStatic(app, opts.webDir);

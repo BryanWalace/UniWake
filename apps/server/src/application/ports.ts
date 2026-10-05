@@ -129,3 +129,24 @@ export interface ReleaseSource {
   /** Downloads `url` to `dest`; rejects on failure. */
   download(url: string, dest: string): Promise<void>;
 }
+
+// ---------------------------------------------------------------- Log viewer (FR-016)
+export interface LogLine {
+  time: string;
+  level: string;
+  msg: string;
+  module: string | null;
+  /** Everything else on the line (request ids, errors, counts). */
+  data: Record<string, unknown>;
+}
+
+export interface LogSource {
+  /** Newest first, from the tail of the current file. */
+  read(q: { level?: 'debug' | 'info' | 'warn' | 'error'; q?: string; limit?: number }): {
+    entries: LogLine[];
+    truncated: boolean;
+    size: number;
+  };
+  /** The current log file for download, or null when there is none yet. */
+  open(): NodeJS.ReadableStream | null;
+}

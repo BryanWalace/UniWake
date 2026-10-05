@@ -14,6 +14,7 @@ export const t = {
     health: 'Saúde do sistema',
     audit: 'Auditoria',
     users: 'Usuários',
+    logs: 'Logs',
   },
   user: {
     logout: 'Sair',

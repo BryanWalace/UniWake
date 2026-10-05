@@ -7,6 +7,7 @@ import { dashboardRoutes } from './routes/dashboard';
 import { deviceRoutes } from './routes/devices';
 import { eventsRoutes } from './routes/events';
 import { healthRoutes } from './routes/health';
+import { logRoutes } from './routes/logs';
 import { roomRoutes } from './routes/rooms';
 import { scheduleRoutes } from './routes/schedules';
 import { settingsRoutes } from './routes/settings';
@@ -29,6 +30,7 @@ export async function registerPanelRoutes(app: FastifyInstance, s: HttpServices)
   userRoutes(app, s);
   auditRoutes(app, s);
   settingsRoutes(app, s);
+  logRoutes(app, s);
 }
 
 /** Agent listener: exactly health, enrollment and the script download (ADR-011). */

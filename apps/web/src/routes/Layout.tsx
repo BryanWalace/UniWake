@@ -13,6 +13,7 @@ const NAV: { to: string; label: string; end?: boolean; admin?: boolean }[] = [
   { to: '/auditoria', label: t.nav.audit },
   { to: '/usuarios', label: t.nav.users, admin: true },
   { to: '/configuracoes', label: t.nav.settings, admin: true },
+  { to: '/logs', label: t.nav.logs, admin: true },
   { to: '/saude', label: t.nav.health },
 ];
 

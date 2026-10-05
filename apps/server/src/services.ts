@@ -20,6 +20,7 @@ import type {
   Clock,
   DnsResolver,
   Logger,
+  LogSource,
   NetworkInterfaces,
   PacketSender,
   Prober,
@@ -76,6 +77,7 @@ export interface ServiceOptions {
 export interface Services extends HttpServices {
   /** LAN panel certificate (hub only): admins upload a PFX in the settings. */
   panelCertificates?: { save(pfx: Buffer, passphrase: string): void };
+  logs?: LogSource;
   db: Db;
   clock: Clock;
   events: EventsBus;

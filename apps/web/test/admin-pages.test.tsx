@@ -278,3 +278,58 @@ describe('own password (FR-006.3)', () => {
     expect(await within(dialog).findByText(/Suas outras sessões/)).toBeInTheDocument();
   });
 });
+
+describe('logs (FR-016)', () => {
+  it('shows entries newest first, filters by level and offers the download', async () => {
+    const calls = loggedInApi().on('GET', '/api/logs', (_b, url) => ({
+      body: {
+        entries:
+          url.searchParams.get('level') === 'error'
+            ? [
+                {
+                  time: '2026-10-05T09:00:03Z',
+                  level: 'error',
+                  msg: 'monitoring sweep failed',
+                  module: 'monitor',
+                  data: {},
+                },
+              ]
+            : [
+                {
+                  time: '2026-10-05T09:00:03Z',
+                  level: 'error',
+                  msg: 'monitoring sweep failed',
+                  module: 'monitor',
+                  data: {},
+                },
+                {
+                  time: '2026-10-05T09:00:01Z',
+                  level: 'info',
+                  msg: 'UniWake hub started',
+                  module: null,
+                  data: { version: '1.0.0' },
+                },
+              ],
+        truncated: true,
+        size: 6_000_000,
+      },
+    }));
+    const user = userEvent.setup();
+    renderApp('/logs');
+    const list = await screen.findByRole('list', { name: 'Entradas do log' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(2);
+    expect(list).toHaveTextContent('{"version":"1.0.0"}');
+    expect(screen.getByText('Mostrando só os últimos 5 MB do arquivo atual.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Baixar arquivo' })).toHaveAttribute(
+      'href',
+      '/api/logs/download',
+    );
+    await user.selectOptions(screen.getByLabelText('Nível mínimo'), 'Só erros');
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole('list', { name: 'Entradas do log' })).getAllByRole('listitem'),
+      ).toHaveLength(1),
+    );
+    expect(calls.calls.some((c) => c.path === '/api/logs')).toBe(true);
+  });
+});
