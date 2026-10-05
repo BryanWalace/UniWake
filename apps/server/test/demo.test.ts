@@ -11,6 +11,7 @@ import {
 import { seedDemo } from '../src/application/demo/demo-seed';
 import { CONFIG_DEFAULTS, type Config, ConfigError, resolveConfig } from '../src/config';
 import { SqliteDemoRepo } from '../src/db/repositories/demo-repo';
+import { SqliteSchedulerRepo } from '../src/db/repositories/scheduler-repo';
 import { SqliteJobsRepo } from '../src/db/repositories/jobs-repo';
 import { SqliteMonitorRepo } from '../src/db/repositories/monitor-repo';
 import { magicPacket } from '../src/domain/magic-packet';
@@ -168,6 +169,7 @@ describe('demo seed (FR-015)', () => {
         setPower: (mac, on) => power.set(mac, on),
         neverWakes: (mac) => SimulatedNetwork.neverWakes(mac),
         demo: new SqliteDemoRepo(db),
+        runs: new SqliteSchedulerRepo(db),
       });
     return { db, services, power, seed };
   }
@@ -195,6 +197,22 @@ describe('demo seed (FR-015)', () => {
     const last = dash.rooms[0]!.lastAction!;
     expect(last).toMatchObject({ source: 'schedule', state: 'concluido', dryRun: true, total: 18 });
     expect(last.woke + last.noResponse).toBe(18);
+
+    // FR-015 (M5-T07): two schedules and yesterday's morning result
+    const schedules = services.schedules.list();
+    expect(schedules.map((s) => [s.name, s.weekdays, s.timeLocal])).toEqual([
+      ['Abertura dos laboratórios', 31, '06:50'],
+      ['Biblioteca aos sábados', 32, '08:00'],
+    ]);
+    expect(schedules[0]).toMatchObject({ targetCount: 48, confirmedCount: 48 });
+    const runs = services.schedules.runs({ page: 1, pageSize: 10 });
+    expect(runs.items).toMatchObject([
+      { status: 'executado', scheduleName: 'Abertura dos laboratórios' },
+    ]);
+    expect(runs.items[0]!.jobId).toBe(last.jobId);
+    const notices = services.notices.list();
+    expect(notices.map((n) => n.type)).toEqual(['morning_result']);
+    expect(JSON.stringify(notices[0]!.data)).toContain('nao_respondeu');
 
     expect(services.dashboard.rollupPending()).toHaveLength(8); // inventory backdated 8 days
     const week = services.dashboard.uptime({ roomId: dash.rooms[0]!.id, days: 7 });

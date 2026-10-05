@@ -58,6 +58,10 @@ export interface SchedulerRepo {
   finish(runId: number, status: StoredRunStatus, detail: string | null, jobId: number | null): void;
   /** Marks claims left "executando" (claimed at or before `before`) as failed; returns how many. */
   failStale(before: number): number;
+  /** The schedule behind a run (morning result). */
+  runInfo(
+    runId: number,
+  ): { scheduleId: number; scheduleName: string; plannedAt: number } | undefined;
   lastTick(): number | null;
   setLastTick(at: number): void;
   pause(): PauseState | null;
@@ -74,6 +78,14 @@ export interface SchedulerDeps {
   events: EventsBus;
   logger: Logger;
   transaction: <T>(fn: () => T) => T;
+  /** A run that woke nothing (failed or lost): the morning result shows it (FR-013). */
+  onRunProblem?: (r: {
+    scheduleId: number;
+    scheduleName: string;
+    plannedAt: number;
+    status: 'falhou' | 'perdido';
+    detail: string | null;
+  }) => void;
 }
 
 export interface TickReport {
@@ -145,7 +157,11 @@ export class Scheduler {
               decision.status,
               decision.detail,
             );
-            if (id !== null) report.logged++;
+            if (id !== null) {
+              report.logged++;
+              if (decision.status === 'perdido')
+                this.problem(s, decision.occurrence.at, 'perdido', null);
+            }
           } else if (
             this.execute(s, decision.occurrence.at, decision.status, decision.delayMs, graceMs, now)
           ) {
@@ -199,8 +215,22 @@ export class Scheduler {
       const reason = failureDetail(e);
       this.d.repo.finish(runId, 'falhou', reason, null);
       this.d.logger.warn({ scheduleId: s.id, runId, reason }, 'scheduled wake failed');
+      this.problem(s, plannedAt, 'falhou', reason);
     }
     return true;
+  }
+
+  private problem(
+    s: ScheduleRecord,
+    plannedAt: number,
+    status: 'falhou' | 'perdido',
+    detail: string | null,
+  ) {
+    try {
+      this.d.onRunProblem?.({ scheduleId: s.id, scheduleName: s.name, plannedAt, status, detail });
+    } catch (e) {
+      this.d.logger.error({ err: e }, 'could not record the morning result');
+    }
   }
 
   /** Clears a pause whose automatic resume time has come (FR-005.6). */

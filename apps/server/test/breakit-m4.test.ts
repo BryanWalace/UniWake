@@ -4,6 +4,7 @@ import type { Prober, ProbeResult } from '../src/application/ports';
 import { SimulatedNetwork } from '../src/adapters/simulated-network';
 import { seedDemo } from '../src/application/demo/demo-seed';
 import { SqliteDemoRepo } from '../src/db/repositories/demo-repo';
+import { SqliteSchedulerRepo } from '../src/db/repositories/scheduler-repo';
 import { SqliteJobsRepo } from '../src/db/repositories/jobs-repo';
 import { SqliteMonitorRepo } from '../src/db/repositories/monitor-repo';
 import { createServices, type Services } from '../src/services';
@@ -221,6 +222,7 @@ describe('M4-D: demo seed', () => {
         setPower: () => undefined,
         neverWakes: (mac) => SimulatedNetwork.neverWakes(mac),
         demo: new SqliteDemoRepo(db),
+        runs: new SqliteSchedulerRepo(db),
       });
     expect(seed()).not.toBeNull();
     db.run('DELETE FROM devices');

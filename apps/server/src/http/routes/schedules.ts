@@ -44,6 +44,18 @@ export function scheduleRoutes(app: FastifyInstance, s: HttpServices): void {
     },
   );
 
+  // FR-013 notices ("Resultado da manhã").
+  r.get('/api/notices', { config: auth }, async () => s.notices.list());
+
+  r.post(
+    '/api/notices/:id/ack',
+    { config: auth, schema: { params: idParamSchema } },
+    async (req, reply) => {
+      s.notices.acknowledge(req.params.id, actorOf(req));
+      return reply.status(204).send();
+    },
+  );
+
   // FR-005.7 execution log.
   r.get(
     '/api/schedule-runs',

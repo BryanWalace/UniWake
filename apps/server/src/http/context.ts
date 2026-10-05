@@ -9,6 +9,7 @@ import type { CsvImportService } from '../application/devices/csv-import-service
 import type { DevicesService } from '../application/devices/devices-service';
 import type { EventsBus } from '../application/events-bus';
 import type { Clock } from '../application/ports';
+import type { NoticesService } from '../application/notices/notices-service';
 import type { RoomsService } from '../application/rooms/rooms-service';
 import type { Scheduler } from '../application/schedules/scheduler';
 import type { SchedulesService } from '../application/schedules/schedules-service';
@@ -30,4 +31,5 @@ export interface HttpServices {
   dashboard: DashboardService;
   schedules: SchedulesService;
   scheduler: Scheduler;
+  notices: NoticesService;
 }

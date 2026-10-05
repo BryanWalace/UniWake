@@ -13,6 +13,7 @@ import { SqliteDemoRepo } from './db/repositories/demo-repo';
 import { SqliteDevicesRepo } from './db/repositories/devices-repo';
 import { SqliteJobsRepo } from './db/repositories/jobs-repo';
 import { SqliteMonitorRepo } from './db/repositories/monitor-repo';
+import { SqliteSchedulerRepo } from './db/repositories/scheduler-repo';
 import { CompositeProber, PingExeIcmp, powershellSpawner, PsHelperIcmp } from './adapters/icmp';
 import { OsNetworkInterfaces } from './adapters/network-interfaces';
 import { NodeProcessRunner } from './adapters/process-runner';
@@ -247,6 +248,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
             setPower: (mac, on) => sim.setPower(mac, on),
             neverWakes: (mac) => SimulatedNetwork.neverWakes(mac),
             demo: new SqliteDemoRepo(db),
+            runs: new SqliteSchedulerRepo(db),
           });
         } catch (e) {
           logger.error({ err: e }, 'demo seed failed');

@@ -54,6 +54,14 @@ export class SqliteSchedulerRepo implements SchedulerRepo {
     ]);
   }
 
+  runInfo(runId: number) {
+    return this.db.get<{ scheduleId: number; scheduleName: string; plannedAt: number }>(
+      `SELECT r.schedule_id AS scheduleId, s.name AS scheduleName, r.planned_at AS plannedAt
+       FROM schedule_runs r JOIN schedules s ON s.id = r.schedule_id WHERE r.id = ?`,
+      [runId],
+    );
+  }
+
   failStale(before: number): number {
     return this.db.run(
       "UPDATE schedule_runs SET status = 'falhou', detail = 'interrompido (o serviço reiniciou)' WHERE status = 'executando' AND claimed_at <= ?",

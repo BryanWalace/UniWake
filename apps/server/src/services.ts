@@ -6,6 +6,7 @@ import { AuditService } from './application/audit/audit-service';
 import { AuthService } from './application/auth/auth-service';
 import { CsvImportService } from './application/devices/csv-import-service';
 import { DashboardService } from './application/dashboard/dashboard-service';
+import { NoticesService } from './application/notices/notices-service';
 import { DevicesService } from './application/devices/devices-service';
 import { EventsBus } from './application/events-bus';
 import { MonitorService } from './application/monitor/monitor-service';
@@ -36,6 +37,7 @@ import { SqliteDashboardRepo } from './db/repositories/dashboard-repo';
 import { SqliteDevicesRepo } from './db/repositories/devices-repo';
 import { SqliteJobsRepo } from './db/repositories/jobs-repo';
 import { SqliteMonitorRepo } from './db/repositories/monitor-repo';
+import { SqliteNoticesRepo } from './db/repositories/notices-repo';
 import { SqliteRetentionRepo } from './db/repositories/retention-repo';
 import { SqliteRoomsRepo } from './db/repositories/rooms-repo';
 import { SqliteSchedulerRepo } from './db/repositories/scheduler-repo';
@@ -140,6 +142,7 @@ export function createServices(
     events,
     logger: ports.logger.child({ module: 'wake' }),
     transaction: tx,
+    onFinished: (job) => notices.onJobFinished(job),
   });
   const retention = new RetentionService({
     repo: new SqliteRetentionRepo(db),
@@ -189,8 +192,20 @@ export function createServices(
     transaction: tx,
   });
 
+  const schedulerRepo = new SqliteSchedulerRepo(db);
+  const notices = new NoticesService({
+    repo: new SqliteNoticesRepo(db),
+    runOf: (runId) => schedulerRepo.runInfo(runId),
+    jobDevices: (jobId) => jobsRepo.devices(jobId),
+    roomName: (roomId) => roomsRepo.get(roomId)?.name,
+    settings,
+    audit,
+    clock,
+    events,
+    transaction: tx,
+  });
   const scheduler = new Scheduler({
-    repo: new SqliteSchedulerRepo(db),
+    repo: schedulerRepo,
     refs,
     startWake: (req, actor, opts) => wake.start(req, actor, opts),
     settings,
@@ -199,6 +214,7 @@ export function createServices(
     events,
     logger: ports.logger.child({ module: 'scheduler' }),
     transaction: tx,
+    onRunProblem: (r) => notices.onRunProblem(r),
   });
 
   return {
@@ -220,5 +236,6 @@ export function createServices(
     retention,
     schedules,
     scheduler,
+    notices,
   };
 }

@@ -6,6 +6,9 @@
 import { addDays, dayStart, localDay } from '../../domain/tz';
 import type { Actor } from '../audit/audit-service';
 import type { DevicesService } from '../devices/devices-service';
+import type { NoticesService } from '../notices/notices-service';
+import type { SchedulerRepo } from '../schedules/scheduler';
+import type { SchedulesService } from '../schedules/schedules-service';
 import type { DeviceEvent, MonitorRepo, StatusUpdate } from '../monitor/monitor-service';
 import type { Clock } from '../ports';
 import type { RoomsService } from '../rooms/rooms-service';
@@ -37,6 +40,9 @@ export interface DemoSeedDeps {
   setPower: (mac: string, on: boolean) => void;
   neverWakes: (mac: string) => boolean;
   demo: DemoRepo;
+  schedules: Pick<SchedulesService, 'create'>;
+  runs: Pick<SchedulerRepo, 'claim' | 'finish'>;
+  notices: Pick<NoticesService, 'onJobFinished'>;
 }
 
 const ACTOR: Actor = { id: null, label: 'demonstração' };
@@ -114,11 +120,13 @@ export function seedDemo(d: DemoSeedDeps): DemoSeedResult | null {
       );
       devices.push({ id: created.device.id, mac, roomId });
     };
+    const roomIds: number[] = [];
     ROOMS.forEach((r, ri) => {
       const roomId = d.rooms.create(
         { name: r.name, code: r.code, block: r.block, floor: r.floor, color: r.color },
         ACTOR,
       ).id;
+      roomIds.push(roomId);
       for (let n = 1; n <= r.n; n++) mk(roomId, r.code, ri + 1, n);
     });
     mk(null, 'NOTE', 9, 1);
@@ -167,18 +175,44 @@ export function seedDemo(d: DemoSeedDeps): DemoSeedResult | null {
     d.monitor.insertEvents(events);
     d.monitor.saveStates(states);
 
-    // Yesterday's (or the last weekday's) 06:50 wake, as a schedule would have done it.
+    // Two schedules (FR-015): the labs open on weekdays, the library on Saturdays.
+    const labs = roomIds.slice(0, 3);
+    const labDevices = devices.filter((x) => x.roomId !== null && labs.includes(x.roomId));
+    const weekday = d.schedules.create(
+      {
+        name: 'Abertura dos laboratórios',
+        weekdays: 31,
+        timeLocal: '06:50',
+        target: { type: 'rooms', roomIds: labs },
+        confirm: { count: labDevices.length }, // large target: confirmed once (SR-10)
+      },
+      ACTOR,
+    ).id;
+    d.schedules.create(
+      {
+        name: 'Biblioteca aos sábados',
+        weekdays: 32,
+        timeLocal: '08:00',
+        target: { type: 'rooms', roomIds: [roomIds[3]!] },
+      },
+      ACTOR,
+    );
+
+    // Yesterday's (or the last weekday's) 06:50 run of that schedule, with its morning result.
     let day = addDays(today, -1);
     while ([0, 6].includes(new Date(dayStart(day, tz) + 12 * H).getUTCDay()))
       day = addDays(day, -1);
     const at = dayStart(day, tz) + 6 * H + 50 * M;
-    const inRooms = devices.filter((x) => x.roomId !== null);
+    const inRooms = labDevices;
+    const runId = d.runs.claim(weekday, at, at, 'executando', null)!;
     const jobId = d.jobs.create({
       source: 'schedule',
-      scheduleRunId: null,
+      scheduleRunId: runId,
       requestedBy: null,
-      target: { type: 'all' },
-      targetLabel: 'Todas as máquinas',
+      target: { type: 'rooms', roomIds: labs, includeNoRoom: false },
+      targetLabel: `salas ${ROOMS.slice(0, 3)
+        .map((r) => r.name)
+        .join(', ')}`,
       onlyOffline: false,
       dryRun: true,
       stagger: null,
@@ -217,6 +251,8 @@ export function seedDemo(d: DemoSeedDeps): DemoSeedResult | null {
         0,
       ),
     );
+    d.runs.finish(runId, 'executado', null, jobId);
+    d.notices.onJobFinished(d.jobs.get(jobId)!);
     d.demo.markSeeded(now);
     return { rooms: ROOMS.length, devices: devices.length, events: events.length };
   });

@@ -502,7 +502,8 @@ power plan allowing sleep on AC, pending Windows reboot, Windows Update active h
 
 ### FR-013 Morning result (IMP-019)
 After each scheduled run's verification window, a "Resultado da manhã" card shows per room the
-devices that did not wake (and `falhou` runs), pinned on the dashboard until acknowledged.
+devices that did not wake (and `falhou` or `perdido` runs: nothing woke), pinned on the dashboard
+until acknowledged. One card per local day; runs are added as their verification ends.
 - AC-013-01: Given a scheduled run with 2 non-responders in Lab 1, Then the card lists them and
   disappears after "Ciente" (acknowledgement audited).
 
