@@ -80,6 +80,41 @@ describe('route-table authorization (IMP-014, constitution §5)', () => {
     );
   });
 
+  it('AC-006-03: every panel route declares exactly the level of the FR-006.2 permission matrix', () => {
+    // Admin-only areas of the matrix: settings (incl. network), users, log viewer, update
+    // install/check, backups. Everything else an operator may use; a few routes are public.
+    const ADMIN_PREFIXES = [
+      '/api/users',
+      '/api/settings',
+      '/api/network',
+      '/api/logs',
+      '/api/backups',
+      '/api/update/check',
+      '/api/update/install',
+    ];
+    const PUBLIC = new Set([
+      'GET /api/health',
+      'GET /api/auth/setup-status',
+      'POST /api/auth/setup',
+      'POST /api/auth/login',
+      'GET /*',
+    ]);
+    const expected = (method: string, url: string) =>
+      PUBLIC.has(`${method} ${url}`)
+        ? 'public'
+        : ADMIN_PREFIXES.some((p) => url === p || url.startsWith(`${p}/`))
+          ? 'admin'
+          : 'operator';
+    const wrong = hub.panel.routeTable
+      .filter((r) => r.auth !== expected(r.method, r.url))
+      .map((r) => `${r.method} ${r.url}: declared ${r.auth}, matrix ${expected(r.method, r.url)}`);
+    expect(wrong).toEqual([]);
+    // The matrix is exercised for real by the users routes (admin) next to operator routes.
+    expect(hub.panel.routeTable.some((r) => r.url === '/api/users' && r.auth === 'admin')).toBe(
+      true,
+    );
+  });
+
   it('agent listener exposes nothing beyond health, enrollment and the script (ADR-011)', async () => {
     for (const r of hub.agent.routeTable) {
       expect(AGENT_ALLOWED.has(`${r.method} ${r.url}`), `${r.method} ${r.url}`).toBe(true);
