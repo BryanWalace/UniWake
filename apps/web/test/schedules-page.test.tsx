@@ -21,7 +21,7 @@ const SCHEDULE: Schedule = {
   confirmedCount: null,
   targetCount: 30,
   emptyTarget: false,
-  nextRun: Date.UTC(2026, 9, 6, 9, 50),
+  nextRun: new Date(2026, 9, 6, 6, 50).getTime(), // local time: tests run in any zone
   createdAt: 0,
   updatedAt: 0,
 };
@@ -144,7 +144,7 @@ describe('schedules page (FR-005.1, FR-005.8)', () => {
       .on('GET', '/api/schedules/1/next-runs', {
         body: [0, 1, 2, 3, 4].map((i) => ({
           day: `2026-10-0${6 + i}`,
-          at: Date.UTC(2026, 9, 6 + i, 9, 50),
+          at: new Date(2026, 9, 6 + i, 6, 50).getTime(),
         })),
       })
       .on('PATCH', '/api/schedules/1', { body: { ...SCHEDULE, enabled: false } })
