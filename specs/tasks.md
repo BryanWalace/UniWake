@@ -204,7 +204,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M7-T02 | Agent `POST /agent/enroll` (limits, checks, upsert/move, SMBIOS junk, notices); agent route table = 3 routes. | FR-007.2 | AC-007-05, AC-007-06, AC-007-07, AC-007-08, AC-007-12 | — |
 | [x] M7-T03 | `prepare-target.ps1`: params, elevation, adapter detection, `-WhatIf`, summary, transcript, BOM/CRLF. | FR-007.1; constitution §4.2 | AC-007-01, AC-007-11 [Pester] | — |
 | [x] M7-T04 | Script: NIC power management, Fast Startup, advanced properties, ICMP rule. | FR-007.1 | AC-007-02, AC-007-03, AC-007-04 [Pester] | — |
-| [ ] M7-T05 | Script: enrollment POST, exit codes; one-liner hash check. | FR-007.1, FR-007.3 | AC-007-14 [Pester] | — |
+| [x] M7-T05 | Script: enrollment POST, exit codes; one-liner hash check. | FR-007.1, FR-007.3 | AC-007-14 [Pester] | — |
 | [ ] M7-T06 | PSScriptAnalyzer settings + Pester in the windows CI job. | IMP-018 | CI | — |
 | [ ] M7-T07 | Web: "Preparar máquinas" page. | FR-007.3 | component tests | — |
 | [ ] M7-T08 | Test-WoL flow service/routes/web. | FR-007.4 | AC-007-10 | — |

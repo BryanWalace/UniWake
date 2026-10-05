@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type {
   AuditRow,
@@ -12,6 +14,7 @@ import { buildCommand } from '../src/application/enrollment/enrollment-service';
 import { buildApp } from '../src/http/app';
 import { registerAgentRoutes } from '../src/http/panel';
 import { iface } from './fakes/network-fakes';
+import { ONE_LINER_FIXTURE } from './fixtures/one-liner';
 import { apiHarness, type ApiHarness } from './helpers/api';
 import { T0 } from './helpers/db';
 
@@ -251,5 +254,15 @@ describe('hub addresses and the one-line command (FR-007.3, ADR-011)', () => {
     expect(() => buildCommand(ok)).not.toThrow();
     expect(() => buildCommand({ ...ok, roomCode: "LAB3'; rm" })).toThrow(/unsafe/);
     expect(() => buildCommand({ ...ok, token: 'a b' })).toThrow(/unsafe/);
+  });
+
+  it('AC-007-14: the command checked by the Pester one-liner test is the one buildCommand produces', () => {
+    const { script, ...values } = ONE_LINER_FIXTURE;
+    const fixture = readFileSync(
+      join(import.meta.dirname, '..', '..', '..', 'scripts', 'tests', 'fixtures', 'one-liner.txt'),
+      'utf8',
+    );
+    // On a mismatch, regenerate the fixture from buildCommand (see test/fixtures/one-liner.ts).
+    expect(buildCommand({ ...values, sha256: sha(script) })).toBe(fixture);
   });
 });

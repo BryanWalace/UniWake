@@ -91,7 +91,7 @@ export const enrollRequestSchema = z.object({
   serial: smbiosText,
   os: smbiosText,
   /** Step → result from the script summary (OK / FALHOU / NÃO SE APLICA / MANUAL). */
-  prepareResults: z.record(z.string().max(64), z.string().max(256)).optional(),
+  prepareResults: z.record(z.string().max(128), z.string().max(256)).optional(),
 });
 export type EnrollRequest = z.input<typeof enrollRequestSchema>;
 

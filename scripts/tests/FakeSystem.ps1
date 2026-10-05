@@ -10,7 +10,8 @@ $script:UwSystemFunctions = @(
   'Get-UwWakeArmedDevice', 'Enable-UwDeviceWake',
   'Get-UwHiberboot', 'Set-UwHiberboot',
   'Get-UwAdvancedProperty', 'Set-UwAdvancedProperty',
-  'Get-UwIcmpRule', 'Set-UwIcmpRule'
+  'Get-UwIcmpRule', 'Set-UwIcmpRule',
+  'Get-UwSystemInfo', 'Get-UwIPv4Address', 'Send-UwEnrollment'
 )
 
 function Register-UwFakeSystem {
@@ -27,7 +28,11 @@ function Register-UwFakeSystem {
   Mock Get-UwHiberboot { 0 }
   Mock Get-UwAdvancedProperty { @() }
   Mock Get-UwIcmpRule { [pscustomobject]@{ Enabled = 'True'; Action = 'Allow'; Profile = 'Domain, Private' } }
-  foreach ($setter in 'Set-UwPowerManagement', 'Enable-UwDeviceWake', 'Set-UwHiberboot', 'Set-UwAdvancedProperty', 'Set-UwIcmpRule') {
+  Mock Get-UwSystemInfo {
+    [pscustomobject]@{ Hostname = 'LAB3-PC01'; Manufacturer = 'Dell Inc.'; Model = 'OptiPlex 7090'; Serial = 'ABC1234'; Os = 'Microsoft Windows 11 Pro 23H2' }
+  }
+  Mock Get-UwIPv4Address { '10.0.3.41' }
+  foreach ($setter in 'Set-UwPowerManagement', 'Enable-UwDeviceWake', 'Set-UwHiberboot', 'Set-UwAdvancedProperty', 'Set-UwIcmpRule', 'Send-UwEnrollment') {
     Mock $setter $refuse
   }
 }

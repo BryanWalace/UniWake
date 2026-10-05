@@ -71,7 +71,7 @@ Describe 'Preparation steps (FR-007.1 steps 2-5)' {
     ($pc.Advanced | ForEach-Object { '{0}={1}' -f $_.RegistryKeyword, $_.RegistryValue[0] }) |
       Should -Be @('*WakeOnMagicPacket=1', 'S5WakeOnLan=1', '*EEE=0')
     $pc.Rule.Profile | Should -Be 'Domain, Private'
-    @($script:UwSteps | Where-Object { $_.Resultado -ne 'OK' }).Count | Should -Be 0
+    @($script:UwSteps | Where-Object { $_.Resultado -ne 'OK' -and $_.Etapa -ne 'Cadastro no UniWake' }).Count | Should -Be 0
   }
 
   It 'AC-007-02: with -WhatIf no setter is called and the summary lists the planned changes' {
@@ -99,7 +99,7 @@ Describe 'Preparation steps (FR-007.1 steps 2-5)' {
       Should -Invoke $setter -Times 1 -Exactly
     }
     Should -Invoke Set-UwAdvancedProperty -Times 3 -Exactly
-    @($script:UwSteps | Where-Object { $_.Resultado -ne 'OK' }).Count | Should -Be 0
+    @($script:UwSteps | Where-Object { $_.Resultado -ne 'OK' -and $_.Etapa -ne 'Cadastro no UniWake' }).Count | Should -Be 0
     @($script:UwSteps | Where-Object { $_.Detalhe -like 'já estava*' }).Count | Should -Be 6
   }
 

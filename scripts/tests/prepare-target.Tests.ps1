@@ -53,7 +53,7 @@ Describe 'test safety net' {
     $tokens = $null
     $errors = $null
     $ast = [Management.Automation.Language.Parser]::ParseInput($script, [ref]$tokens, [ref]$errors)
-    $pure = @('Add-UwStep', 'Select-UwWiredAdapter', 'Get-UwWantedValue', 'Write-UwSummary')
+    $pure = @('Add-UwStep', 'Select-UwWiredAdapter', 'Get-UwWantedValue', 'Get-UwErrorMessage', 'Write-UwSummary')
     $defined = $ast.FindAll({ $args[0] -is [Management.Automation.Language.FunctionDefinitionAst] }, $false) |
       ForEach-Object { $_.Name } |
       Where-Object { $_ -notlike 'Invoke-Uw*' -and $pure -notcontains $_ }

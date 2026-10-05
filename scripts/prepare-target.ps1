@@ -132,6 +132,36 @@ function Set-UwAdvancedProperty {
   }
 }
 
+function Get-UwSystemInfo {
+  $cs = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction SilentlyContinue
+  $bios = Get-CimInstance -ClassName Win32_BIOS -ErrorAction SilentlyContinue
+  $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction SilentlyContinue
+  $release = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -Name DisplayVersion -ErrorAction SilentlyContinue
+  $osText = if ($os) { "$($os.Caption)".Trim() } else { $null }
+  if ($osText -and $release) { $osText = "$osText $($release.DisplayVersion)" }
+  return [pscustomobject]@{
+    Hostname     = $env:COMPUTERNAME
+    Manufacturer = if ($cs) { $cs.Manufacturer } else { $null }
+    Model        = if ($cs) { $cs.Model } else { $null }
+    Serial       = if ($bios) { $bios.SerialNumber } else { $null }
+    Os           = $osText
+  }
+}
+
+function Get-UwIPv4Address([int]$InterfaceIndex) {
+  return Get-NetIPAddress -InterfaceIndex $InterfaceIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+    Where-Object { $_.IPAddress -notlike '169.254.*' } |
+    Select-Object -First 1 -ExpandProperty IPAddress
+}
+
+function Send-UwEnrollment {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param([string]$Uri, [string]$Token, [string]$Json)
+  if (-not $PSCmdlet.ShouldProcess($Uri, 'Cadastrar este computador')) { return $null }
+  $body = [Text.Encoding]::UTF8.GetBytes($Json)
+  return Invoke-RestMethod -Method Post -Uri $Uri -UseBasicParsing -TimeoutSec 30 -Headers @{ Authorization = "Bearer $Token" } -ContentType 'application/json; charset=utf-8' -Body $body -ErrorAction Stop
+}
+
 $script:UwIcmpRuleName = 'UniWake-ICMPv4-In'
 
 function Get-UwIcmpRule {
@@ -330,6 +360,63 @@ function Invoke-UwIcmpStep {
   }
 }
 
+<# The hub's pt-BR error message from a failed request, else the exception text. #>
+function Get-UwErrorMessage {
+  param([System.Management.Automation.ErrorRecord]$ErrorRecord)
+  $details = $ErrorRecord.ErrorDetails
+  if ($details -and $details.Message) {
+    try {
+      $parsed = $details.Message | ConvertFrom-Json -ErrorAction Stop
+      if ($parsed.message) { return "$($parsed.message)" }
+    } catch {
+      Write-Verbose 'Resposta de erro sem JSON.'
+    }
+  }
+  return $ErrorRecord.Exception.Message
+}
+
+<# FR-007.1 step 7 / FR-007.2: report this computer to the hub. Returns $false on failure. #>
+function Invoke-UwEnrollStep {
+  param([object]$Nic, [object[]]$Adapters, [string]$HubUrl, [string]$RoomCode, [string]$Token)
+  $name = 'Cadastro no UniWake'
+  if (-not $Nic) {
+    Add-UwStep $name $script:UwStatus.Failed 'sem placa de rede cabeada para cadastrar'
+    return $false
+  }
+  if ($WhatIfPreference) {
+    Add-UwStep $name $script:UwStatus.Planned "sala $RoomCode em $HubUrl"
+    return $true
+  }
+  $info = Get-UwSystemInfo
+  $results = [ordered]@{}
+  foreach ($st in $script:UwSteps) {
+    $text = if ($st.Detalhe) { '{0}: {1}' -f $st.Resultado, $st.Detalhe } else { $st.Resultado }
+    if ($text.Length -gt 250) { $text = $text.Substring(0, 250) }
+    $results[$st.Etapa] = $text
+  }
+  $body = [ordered]@{
+    roomCode       = $RoomCode
+    mac            = $Nic.MacAddress
+    otherMacs      = @($Adapters | Where-Object { $_.ifIndex -ne $Nic.ifIndex -and $_.MacAddress } | ForEach-Object { $_.MacAddress })
+    hostname       = $info.Hostname
+    ip             = Get-UwIPv4Address $Nic.ifIndex
+    manufacturer   = $info.Manufacturer
+    model          = $info.Model
+    serial         = $info.Serial
+    os             = $info.Os
+    prepareResults = $results
+  }
+  $uri = '{0}/agent/enroll' -f $HubUrl.TrimEnd('/')
+  try {
+    $r = Send-UwEnrollment -Uri $uri -Token $Token -Json (ConvertTo-Json $body -Compress -Depth 4)
+    Add-UwStep $name $script:UwStatus.Ok "$($r.message)"
+    return $true
+  } catch {
+    Add-UwStep $name $script:UwStatus.Failed (Get-UwErrorMessage $_)
+    return $false
+  }
+}
+
 function Write-UwSummary {
   Write-Host ''
   Write-Host '================ Resumo da preparação ================'
@@ -381,7 +468,8 @@ function Invoke-UwPrepare {
     if ($WhatIfPreference) {
       Write-Host 'Modo simulação (-WhatIf): nada será alterado neste computador.' -ForegroundColor Cyan
     }
-    $pick = Select-UwWiredAdapter -Adapters (Get-UwNetAdapter) -DefaultRouteIndexes (Get-UwDefaultRouteIndex)
+    $adapters = @(Get-UwNetAdapter)
+    $pick = Select-UwWiredAdapter -Adapters $adapters -DefaultRouteIndexes (Get-UwDefaultRouteIndex)
     if (-not $pick.Chosen) {
       Add-UwStep 'Placa de rede cabeada' $script:UwStatus.Failed 'nenhuma placa cabeada conectada. Ligue o cabo de rede e execute novamente.'
     } else {
@@ -395,8 +483,15 @@ function Invoke-UwPrepare {
     Invoke-UwFastStartupStep
     if ($pick.Chosen) { Invoke-UwAdvancedStep -Nic $pick.Chosen }
     Invoke-UwIcmpStep -NoFirewallChange:$NoFirewallChange
+    $enrolled = $true
+    if ($SkipEnrollment) {
+      Add-UwStep 'Cadastro no UniWake' $script:UwStatus.NotApplies 'ignorado (-SkipEnrollment)'
+    } else {
+      $enrolled = Invoke-UwEnrollStep -Nic $pick.Chosen -Adapters $adapters -HubUrl $HubUrl -RoomCode $RoomCode -Token $Token
+    }
     Write-UwSummary
     Write-Host "Registro desta execução: $log"
+    if (-not $enrolled) { return 2 }
     $failed = @($script:UwSteps | Where-Object { $_.Resultado -eq $script:UwStatus.Failed }).Count
     if ($failed -gt 0) { return 1 }
     return 0
