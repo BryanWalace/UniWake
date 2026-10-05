@@ -37,6 +37,8 @@ export interface JobRunnerDeps {
   events: EventsBus;
   logger: Logger;
   transaction: <T>(fn: () => T) => T;
+  /** Audit target of a job (AC-006-06); defaults to its pt-BR label. */
+  auditTarget?: (target: StoredJob['target']) => string;
   /** Called when a job reaches a final state (scheduler morning result, M5). */
   onFinished?: (job: StoredJob) => void;
 }
@@ -337,7 +339,7 @@ export class JobRunner {
           label: job.source === 'schedule' ? 'agendamento' : (job.requestedBy ?? 'sistema'),
         },
         action: 'wake.finish',
-        target: job.targetLabel,
+        target: this.d.auditTarget?.(job.target) ?? job.targetLabel,
         result: state === 'concluido' ? 'ok' : 'error',
         details: { jobId, state, error, ...final.summary },
       });

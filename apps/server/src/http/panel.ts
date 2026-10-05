@@ -1,6 +1,7 @@
 /** All panel-listener routes (plan §6.1). Shared by the hub and API tests. */
 import type { FastifyInstance } from 'fastify';
 import type { HttpServices } from './context';
+import { auditRoutes } from './routes/audit';
 import { authRoutes } from './routes/auth';
 import { dashboardRoutes } from './routes/dashboard';
 import { deviceRoutes } from './routes/devices';
@@ -25,6 +26,7 @@ export async function registerPanelRoutes(app: FastifyInstance, s: HttpServices)
   dashboardRoutes(app, s);
   scheduleRoutes(app, s);
   userRoutes(app, s);
+  auditRoutes(app, s);
 }
 
 /** Agent listener: exactly health, enrollment and the script download (ADR-011). */

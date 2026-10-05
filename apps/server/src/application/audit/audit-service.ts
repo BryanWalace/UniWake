@@ -39,6 +39,9 @@ export interface AuditQuery {
   action?: string;
   actionPrefix?: string;
   actorUserId?: number;
+  result?: AuditResult;
+  /** Free text in the actor label or the target. */
+  text?: string;
   from?: number;
   to?: number;
   limit?: number;
@@ -72,5 +75,39 @@ export class AuditService {
 
   query(q: AuditQuery): { items: AuditEntry[]; total: number } {
     return this.repo.query({ ...q, limit: Math.min(q.limit ?? 100, 500) });
+  }
+
+  /** Viewer/export filters (FR-006.5): an action ending in "." is a prefix. */
+  static toQuery(p: {
+    action?: string;
+    actorUserId?: number;
+    result?: AuditResult;
+    q?: string;
+    from?: number;
+    to?: number;
+  }): AuditQuery {
+    return {
+      ...(p.action
+        ? p.action.endsWith('.')
+          ? { actionPrefix: p.action }
+          : { action: p.action }
+        : {}),
+      ...(p.actorUserId !== undefined ? { actorUserId: p.actorUserId } : {}),
+      ...(p.result ? { result: p.result } : {}),
+      ...(p.q ? { text: p.q } : {}),
+      ...(p.from !== undefined ? { from: p.from } : {}),
+      ...(p.to !== undefined ? { to: p.to } : {}),
+    };
+  }
+
+  /** Everything matching, newest first, for the CSV export (capped). */
+  exportRows(q: AuditQuery, max = 50_000): AuditEntry[] {
+    const out: AuditEntry[] = [];
+    while (out.length < max) {
+      const page = this.repo.query({ ...q, limit: 500, offset: out.length });
+      out.push(...page.items);
+      if (page.items.length < 500) break;
+    }
+    return out.slice(0, max);
   }
 }

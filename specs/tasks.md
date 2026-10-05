@@ -180,7 +180,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M6-T01 | Password policy + per-account backoff + per-IP login limit + password change revokes sessions. | FR-006.3 | AC-006-04, AC-006-07 | — |
 | [x] M6-T02 | Users API (admin). | FR-006.2 | API tests | — |
 | [x] M6-T03 | Permission matrix in the route-table test (all routes). | FR-006.2 | AC-006-03 | — |
-| [ ] M6-T04 | Audit API + CSV export. | FR-006.5 | AC-006-06 | — |
+| [x] M6-T04 | Audit API + CSV export. | FR-006.5 | AC-006-06 | — |
 | [ ] M6-T05 | Settings API + audit diff; services apply changes at runtime; restart-required keys flagged; schema ↔ form test. | FR-016; NFR-03 | AC-016-01, AC-016-02 | — |
 | [ ] M6-T06 | LAN exposure: HTTPS binding with PFX, cert-generator adapter, Secure cookies, allowlist. | FR-006.4; ADR-012, ADR-026 | AC-006-05, AC-006-08 | — |
 | [ ] M6-T07 | Web: users, audit, settings (generated form), network preview. | FR-006.2, FR-006.5, FR-011, FR-016 | AC-011-01 | — |

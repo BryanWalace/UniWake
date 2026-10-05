@@ -64,6 +64,7 @@ describe('audit log (FR-006.5)', () => {
     expect(audit.query({ limit: 10_000 }).items).toHaveLength(3);
     expect(Object.getOwnPropertyNames(AuditService.prototype).sort()).toEqual([
       'constructor',
+      'exportRows', // read-only (M6-T04)
       'query',
       'record',
     ]);

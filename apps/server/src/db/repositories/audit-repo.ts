@@ -65,6 +65,14 @@ export class SqliteAuditRepo implements AuditRepo {
       where.push('actor_user_id = :actor');
       params.actor = q.actorUserId;
     }
+    if (q.result) {
+      where.push('result = :result');
+      params.result = q.result;
+    }
+    if (q.text) {
+      where.push("(actor_label LIKE :text ESCAPE '\\' OR target LIKE :text ESCAPE '\\')");
+      params.text = `%${q.text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    }
     if (q.from !== undefined) {
       where.push('at >= :from');
       params.from = q.from;

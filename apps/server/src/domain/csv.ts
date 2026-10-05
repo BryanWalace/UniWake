@@ -184,6 +184,48 @@ export interface CsvExportRow {
   ativo: boolean;
 }
 
+export interface AuditCsvRow {
+  at: number;
+  actorLabel: string;
+  action: string;
+  target: string | null;
+  result: string;
+  sourceIp: string | null;
+  details: Record<string, unknown>;
+}
+
+const AUDIT_COLUMNS = ['quando', 'usuario', 'acao', 'alvo', 'resultado', 'ip', 'detalhes'];
+const RESULT_TEXT: Record<string, string> = { ok: 'ok', error: 'erro', denied: 'negado' };
+
+/** Audit export (FR-006.5): local date/time, `;`-separated, BOM, formulas neutralized. */
+export function auditToCsv(rows: readonly AuditCsvRow[], timeZone: string): string {
+  const when = new Intl.DateTimeFormat('pt-BR', {
+    timeZone,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+  const body = stringify(
+    rows.map((r) =>
+      [
+        when.format(new Date(r.at)).replace(',', ''),
+        r.actorLabel,
+        r.action,
+        r.target ?? '',
+        RESULT_TEXT[r.result] ?? r.result,
+        r.sourceIp ?? '',
+        Object.keys(r.details).length > 0 ? JSON.stringify(r.details) : '',
+      ].map(neutralizeCell),
+    ),
+    { delimiter: ';', record_delimiter: '\r\n' },
+  );
+  return `${BOM}${AUDIT_COLUMNS.join(';')}\r\n${body}`;
+}
+
 /** `;`-separated UTF-8 with BOM; every text cell neutralized (AC-002-11). */
 export function devicesToCsv(rows: readonly CsvExportRow[]): string {
   const body = stringify(

@@ -349,7 +349,7 @@ describe('wake engine end to end (FR-003)', () => {
     });
     expect(w.h.services.audit.query({ action: 'wake.start' }).items[0]).toMatchObject({
       actorLabel: 'operator-user',
-      target: 'sala Lab A',
+      target: 'room:Lab A', // machine-readable audit target (AC-006-06)
     });
   });
 });

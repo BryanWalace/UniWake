@@ -117,6 +117,33 @@ export class WakeService {
     });
   }
 
+  /**
+   * Audit target (AC-006-06): "room:Lab 3", "rooms:Lab 1, Lab 2", "tag:professor",
+   * "device:PC-01", "devices:12", "all". The pt-BR label stays for history.
+   */
+  auditTarget(target: WakeTarget): string {
+    switch (target.type) {
+      case 'all':
+        return 'all';
+      case 'rooms': {
+        const names = new Map(this.d.rooms.list().map((r) => [r.id, r.name]));
+        const list = target.roomIds.map((id) => names.get(id) ?? `#${id}`);
+        if (target.includeNoRoom) list.push('Sem sala');
+        return `${list.length === 1 ? 'room' : 'rooms'}:${list.join(', ')}`;
+      }
+      case 'tags': {
+        const names = new Map(this.d.tags.list().map((t) => [t.id, t.name]));
+        const list = target.tagIds.map((id) => names.get(id) ?? `#${id}`);
+        return `${list.length === 1 ? 'tag' : 'tags'}:${list.join(', ')}`;
+      }
+      case 'devices': {
+        if (target.deviceIds.length !== 1) return `devices:${target.deviceIds.length}`;
+        const d = this.d.snapshot().find((x) => x.id === target.deviceIds[0]);
+        return `device:${d?.name ?? target.deviceIds[0]}`;
+      }
+    }
+  }
+
   /** Human label for history and audit, e.g. "sala Lab 3", "etiqueta professor", "todos". */
   label(target: WakeTarget, res: Resolution): string {
     const roomNames = new Map(this.d.rooms.list().map((r) => [r.id, r.name]));
@@ -188,7 +215,7 @@ export class WakeService {
       this.d.audit.record({
         actor,
         action: 'wake.start',
-        target: targetLabel,
+        target: this.auditTarget(req.target),
         details: {
           jobId,
           count: res.devices.length,

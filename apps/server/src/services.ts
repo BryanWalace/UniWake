@@ -2,6 +2,7 @@
  * Builds application services over a database and ports. Used by the hub (real adapters) and by
  * API tests (fakes), so both run the same wiring.
  */
+import type { WakeTarget } from '@uniwake/shared';
 import { AuditService } from './application/audit/audit-service';
 import { AuthService } from './application/auth/auth-service';
 import { UsersService } from './application/auth/users-service';
@@ -147,6 +148,7 @@ export function createServices(
     logger: ports.logger.child({ module: 'wake' }),
     transaction: tx,
     onFinished: (job) => notices.onJobFinished(job),
+    auditTarget: (target: WakeTarget): string => wake.auditTarget(target),
   });
   const retention = new RetentionService({
     repo: new SqliteRetentionRepo(db),
