@@ -1,5 +1,8 @@
 import type { RouteObject } from 'react-router';
 import { RequireAuth } from './auth/auth';
+import { AuditPage } from './features/admin/AuditPage';
+import { SettingsPage } from './features/admin/SettingsPage';
+import { UsersPage } from './features/admin/UsersPage';
 import { DashboardPage } from './features/dashboard/DashboardPage';
 import { DevicePage } from './features/devices/DevicePage';
 import { DevicesPage } from './features/devices/DevicesPage';
@@ -31,7 +34,9 @@ export const routes: RouteObject[] = [
       { path: 'historico', element: <HistoryPage /> },
       { path: 'historico/jobs/:id', element: <JobPage /> },
       { path: 'preparar', element: <Placeholder title={t.nav.prepare} /> },
-      { path: 'configuracoes', element: <Placeholder title={t.nav.settings} /> },
+      { path: 'configuracoes', element: <SettingsPage /> },
+      { path: 'usuarios', element: <UsersPage /> },
+      { path: 'auditoria', element: <AuditPage /> },
       { path: 'saude', element: <Placeholder title={t.nav.health} /> },
       { path: '*', element: <NotFound /> },
     ],

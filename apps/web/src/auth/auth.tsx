@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router';
 import type { Me } from '@uniwake/shared';
 import { api, ApiRequestError } from '../api/client';
@@ -6,6 +7,7 @@ import { keys } from '../api/hooks';
 import { ErrorState, LoadingState } from '../components/Banner';
 import { t } from '../i18n/pt-BR';
 import { WakeProvider } from '../features/wake/WakeProvider';
+import { PasswordDialog } from '../features/admin/PasswordDialog';
 import { DemoBanner } from '../features/dashboard/DemoBanner';
 import { PauseBanner } from '../features/schedules/Pause';
 import { RealtimeProvider } from '../realtime/RealtimeProvider';
@@ -51,6 +53,7 @@ export function useLogout() {
 
 function UserMenu({ me }: { me: Me }) {
   const logout = useLogout();
+  const [changing, setChanging] = useState(false);
   return (
     <div className="flex items-center gap-3 text-sm">
       <span>
@@ -59,6 +62,14 @@ function UserMenu({ me }: { me: Me }) {
           ({me.role === 'admin' ? t.user.roleAdmin : t.user.roleOperator})
         </span>
       </span>
+      <button
+        type="button"
+        onClick={() => setChanging(true)}
+        className="rounded-md px-2 py-1.5 font-medium text-blue-800 hover:bg-slate-100"
+      >
+        Trocar senha
+      </button>
+      <PasswordDialog open={changing} onClose={() => setChanging(false)} />
       <button
         type="button"
         onClick={() => logout.mutate()}
@@ -100,6 +111,7 @@ export function RequireAuth() {
             </>
           }
           userMenu={<UserMenu me={me.data} />}
+          isAdmin={me.data.role === 'admin'}
         />
       </WakeProvider>
     </RealtimeProvider>

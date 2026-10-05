@@ -10,6 +10,7 @@ import type { CsvImportService } from '../application/devices/csv-import-service
 import type { DevicesService } from '../application/devices/devices-service';
 import type { EventsBus } from '../application/events-bus';
 import type { Clock } from '../application/ports';
+import type { NetworkPreviewService } from '../application/network/network-preview';
 import type { NoticesService } from '../application/notices/notices-service';
 import type { RoomsService } from '../application/rooms/rooms-service';
 import type { Scheduler } from '../application/schedules/scheduler';
@@ -36,6 +37,7 @@ export interface HttpServices {
   notices: NoticesService;
   users: UsersService;
   settingsAdmin: SettingsAdminService;
+  network: NetworkPreviewService;
   /** Present on the hub: stores an uploaded PFX for LAN HTTPS (ADR-012). */
   panelCertificates?: { save(pfx: Buffer, passphrase: string): void };
 }

@@ -8,6 +8,7 @@ import { AuthService } from './application/auth/auth-service';
 import { UsersService } from './application/auth/users-service';
 import { CsvImportService } from './application/devices/csv-import-service';
 import { DashboardService } from './application/dashboard/dashboard-service';
+import { NetworkPreviewService } from './application/network/network-preview';
 import { NoticesService } from './application/notices/notices-service';
 import { DevicesService } from './application/devices/devices-service';
 import { EventsBus } from './application/events-bus';
@@ -242,6 +243,12 @@ export function createServices(
     running: opts.running ?? { panelPort: 47100, agentPort: 47101, logLevel: 'info' },
   });
 
+  const network = new NetworkPreviewService({
+    interfaces: ports.interfaces,
+    settings,
+    rooms: roomsRepo,
+  });
+
   return {
     db,
     clock,
@@ -264,5 +271,6 @@ export function createServices(
     notices,
     users,
     settingsAdmin,
+    network,
   };
 }

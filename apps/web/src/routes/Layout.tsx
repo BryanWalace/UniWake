@@ -2,24 +2,28 @@ import type { ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router';
 import { t } from '../i18n/pt-BR';
 
-const NAV = [
+/** `admin`: only shown to administrators (FR-006.2); the server enforces it either way. */
+const NAV: { to: string; label: string; end?: boolean; admin?: boolean }[] = [
   { to: '/', label: t.nav.dashboard, end: true },
   { to: '/dispositivos', label: t.nav.devices },
   { to: '/salas', label: t.nav.rooms },
   { to: '/agendamentos', label: t.nav.schedules },
   { to: '/historico', label: t.nav.history },
   { to: '/preparar', label: t.nav.prepare },
-  { to: '/configuracoes', label: t.nav.settings },
+  { to: '/auditoria', label: t.nav.audit },
+  { to: '/usuarios', label: t.nav.users, admin: true },
+  { to: '/configuracoes', label: t.nav.settings, admin: true },
   { to: '/saude', label: t.nav.health },
 ];
 
 export interface LayoutProps {
   banners?: ReactNode;
   userMenu?: ReactNode;
+  isAdmin?: boolean;
 }
 
 /** App shell: skip link, banners, header with navigation, main landmark (constitution §8). */
-export function Layout({ banners, userMenu }: LayoutProps) {
+export function Layout({ banners, userMenu, isAdmin = false }: LayoutProps) {
   return (
     <div className="min-h-screen">
       <a
@@ -33,7 +37,7 @@ export function Layout({ banners, userMenu }: LayoutProps) {
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
           <span className="text-lg font-bold text-blue-800">{t.appName}</span>
           <nav aria-label={t.nav.label} className="flex flex-wrap gap-1">
-            {NAV.map((item) => (
+            {NAV.filter((item) => isAdmin || !item.admin).map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}

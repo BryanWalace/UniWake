@@ -18,6 +18,9 @@ export function settingsRoutes(app: FastifyInstance, s: HttpServices): void {
 
   r.get('/api/settings', { config: admin }, async () => s.settingsAdmin.view());
 
+  // FR-011: interfaces and the exact destinations a wake uses.
+  r.get('/api/network/interfaces', { config: admin }, async () => s.network.preview());
+
   r.patch('/api/settings', { config: admin }, async (req) =>
     s.settingsAdmin.save(req.body, actorOf(req)),
   );

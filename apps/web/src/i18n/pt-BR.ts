@@ -12,6 +12,8 @@ export const t = {
     prepare: 'Preparar máquinas',
     settings: 'Configurações',
     health: 'Saúde do sistema',
+    audit: 'Auditoria',
+    users: 'Usuários',
   },
   user: {
     logout: 'Sair',
