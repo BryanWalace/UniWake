@@ -4,6 +4,7 @@ import { api } from '../../api/client';
 import { ErrorState, LoadingState } from '../../components/Banner';
 import { Button, PageHeader } from '../../components/ui';
 import { formatDateTime } from '../../lib/format';
+import { UpdateCard } from './UpdateCard';
 
 interface HealthDetails {
   status: 'ok' | 'degraded' | 'down';
@@ -158,6 +159,7 @@ export function HealthPage() {
           </div>
         ))}
       </dl>
+      <UpdateCard />
     </section>
   );
 }

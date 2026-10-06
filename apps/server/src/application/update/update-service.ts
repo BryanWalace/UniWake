@@ -4,7 +4,7 @@
  * prereleases, non-SemVer tags and versions not newer than this one are never offered (AC-001-05).
  * The result survives restarts; a failed check keeps the last good one and says so (AC-001-06).
  */
-import type { UpdateRelease, UpdateStatus } from '@uniwake/shared';
+import type { UpdateCheckStatus, UpdateRelease } from '@uniwake/shared';
 import { compareSemver, parseSemver } from '../../domain/semver';
 import type { Clock, Logger, ReleaseSource, TimerHandle } from '../ports';
 import type { SettingsService } from '../settings/settings-service';
@@ -48,7 +48,7 @@ export class UpdateService {
   private state: UpdateState;
   private timer: TimerHandle | null = null;
   private nextCheckAt: number | null = null;
-  private running: Promise<UpdateStatus> | null = null;
+  private running: Promise<UpdateCheckStatus> | null = null;
 
   constructor(private readonly d: UpdateDeps) {
     this.state = d.store.load() ?? {
@@ -72,7 +72,7 @@ export class UpdateService {
     return l.installer && l.checksumUrl ? l : null;
   }
 
-  status(): UpdateStatus {
+  status(): UpdateCheckStatus {
     const l = this.state.latest;
     return {
       current: this.d.version,
@@ -113,7 +113,7 @@ export class UpdateService {
   }
 
   /** Checks now; concurrent calls share one request. */
-  check(): Promise<UpdateStatus> {
+  check(): Promise<UpdateCheckStatus> {
     if (!this.d.source) return Promise.resolve(this.status());
     this.running ??= this.run(this.d.source).finally(() => {
       this.running = null;
@@ -121,7 +121,7 @@ export class UpdateService {
     return this.running;
   }
 
-  private async run(source: ReleaseSource): Promise<UpdateStatus> {
+  private async run(source: ReleaseSource): Promise<UpdateCheckStatus> {
     const now = this.d.clock.now();
     try {
       const { release } = await source.latest();

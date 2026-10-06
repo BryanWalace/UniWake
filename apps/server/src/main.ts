@@ -4,11 +4,13 @@
  */
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { resolvePrepareScriptPath } from './adapters/prepare-script';
 import { GitHubReleaseSource } from './adapters/github-release-source';
 import { GitHubTimeCheck } from './adapters/github-time';
 import { AllowlistHttpClient } from './adapters/http-client';
 import { NodeProcessRunner } from './adapters/process-runner';
+import { TaskUpdateLauncher } from './adapters/update-launcher';
 import { WindowsControl } from './adapters/windows-control';
 import { WindowsHostChecks } from './adapters/windows-host';
 import { ConfigError, dataPaths, resolveConfig } from './config';
@@ -88,11 +90,20 @@ export async function main(argv: readonly string[], opts: MainOptions = {}): Pro
       dataDir: probe.dataDir,
       demo: args.demo || probe.demo,
     });
+    const installDir = config.demo ? null : resolveInstallDir(import.meta.dirname);
     const hub = await createHub({
       config,
       webDir: resolveWebDir(env, import.meta.dirname),
       helperPath: resolveHelperPath(import.meta.dirname),
-      installDir: config.demo ? null : resolveInstallDir(import.meta.dirname),
+      installDir,
+      updateLauncher:
+        installDir && process.platform === 'win32'
+          ? new TaskUpdateLauncher(
+              new WindowsControl(new NodeProcessRunner(), dataPaths(config.dataDir).updates),
+              process.execPath,
+              join(import.meta.dirname, 'updater.mjs'),
+            )
+          : null,
       // After a restore request: exit with 75 so the service manager starts us again (FR-014).
       requestRestart: () => {
         setTimeout(() => void hub.stop().finally(() => process.exit(EXIT_RESTART)), 500);

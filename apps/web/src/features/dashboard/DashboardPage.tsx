@@ -31,6 +31,7 @@ const SOURCE_TEXT: Record<RoomLastAction['source'], string> = {
 };
 
 const NOTICE_TEXT: Record<string, (data: Record<string, unknown>) => string> = {
+  update_done: (data) => (typeof data.message === 'string' ? data.message : 'UniWake atualizado.'),
   demo: () => 'Modo demonstração: nenhum pacote real é enviado.',
   restore_failed: (data) =>
     `A restauração do backup pedida não aconteceu: ${typeof data.reason === 'string' ? data.reason : 'erro desconhecido'}. O banco atual foi mantido.`,

@@ -30,6 +30,7 @@ import { SystemClock } from './adapters/system-clock';
 import { TcpProber } from './adapters/tcp-prober';
 import { UdpPacketSender } from './adapters/udp-packet-sender';
 import type { Clock, ReleaseSource } from './application/ports';
+import type { UpdateLauncher } from './application/update/update-coordinator';
 import { type Config, dataPaths } from './config';
 import { Db } from './db/connection';
 import { latestSchemaVersion, migrate } from './db/migrate';
@@ -66,6 +67,8 @@ export interface HubOptions {
   releaseSource?: ReleaseSource | null;
   /** `%ProgramFiles%\UniWake` when running from an installed version dir; null from source. */
   installDir?: string | null;
+  /** Starts updater.mjs (main.ts on an installed Windows hub). */
+  updateLauncher?: UpdateLauncher | null;
   /** scripts/prepare-target.ps1 served to target PCs (FR-007.3); null = not available. */
   prepareScriptPath?: string | null;
   /** Health checks that leave the process (main.ts on a real install); none in tests. */
@@ -225,6 +228,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
             dataDir: config.dataDir,
             panelPort: config.panelPort,
             schemaVersion: latestSchemaVersion(),
+            launcher: opts.updateLauncher ?? null,
           }
         : null,
       running: {
@@ -395,12 +399,15 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       services.health.start();
       services.backups?.start();
       services.update.start();
+      services.updates.start();
+      await services.updates.recordOutcome(paths.updates);
       logger.info(
         { version: APP_VERSION, ...hub.addresses(), demo: config.demo },
         'UniWake hub started',
       );
     },
     async stop() {
+      services.updates.stop();
       services.update.stop();
       services.scheduler.stop();
       services.health.stop();

@@ -21,4 +21,12 @@ export interface UpdateStatus {
   nextCheckAt: number | null;
   /** pt-BR; null when the last check worked (AC-001-06). */
   error: string | null;
+  /** This hub can install (installed, not demo); "Atualizar agora" is only shown to admins. */
+  canInstall: boolean;
+  /** Version being handed to the updater, if any. */
+  installing: string | null;
+  /** A wake runs or a schedule is due within an hour: installing needs an override. */
+  blocked: boolean;
 }
+
+export type UpdateCheckStatus = Omit<UpdateStatus, 'canInstall' | 'installing' | 'blocked'>;

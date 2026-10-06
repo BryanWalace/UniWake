@@ -78,3 +78,21 @@ export function nextLocalTime(after: number, hhmm: string, tz: string): number {
   }
   return after + 24 * 3_600_000;
 }
+
+/** Minutes since local midnight in `tz`. */
+export function localMinutes(epochMs: number, tz: string): number {
+  const p = parts(epochMs, tz);
+  return p.h * 60 + p.mi;
+}
+
+/** Is `epochMs` inside the local `[start, end)` window? Windows may cross midnight (22:00–02:00). */
+export function insideWindow(epochMs: number, tz: string, start: string, end: string): boolean {
+  const toMin = (hhmm: string) => {
+    const [h, m] = hhmm.split(':').map(Number) as [number, number];
+    return h * 60 + m;
+  };
+  const now = localMinutes(epochMs, tz);
+  const s = toMin(start);
+  const e = toMin(end);
+  return s <= e ? now >= s && now < e : now >= s || now < e;
+}

@@ -24,6 +24,7 @@ import type { SettingsAdminService } from '../application/settings/settings-admi
 import type { SettingsService } from '../application/settings/settings-service';
 import type { TagsService } from '../application/tags/tags-service';
 import type { TestWolService } from '../application/test-wol/test-wol-service';
+import type { UpdateCoordinator } from '../application/update/update-coordinator';
 import type { UpdateService } from '../application/update/update-service';
 import type { WakeService } from '../application/wake/wake-service';
 
@@ -50,6 +51,7 @@ export interface HttpServices {
   testWol: TestWolService;
   diagnostics: DiagnosticsService;
   update: UpdateService;
+  updates: UpdateCoordinator;
   /** null when the hub has no backups directory (API tests). */
   backups: BackupService | null;
   /** Hub only: the log viewer source (FR-016). */

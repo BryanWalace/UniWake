@@ -47,6 +47,7 @@ import {
 import { SettingsService } from './application/settings/settings-service';
 import { TagsService } from './application/tags/tags-service';
 import { TestWolService } from './application/test-wol/test-wol-service';
+import { type UpdateLauncher, UpdateCoordinator } from './application/update/update-coordinator';
 import { UpdateInstaller } from './application/update/update-installer';
 import { UpdateService } from './application/update/update-service';
 import { JobRunner } from './application/wake/job-runner';
@@ -107,6 +108,8 @@ export interface ServiceOptions {
     dataDir: string;
     panelPort: number;
     schemaVersion: number;
+    /** Starts updater.mjs through scheduled tasks (hub on Windows). */
+    launcher: UpdateLauncher | null;
   } | null;
   /** prepare-target.ps1 as served by the agent listener (FR-007.3); absent = not installed. */
   prepareScript?: PrepareScript;
@@ -406,6 +409,20 @@ export function createServices(
         })
       : null;
 
+  const updates = new UpdateCoordinator({
+    update,
+    installer: updateInstaller,
+    launcher: install?.launcher ?? null,
+    fs: install?.fs ?? null,
+    settings,
+    audit,
+    clock,
+    logger: ports.logger.child({ module: 'update' }),
+    notice: (type, data) => notices.system(type, data),
+    activeJobs: () => runner.activeCount,
+    nextScheduledRunAt: () => schedules.nextRunOverall()?.at ?? null,
+  });
+
   return {
     db,
     clock,
@@ -436,5 +453,6 @@ export function createServices(
     diagnostics,
     update,
     updateInstaller,
+    updates,
   };
 }
