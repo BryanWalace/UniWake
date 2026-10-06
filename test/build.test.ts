@@ -37,6 +37,7 @@ describe('build (M8-T01, ADR-022)', () => {
   it('stages one version: bundle, VERSION, prepare script and helpers', () => {
     for (const f of [
       'server.mjs',
+      'updater.mjs',
       'VERSION',
       'scripts/prepare-target.ps1',
       'helper/probe-helper.ps1',
