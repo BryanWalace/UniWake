@@ -106,6 +106,8 @@ export class FakeProber implements Prober {
 
 export class FakeDnsResolver implements DnsResolver {
   readonly records = new Map<string, string[]>();
+  /** Reverse lookups (discovery); absent = not supported, like a resolver without it. */
+  reverse?: (ip: string) => Promise<string[]>;
   readonly faults = new FaultPlan<string>();
   lookups = 0;
 

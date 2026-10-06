@@ -18,6 +18,7 @@ import { NetworkPreviewService } from './application/network/network-preview';
 import { NoticesService } from './application/notices/notices-service';
 import { DevicesService } from './application/devices/devices-service';
 import { DiagnosticsService } from './application/devices/diagnostics-service';
+import { DiscoveryService, type NeighborCache } from './application/discovery/discovery-service';
 import { EnrollmentService, type PrepareScript } from './application/enrollment/enrollment-service';
 import { EventsBus } from './application/events-bus';
 import { MonitorService } from './application/monitor/monitor-service';
@@ -54,6 +55,7 @@ import { JobRunner } from './application/wake/job-runner';
 import { ProberVerifier } from './application/wake/verifier';
 import { WakeService } from './application/wake/wake-service';
 import type { Db } from './db/connection';
+import type { OuiTable } from './domain/oui';
 import { DbBackupFiles, SqliteBackupsRepo } from './db/backups';
 import { SqliteAuditRepo } from './db/repositories/audit-repo';
 import { SqliteSessionsRepo, SqliteUsersRepo } from './db/repositories/auth-repos';
@@ -83,6 +85,8 @@ export interface ServicePorts {
   prober: Prober;
   dns: DnsResolver;
   logger: Logger;
+  /** IPv4 neighbor (ARP) cache for discovery (FR-101); absent = discovery finds nothing. */
+  neighbors?: NeighborCache;
 }
 
 export interface ServiceOptions {
@@ -112,6 +116,8 @@ export interface ServiceOptions {
     /** Starts updater.mjs through scheduled tasks (hub on Windows). */
     launcher: UpdateLauncher | null;
   } | null;
+  /** Bundled MAC vendor list (FR-101). */
+  oui?: () => OuiTable;
   /** prepare-target.ps1 as served by the agent listener (FR-007.3); absent = not installed. */
   prepareScript?: PrepareScript;
 }
@@ -425,6 +431,26 @@ export function createServices(
     autoSkip: new SqliteUpdateAutoSkip(db),
   });
 
+  const discovery = new DiscoveryService({
+    prober: probes.at('low'),
+    neighbors: ports.neighbors ?? { read: () => Promise.resolve([]) },
+    dns: ports.dns,
+    interfaces: ports.interfaces,
+    oui: opts.oui ?? (() => new Map()),
+    findByMac: (mac) => devicesRepo.findByMac(mac),
+    createDevice: (d, actor) => {
+      devices.create(
+        { name: d.name, mac: d.mac, ip: d.ip, hostname: d.hostname, roomId: d.roomId },
+        actor,
+      );
+    },
+    transaction: tx,
+    settings,
+    audit,
+    clock,
+    logger: ports.logger.child({ module: 'discovery' }),
+  });
+
   return {
     db,
     clock,
@@ -456,5 +482,6 @@ export function createServices(
     update,
     updateInstaller,
     updates,
+    discovery,
   };
 }

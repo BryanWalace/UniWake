@@ -8,6 +8,7 @@ import { UsersPage } from './features/admin/UsersPage';
 import { DashboardPage } from './features/dashboard/DashboardPage';
 import { DevicePage } from './features/devices/DevicePage';
 import { DevicesPage } from './features/devices/DevicesPage';
+import { DiscoveryPage } from './features/devices/DiscoveryPage';
 import { PreparePage } from './features/enrollment/PreparePage';
 import { HelpIndexPage, HelpPage } from './features/help/HelpPage';
 import { ImportPage } from './features/devices/ImportPage';
@@ -30,6 +31,7 @@ export const routes: RouteObject[] = [
       { index: true, element: <DashboardPage /> },
       { path: 'dispositivos', element: <DevicesPage /> },
       { path: 'dispositivos/importar', element: <ImportPage /> },
+      { path: 'dispositivos/descobrir', element: <DiscoveryPage /> },
       { path: 'dispositivos/:id', element: <DevicePage /> },
       { path: 'salas', element: <RoomsPage /> },
       { path: 'salas/:id', element: <RoomPage /> },

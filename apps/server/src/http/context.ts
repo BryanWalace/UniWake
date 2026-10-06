@@ -9,6 +9,7 @@ import type { DashboardService } from '../application/dashboard/dashboard-servic
 import type { CsvImportService } from '../application/devices/csv-import-service';
 import type { DevicesService } from '../application/devices/devices-service';
 import type { DiagnosticsService } from '../application/devices/diagnostics-service';
+import type { DiscoveryService } from '../application/discovery/discovery-service';
 import type { EnrollmentService } from '../application/enrollment/enrollment-service';
 import type { EventsBus } from '../application/events-bus';
 import type { Clock } from '../application/ports';
@@ -52,6 +53,7 @@ export interface HttpServices {
   diagnostics: DiagnosticsService;
   update: UpdateService;
   updates: UpdateCoordinator;
+  discovery: DiscoveryService;
   /** null when the hub has no backups directory (API tests). */
   backups: BackupService | null;
   /** Hub only: the log viewer source (FR-016). */

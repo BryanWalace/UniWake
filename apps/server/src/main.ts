@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { resolvePrepareScriptPath } from './adapters/prepare-script';
 import { GitHubReleaseSource } from './adapters/github-release-source';
+import { resolveOuiPath } from './adapters/oui-file';
 import { GitHubTimeCheck } from './adapters/github-time';
 import { AllowlistHttpClient } from './adapters/http-client';
 import { NodeProcessRunner } from './adapters/process-runner';
@@ -95,6 +96,8 @@ export async function main(argv: readonly string[], opts: MainOptions = {}): Pro
       config,
       webDir: resolveWebDir(env, import.meta.dirname),
       helperPath: resolveHelperPath(import.meta.dirname),
+      neighborScriptPath: resolveHelperPath(import.meta.dirname, 'get-neighbors.ps1'),
+      ouiPath: resolveOuiPath(import.meta.dirname),
       installDir,
       updateLauncher:
         installDir && process.platform === 'win32'

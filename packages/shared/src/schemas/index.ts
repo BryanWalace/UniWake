@@ -3,6 +3,7 @@ export * from './common';
 export * from './dashboard';
 export * from './devices';
 export * from './diagnostics';
+export * from './discovery';
 export * from './enrollment';
 export * from './notices';
 export * from './rooms';

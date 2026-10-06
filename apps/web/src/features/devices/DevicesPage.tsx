@@ -125,6 +125,12 @@ export function DevicesPage() {
             >
               Importar CSV
             </Link>
+            <Link
+              to="/dispositivos/descobrir"
+              className="inline-flex min-h-10 items-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-100"
+            >
+              Descobrir na rede
+            </Link>
             <Button
               variant="primary"
               onClick={() => {

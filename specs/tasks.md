@@ -244,8 +244,8 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 |---|---|---|---|---|
 | [x] M9-T01 | Neighbor cache: `Get-NetNeighbor` JSON + `arp -a` parser (pt-BR/en-US fixtures). | FR-101 | AC-101-02 | — |
 | [x] M9-T02 | OUI vendor DB (bundled with releases; no runtime download, NFR-05) + lookup. | FR-101; NFR-05 | lookup tests | — |
-| [ ] M9-T03 | Discovery service: CIDR sweep, hostname, already-registered, locally-administered flag. | FR-101 | AC-101-03 | — |
-| [ ] M9-T04 | Discovery API + page + bulk add to room. | FR-101 | AC-101-01 | — |
+| [x] M9-T03 | Discovery service: CIDR sweep, hostname, already-registered, locally-administered flag. | FR-101 | AC-101-03 | — |
+| [x] M9-T04 | Discovery API + page + bulk add to room. | FR-101 | AC-101-01 | — |
 
 ## Phase 5 — Validate (lead: Debug)
 | ID | Task | Refs | Evidence |

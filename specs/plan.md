@@ -216,6 +216,7 @@ empty in v1.0).
 | POST `/api/scheduler/pause` · POST `/api/scheduler/resume` | operator | FR-005.6 |
 | GET, POST `/api/enrollment/tokens`; POST `/api/enrollment/tokens/:id/revoke`; GET `/api/enrollment/addresses`; POST `/api/enrollment/command` | operator | FR-007.3 |
 | GET `/api/notices` · POST `/api/notices/:id/ack` | operator | FR-013 |
+| GET `/api/discovery` · POST `/api/discovery/scan` · POST `/api/discovery/add` | operator | FR-101 (only this computer's own subnets) |
 | GET, PATCH `/api/settings` · GET `/api/network/interfaces` | admin | FR-016, FR-011 |
 | GET `/api/update` | operator | FR-001.2 |
 | POST `/api/update/check` · POST `/api/update/install` | admin | FR-001.3 |
@@ -246,7 +247,7 @@ prefix is not used because loopback is HTTP (browsers reject `__Host-` without `
 
 ### 6.5 Web routes (pt-BR)
 `/` painel · `/salas` (salas e etiquetas) · `/salas/:id` · `/dispositivos` (`?sala=<id>` pré-filtra) ·
-`/dispositivos/importar` · `/dispositivos/:id` (detalhe + diagnóstico) ·
+`/dispositivos/importar` · `/dispositivos/descobrir` · `/dispositivos/:id` (detalhe + diagnóstico) ·
 `/agendamentos` · `/historico` (jobs + execuções) · `/historico/jobs/:id` · `/preparar` ·
 `/configuracoes` · `/usuarios` · `/auditoria` · `/saude` · `/logs` · `/ajuda/:topico` · `/login` ·
 `/primeiro-acesso`. Global quick-wake palette `Ctrl+K` (FR-004.7).

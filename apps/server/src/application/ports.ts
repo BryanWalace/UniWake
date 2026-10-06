@@ -73,6 +73,8 @@ export interface Prober {
 export interface DnsResolver {
   /** IPv4 addresses for `hostname`; rejects on failure or timeout. */
   resolve4(hostname: string): Promise<string[]>;
+  /** Names for an IPv4 address (reverse lookup); optional, used by discovery (FR-101). */
+  reverse?(ip: string): Promise<string[]>;
 }
 
 // ---------------------------------------------------------------- File system

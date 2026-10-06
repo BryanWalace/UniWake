@@ -4,6 +4,7 @@
  * do). Seeded devices also switch on and off by themselves now and then, so the panel looks alive.
  */
 import { MAGIC_PACKET_LENGTH, macOfPacket } from '../domain/magic-packet';
+import type { Neighbor } from '../domain/neighbors';
 import type {
   Clock,
   DnsResolver,
@@ -32,6 +33,13 @@ export interface SimulatedNetworkOptions {
   /** Chance per probe that a device switches on or off by itself. */
   driftPerProbe?: number;
 }
+
+/** Always-on machines nobody registered yet, for discovery in demo mode (FR-101). */
+export const DEMO_UNREGISTERED: SimDevice[] = [1, 2, 3, 4, 5].map((n) => ({
+  mac: `00:1A:2B:9F:00:0${n}`,
+  ip: `10.20.200.${10 + n}`,
+  hostname: `SALA-NOVA-PC0${n}`,
+}));
 
 /** The demo subnet: devices are seeded in 10.20.0.0/16. */
 export const DEMO_INTERFACE: NetInterface = {
@@ -65,6 +73,16 @@ export class SimulatedNetwork {
 
   constructor(private readonly o: SimulatedNetworkOptions) {
     this.random = o.random ?? Math.random;
+    for (const d of DEMO_UNREGISTERED)
+      this.state.set(d.mac, { on: true, bootAt: null, lively: false });
+  }
+
+  /** Registered machines plus the unregistered demo ones (registered ones win on the same IP). */
+  private all(): SimDevice[] {
+    const known = this.o.devices();
+    const ips = new Set(known.map((d) => d.ip));
+    const macs = new Set(known.map((d) => d.mac.toUpperCase()));
+    return [...known, ...DEMO_UNREGISTERED.filter((d) => !ips.has(d.ip) && !macs.has(d.mac))];
   }
 
   /** Never answers a magic packet (BIOS setting off, unplugged...). */
@@ -107,7 +125,7 @@ export class SimulatedNetwork {
     if (this.cache && now - this.cache.at >= 0 && now - this.cache.at < 1000)
       return this.cache.byIp;
     const byIp = new Map<string, string>();
-    for (const d of this.o.devices()) if (d.ip) byIp.set(d.ip, d.mac.toUpperCase());
+    for (const d of this.all()) if (d.ip) byIp.set(d.ip, d.mac.toUpperCase());
     this.cache = { at: now, byIp };
     return byIp;
   }
@@ -164,7 +182,21 @@ export class SimulatedNetwork {
     },
   };
 
+  /** The ARP cache: machines that are on (FR-101). */
+  readonly neighbors = {
+    read: (): Promise<Neighbor[]> =>
+      Promise.resolve(
+        [...this.inventory()]
+          .filter(([, mac]) => this.stateOf(mac).on)
+          .map(([ip, mac]) => ({ ip, mac, interfaceIp: DEMO_INTERFACE.address })),
+      ),
+  };
+
   readonly dns: DnsResolver = {
+    reverse: (ip: string) => {
+      const d = this.all().find((x) => x.ip === ip && x.hostname);
+      return Promise.resolve(d?.hostname ? [`${d.hostname.toLowerCase()}.demo.local`] : []);
+    },
     resolve4: (hostname: string) => {
       const d = this.o
         .devices()

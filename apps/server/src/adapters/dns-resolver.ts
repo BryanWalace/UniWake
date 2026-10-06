@@ -19,4 +19,19 @@ export class OsDnsResolver implements DnsResolver {
       });
     });
   }
+
+  reverse(ip: string): Promise<string[]> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error(`reverse DNS timeout for ${ip}`)),
+        this.timeoutMs,
+      );
+      // lookupService() also asks the OS resolver, so NetBIOS/LLMNR names come back on Windows.
+      dns.lookupService(ip, 0, (err, hostname) => {
+        clearTimeout(timer);
+        if (err) reject(err);
+        else resolve(hostname && hostname !== ip ? [hostname] : []);
+      });
+    });
+  }
 }

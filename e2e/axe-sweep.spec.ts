@@ -33,6 +33,7 @@ test.describe('accessibility sweep (NFR-07)', () => {
       ['/dispositivos', null],
       ['/agendamentos', 'Agendamentos'],
       ['/preparar', 'Preparar máquinas'],
+      ['/dispositivos/descobrir', 'Descobrir na rede'],
       ['/historico', null],
       ['/configuracoes', 'Configurações'],
       ['/usuarios', 'Usuários'],

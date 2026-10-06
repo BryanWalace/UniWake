@@ -6,7 +6,9 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
+import { WindowsNeighborCache } from './adapters/neighbor-cache';
 import { NodeFileSystem } from './adapters/node-fs';
+import { OuiFile } from './adapters/oui-file';
 import { PrepareScriptFile } from './adapters/prepare-script';
 import { createFileLogger } from './adapters/logger';
 import { JsonConfigFile } from './adapters/config-file';
@@ -63,6 +65,10 @@ export interface HubOptions {
   helperPath?: string | null;
   /** new-panel-cert.ps1 location (LAN HTTPS certificate, ADR-026). */
   certScriptPath?: string | null;
+  /** helper\\get-neighbors.ps1 (discovery, FR-101); null = arp.exe only. */
+  neighborScriptPath?: string | null;
+  /** data\\oui.tsv.gz (MAC vendors, FR-101); null = no vendor names. */
+  ouiPath?: string | null;
   /** Update source (main.ts on a real install; ADR-025); none in tests and demo mode. */
   releaseSource?: ReleaseSource | null;
   /** `%ProgramFiles%\UniWake` when running from an installed version dir; null from source. */
@@ -201,6 +207,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
             dryRunSender: sim.sender,
             prober: sim.prober,
             dns: sim.dns,
+            neighbors: sim.neighbors,
             logger,
           }
         : {
@@ -209,6 +216,10 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
             dryRunSender: new RecordingPacketSender(),
             prober,
             dns: new OsDnsResolver(),
+            neighbors:
+              process.platform === 'win32'
+                ? new WindowsNeighborCache(runner, opts.neighborScriptPath ?? null)
+                : { read: () => Promise.resolve([]) },
             logger,
           }),
     {
@@ -221,6 +232,10 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       requestRestart: () => opts.requestRestart?.(),
       prepareScript: new PrepareScriptFile(opts.prepareScriptPath ?? null),
       releaseSource: opts.releaseSource ?? null,
+      oui: (() => {
+        const file = new OuiFile(opts.ouiPath ?? null);
+        return () => file.get();
+      })(),
       install: opts.installDir
         ? {
             fs: new NodeFileSystem(),
