@@ -115,6 +115,23 @@ describe('CLI', () => {
       process.stderr.write = errWrite;
     }
   });
+
+  it('IMP-028: a start-up configuration error is also sent to the event log', async () => {
+    const logged: string[] = [];
+    const errWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = () => true;
+    process.env.UNIWAKE_PANEL_PORT = '0';
+    try {
+      const code = await main(['--data-dir', mkdtempSync(join(tmpdir(), 'uniwake-main-'))], {
+        eventLog: (m) => (logged.push(m), Promise.resolve()),
+      });
+      expect(code).toBe(78);
+      expect(logged).toEqual([expect.stringMatching(/^O UniWake não iniciou: [\s\S]*panelPort/)]);
+    } finally {
+      delete process.env.UNIWAKE_PANEL_PORT;
+      process.stderr.write = errWrite;
+    }
+  });
 });
 
 describe('demo mode safety (AC-015-01)', () => {

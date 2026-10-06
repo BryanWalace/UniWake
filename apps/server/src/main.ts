@@ -3,9 +3,11 @@
  *   node server.mjs [--demo] [--data-dir <dir>] [--version]
  */
 import { readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { resolvePrepareScriptPath } from './adapters/prepare-script';
 import { GitHubTimeCheck } from './adapters/github-time';
 import { NodeProcessRunner } from './adapters/process-runner';
+import { WindowsControl } from './adapters/windows-control';
 import { WindowsHostChecks } from './adapters/windows-host';
 import { ConfigError, dataPaths, resolveConfig } from './config';
 import { createHub, EXIT_CONFIG_ERROR, HubStartError, resolveHelperPath } from './hub';
@@ -45,7 +47,19 @@ function readConfigFile(path: string): string | null {
   }
 }
 
-export async function main(argv: readonly string[]): Promise<number> {
+export interface MainOptions {
+  /** Where start-up failures are reported besides stderr (IMP-028); injectable for tests. */
+  eventLog?: (message: string) => Promise<void>;
+}
+
+/** The Windows Application event log for a real hub; nothing in demo mode or elsewhere. */
+function defaultEventLog(demo: boolean): (message: string) => Promise<void> {
+  if (process.platform !== 'win32' || demo) return () => Promise.resolve();
+  const control = new WindowsControl(new NodeProcessRunner(), tmpdir());
+  return (message) => control.logError(message);
+}
+
+export async function main(argv: readonly string[], opts: MainOptions = {}): Promise<number> {
   let args: CliArgs;
   try {
     args = parseArgs(argv);
@@ -108,8 +122,9 @@ export async function main(argv: readonly string[]): Promise<number> {
     return 0;
   } catch (e) {
     if (e instanceof HubStartError || e instanceof ConfigError) {
-      // TODO(M8-T04): also write to the Windows Application event log (IMP-028).
       process.stderr.write(`UniWake: ${e.message}\n`);
+      // IMP-028: a service that cannot start is diagnosed from the Event Viewer too.
+      await (opts.eventLog ?? defaultEventLog(args.demo))(`O UniWake não iniciou: ${e.message}`);
       return EXIT_CONFIG_ERROR;
     }
     process.stderr.write(`UniWake: fatal error: ${(e as Error).stack ?? String(e)}\n`);
