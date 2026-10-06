@@ -364,7 +364,15 @@ export class EnrollmentService {
 
     const done = this.d.transaction(() => {
       if (!this.d.repo.consumeUse(t.id)) return null; // used up by a concurrent enrollment
-      const existing = this.d.repo.deviceByMac(req.mac);
+      // M7-F1: a computer registered earlier by another of its MACs (often the Wi-Fi one, from an
+      // inventory CSV) is the same device: update it and switch it to the wired MAC that wakes it.
+      let existing = this.d.repo.deviceByMac(req.mac);
+      let macChangedFrom: string | null = null;
+      for (const other of otherMacs) {
+        if (existing) break;
+        existing = this.d.repo.deviceByMac(other);
+        if (existing) macChangedFrom = other;
+      }
       let result: EnrollOutcome;
       let deviceId: number;
       let name: string;
@@ -412,6 +420,7 @@ export class EnrollmentService {
           room: t.roomName,
           mac: req.mac,
           tokenId: t.id,
+          ...(macChangedFrom !== null ? { macChangedFrom } : {}),
           ...(from !== null ? { message: `movida de ${from} para ${t.roomName}` } : {}),
         },
       });

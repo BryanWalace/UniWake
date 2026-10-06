@@ -127,10 +127,11 @@ export class SqliteEnrollmentRepo implements EnrollmentRepo {
   updateDevice(id: number, d: EnrolledDeviceWrite, now: number): void {
     // A missing IP in the request keeps the known one (the monitor may have resolved it).
     this.db.run(
-      `UPDATE devices SET ip = COALESCE(?, ip), hostname = ?, room_id = ?, manufacturer = ?,
+      `UPDATE devices SET mac = ?, ip = COALESCE(?, ip), hostname = ?, room_id = ?, manufacturer = ?,
          model = ?, serial = ?, os = ?, other_macs = ?, prepared_at = ?, prepare_results = ?,
          enrolled_at = ?, updated_at = ? WHERE id = ?`,
       [
+        d.mac,
         d.ip,
         d.hostname,
         d.roomId,

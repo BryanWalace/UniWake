@@ -81,6 +81,7 @@ export class TestWolService {
   private readonly timers = new Map<number, TimerHandle>();
   private readonly misses = new Map<number, number>();
   private readonly actors = new Map<number, Actor>();
+  private stopped = false;
 
   constructor(private readonly d: TestWolDeps) {}
 
@@ -163,11 +164,14 @@ export class TestWolService {
   }
 
   stop(): void {
+    // M7-F2: a step still waiting for its probe must not arm a new timer after shutdown.
+    this.stopped = true;
     for (const t of this.timers.values()) this.d.clock.clearTimeout(t);
     this.timers.clear();
   }
 
   private schedule(id: number, ms: number): void {
+    if (this.stopped) return;
     this.timers.set(
       id,
       this.d.clock.setTimeout(() => {

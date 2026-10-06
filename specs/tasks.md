@@ -209,6 +209,10 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M7-T07 | Web: "Preparar máquinas" page. | FR-007.3 | component tests | — |
 | [x] M7-T08 | Test-WoL flow service/routes/web. | FR-007.4 | AC-007-10 | — |
 | [x] M7-T09 | Diagnostics service/page + help pages. | FR-010, FR-007.5 | AC-010-01, AC-010-02, AC-007-15 | — |
+| [x] M7-D | Debug break-it pass → `apps/server/test/breakit-m7.test.ts` (enrollment of a computer known by its Wi-Fi MAC, token use races, room code changed after the command, hub stop during a test-WoL probe, test-WoL during another wake, deleted device mid-test, 8 KB body with full prepare results, secret scan of test fixtures). | tasks §Break-it | 3 regression tests | findings filed |
+| [x] M7-F1 | MAJOR: a computer registered earlier with its Wi-Fi MAC (typical of inventory CSVs) became a second device when the script enrolled it by its wired MAC. Enrollment now also matches the MACs in otherMacs and switches that device to the wired MAC (audited as macChangedFrom). | FR-007.2 | breakit-m7 F1 | — |
+| [x] M7-F2 | MINOR: a test-WoL step whose probe answered after the hub stopped armed a new timer on the stopped service. stop() now blocks further scheduling. | FR-007.4 | breakit-m7 F2 | — |
+| [x] M7-F3 | MINOR: CI secret scan failed on a high-entropy fake token in a web test. Fake tokens are now low-entropy, `.gitleaksignore` records the old findings and the commit helper runs gitleaks on staged files before committing. | constitution §6 | gitleaks | — |
 
 ## M8 — Service, installer, auto-update, release
 | ID | Task | Refs | Tests | Done when |
