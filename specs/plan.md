@@ -373,8 +373,9 @@ sequenceDiagram
 - Firewall: inbound TCP 47100 and 47101, Domain + Private profiles.
 - Startup errors (e.g. `EADDRINUSE`) are written to the log **and** the Windows Application event
   log (source `UniWake`), then the process exits with code 78 (IMP-028).
-- Node runtime: official `node-v24.x.y-win-x64.zip`, version in `build/node-version.txt`, verified
-  against `SHASUMS256.txt` fetched over HTTPS from nodejs.org.
+- Node runtime: official `win-x64/node.exe` of the exact version pinned in `.nvmrc` (the same one CI
+  tests with), verified against that release's `SHASUMS256.txt` fetched over HTTPS from nodejs.org
+  (`scripts/fetch-node.ts`, M8-T02).
 - Version embedded at build time (esbuild `define __APP_VERSION__` from the tag; dev = `0.0.0-dev`).
 - `--demo` is refused when the data dir contains non-demo data (marker in `system_state`).
 - LAN certificate (ADR-026): `New-SelfSignedCertificate -KeyExportPolicy Exportable` for the LAN
