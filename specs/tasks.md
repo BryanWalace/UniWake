@@ -224,7 +224,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M8-T03 | WinSW XML template + Inno Setup script (versions dir, firewall, shortcut, service, keep previous, data preserve, uninstall). | FR-001.1 | covered by M8-T09 smoke | — |
 | [x] M8-T04 | `windows-host` control: service stop/start/query, scheduled tasks, event log. | ADR-021, ADR-023 | fake process runner tests (argument arrays) | — |
 | [x] M8-T05 | `http-client` allowlist + `github-release-source` + update check service. | FR-001.2; NFR-05; ADR-025 | AC-001-04, AC-001-05, AC-001-06; allowlist test | — |
-| [ ] M8-T06 | Download + verify + disk space + pre-update backup + plan file. | FR-001.3 | AC-001-07, AC-001-09, AC-001-14 | — |
+| [x] M8-T06 | Download + verify + disk space + pre-update backup + plan file. | FR-001.3 | AC-001-07, AC-001-09, AC-001-14 | — |
 | [ ] M8-T07 | `updater.mjs`: stop/install/start/health/rollback + watchdog. | FR-001.3; ADR-023 | AC-001-08, AC-001-13; **faults**: stop timeout, installer hang, health never OK, crash after stop | — |
 | [ ] M8-T08 | Auto mode (window, guards), update routes, web update panel. | FR-001.3 | AC-001-10, AC-001-11 | — |
 | [ ] M8-T09 | `release.yml` + Windows installer smoke + fake release server E2E. | FR-001.1, FR-001.4 | AC-001-01a, AC-001-02, AC-001-03, AC-001-12 [CI-Win] | — |

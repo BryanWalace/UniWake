@@ -86,6 +86,8 @@ export interface FileSystem {
   size(path: string): Promise<number>;
   mkdirp(dir: string): Promise<void>;
   freeBytes(path: string): Promise<number>;
+  /** Hex SHA-256 of the file's bytes (streamed). */
+  sha256(path: string): Promise<string>;
 }
 
 // ---------------------------------------------------------------- Processes

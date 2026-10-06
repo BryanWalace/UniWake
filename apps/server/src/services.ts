@@ -31,6 +31,7 @@ import type {
   LogSource,
   NetworkInterfaces,
   PacketSender,
+  FileSystem,
   Prober,
   ReleaseSource,
 } from './application/ports';
@@ -46,6 +47,7 @@ import {
 import { SettingsService } from './application/settings/settings-service';
 import { TagsService } from './application/tags/tags-service';
 import { TestWolService } from './application/test-wol/test-wol-service';
+import { UpdateInstaller } from './application/update/update-installer';
 import { UpdateService } from './application/update/update-service';
 import { JobRunner } from './application/wake/job-runner';
 import { ProberVerifier } from './application/wake/verifier';
@@ -98,11 +100,21 @@ export interface ServiceOptions {
   requestRestart?: () => void;
   /** Update source (ADR-025); absent or demo = no update checks (FR-001.2). */
   releaseSource?: ReleaseSource | null;
+  /** Installing updates (FR-001.3): where this version is installed and the data lives. */
+  install?: {
+    fs: FileSystem;
+    installDir: string;
+    dataDir: string;
+    panelPort: number;
+    schemaVersion: number;
+  } | null;
   /** prepare-target.ps1 as served by the agent listener (FR-007.3); absent = not installed. */
   prepareScript?: PrepareScript;
 }
 
 export interface Services extends HttpServices {
+  /** Present on an installed, non-demo hub with an update source (FR-001.3). */
+  updateInstaller: UpdateInstaller | null;
   /** LAN panel certificate (hub only): admins upload a PFX in the settings. */
   panelCertificates?: { save(pfx: Buffer, passphrase: string): void };
   logs?: LogSource;
@@ -370,6 +382,30 @@ export function createServices(
     logger: ports.logger.child({ module: 'update' }),
   });
 
+  const install = opts.install;
+  const updateInstaller =
+    install && opts.releaseSource && !opts.demo
+      ? new UpdateInstaller({
+          fs: install.fs,
+          source: opts.releaseSource,
+          pending: () => update.pending(),
+          backup: () => backups?.create('pre-update') ?? null,
+          audit,
+          notice: (message) => notices.system('update_failed', { message }),
+          clock,
+          logger: ports.logger.child({ module: 'update' }),
+          paths: { dataDir: install.dataDir, installDir: install.installDir },
+          version: opts.version ?? '0.0.0-dev',
+          panelPort: install.panelPort,
+          schemaVersion: install.schemaVersion,
+          dbSizeBytes: () => {
+            const pages = db.pragma<number>('page_count');
+            const size = db.pragma<number>('page_size');
+            return typeof pages === 'number' && typeof size === 'number' ? pages * size : 0;
+          },
+        })
+      : null;
+
   return {
     db,
     clock,
@@ -399,5 +435,6 @@ export function createServices(
     testWol,
     diagnostics,
     update,
+    updateInstaller,
   };
 }

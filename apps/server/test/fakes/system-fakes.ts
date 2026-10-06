@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type {
   FileSystem,
   Logger,
@@ -70,6 +71,14 @@ export class FakeFileSystem implements FileSystem {
 
   freeBytes(): Promise<number> {
     return Promise.resolve(this.free);
+  }
+
+  sha256(path: string): Promise<string> {
+    return this.wrap(() => {
+      const v = this.files.get(path);
+      if (v === undefined) throw Object.assign(new Error(`ENOENT ${path}`), { code: 'ENOENT' });
+      return createHash('sha256').update(v).digest('hex');
+    });
   }
 
   private wrap<T>(fn: () => T): Promise<T> {

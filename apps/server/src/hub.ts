@@ -4,8 +4,9 @@
  */
 import { existsSync, mkdirSync } from 'node:fs';
 import { hostname } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
+import { NodeFileSystem } from './adapters/node-fs';
 import { PrepareScriptFile } from './adapters/prepare-script';
 import { createFileLogger } from './adapters/logger';
 import { JsonConfigFile } from './adapters/config-file';
@@ -31,7 +32,7 @@ import { UdpPacketSender } from './adapters/udp-packet-sender';
 import type { Clock, ReleaseSource } from './application/ports';
 import { type Config, dataPaths } from './config';
 import { Db } from './db/connection';
-import { migrate } from './db/migrate';
+import { latestSchemaVersion, migrate } from './db/migrate';
 import { buildApp } from './http/app';
 import { registerAgentRoutes, registerPanelRoutes } from './http/panel';
 import { LOOPBACK_HOSTS } from './http/security';
@@ -63,6 +64,8 @@ export interface HubOptions {
   certScriptPath?: string | null;
   /** Update source (main.ts on a real install; ADR-025); none in tests and demo mode. */
   releaseSource?: ReleaseSource | null;
+  /** `%ProgramFiles%\UniWake` when running from an installed version dir; null from source. */
+  installDir?: string | null;
   /** scripts/prepare-target.ps1 served to target PCs (FR-007.3); null = not available. */
   prepareScriptPath?: string | null;
   /** Health checks that leave the process (main.ts on a real install); none in tests. */
@@ -111,6 +114,12 @@ function openDatabase(dbPath: string, backupsDir: string): Db {
 export function resolveHelperPath(bundleDir: string, file = 'probe-helper.ps1'): string | null {
   const candidates = [join(bundleDir, 'helper', file), join(bundleDir, '..', 'helper', file)];
   return candidates.find((c) => existsSync(c)) ?? null;
+}
+
+/** `<installDir>\versions\<ver>\server.mjs` (plan §9) → installDir; null when run from source. */
+export function resolveInstallDir(bundleDir: string): string | null {
+  const versions = dirname(bundleDir);
+  return basename(versions).toLowerCase() === 'versions' ? dirname(versions) : null;
 }
 
 /** Loopback always; when LAN access is on, the LAN address and this computer's name too. */
@@ -209,6 +218,15 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       requestRestart: () => opts.requestRestart?.(),
       prepareScript: new PrepareScriptFile(opts.prepareScriptPath ?? null),
       releaseSource: opts.releaseSource ?? null,
+      install: opts.installDir
+        ? {
+            fs: new NodeFileSystem(),
+            installDir: opts.installDir,
+            dataDir: config.dataDir,
+            panelPort: config.panelPort,
+            schemaVersion: latestSchemaVersion(),
+          }
+        : null,
       running: {
         panelPort: config.panelPort,
         agentPort: config.agentPort,
