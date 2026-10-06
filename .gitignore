@@ -13,6 +13,7 @@ test-results/
 !.env.example
 # local runtime data (dev)
 data/
+!apps/server/data/
 *.db
 *.db-wal
 *.db-shm
