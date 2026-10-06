@@ -219,7 +219,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 ## M8 — Service, installer, auto-update, release
 | ID | Task | Refs | Tests | Done when |
 |---|---|---|---|---|
-| [ ] M8-T01 | Build script: esbuild bundles with version define, web build, staging layout. | ADR-022 | bundle smoke (`node server.mjs --version`) | — |
+| [x] M8-T01 | Build script: esbuild bundles with version define, web build, staging layout. | ADR-022 | bundle smoke (`node server.mjs --version`) | — |
 | [ ] M8-T02 | Node runtime fetch + SHASUMS256 verification script. | ADR-022 | checksum mismatch fails | — |
 | [ ] M8-T03 | WinSW XML template + Inno Setup script (versions dir, firewall, shortcut, service, keep previous, data preserve, uninstall). | FR-001.1 | covered by M8-T09 smoke | — |
 | [ ] M8-T04 | `windows-host` control: service stop/start/query, scheduled tasks, event log. | ADR-021, ADR-023 | fake process runner tests (argument arrays) | — |
