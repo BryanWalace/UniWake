@@ -32,6 +32,7 @@ import type {
   NetworkInterfaces,
   PacketSender,
   Prober,
+  ReleaseSource,
 } from './application/ports';
 import { KeyedLimiter } from './application/rate-limit';
 import { RoomsService } from './application/rooms/rooms-service';
@@ -45,6 +46,7 @@ import {
 import { SettingsService } from './application/settings/settings-service';
 import { TagsService } from './application/tags/tags-service';
 import { TestWolService } from './application/test-wol/test-wol-service';
+import { UpdateService } from './application/update/update-service';
 import { JobRunner } from './application/wake/job-runner';
 import { ProberVerifier } from './application/wake/verifier';
 import { WakeService } from './application/wake/wake-service';
@@ -66,6 +68,7 @@ import { SqliteSchedulesRepo } from './db/repositories/schedules-repo';
 import { SqliteSettingsRepo } from './db/repositories/settings-repo';
 import { SqliteTagsRepo } from './db/repositories/tags-repo';
 import { SqliteTestWolRepo } from './db/repositories/test-wol-repo';
+import { SqliteUpdateStateStore } from './db/repositories/update-state-repo';
 import type { HttpServices } from './http/context';
 
 export interface ServicePorts {
@@ -93,6 +96,8 @@ export interface ServiceOptions {
   backupsDir?: string | null;
   /** Restarts the service after a restore request (hub: exit code 75). */
   requestRestart?: () => void;
+  /** Update source (ADR-025); absent or demo = no update checks (FR-001.2). */
+  releaseSource?: ReleaseSource | null;
   /** prepare-target.ps1 as served by the agent listener (FR-007.3); absent = not installed. */
   prepareScript?: PrepareScript;
 }
@@ -356,6 +361,15 @@ export function createServices(
     onMoved: (move) => notices.onDeviceMoved(move),
   });
 
+  const update = new UpdateService({
+    source: opts.demo ? null : (opts.releaseSource ?? null),
+    version: opts.version ?? '0.0.0-dev',
+    store: new SqliteUpdateStateStore(db),
+    settings,
+    clock,
+    logger: ports.logger.child({ module: 'update' }),
+  });
+
   return {
     db,
     clock,
@@ -384,5 +398,6 @@ export function createServices(
     enrollment,
     testWol,
     diagnostics,
+    update,
   };
 }

@@ -8,5 +8,6 @@ export * from './notices';
 export * from './rooms';
 export * from './schedules';
 export * from './test-wol';
+export * from './update';
 export * from './users';
 export * from './wake';

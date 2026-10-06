@@ -28,7 +28,7 @@ import { RecordingPacketSender } from './adapters/recording-packet-sender';
 import { SystemClock } from './adapters/system-clock';
 import { TcpProber } from './adapters/tcp-prober';
 import { UdpPacketSender } from './adapters/udp-packet-sender';
-import type { Clock } from './application/ports';
+import type { Clock, ReleaseSource } from './application/ports';
 import { type Config, dataPaths } from './config';
 import { Db } from './db/connection';
 import { migrate } from './db/migrate';
@@ -61,6 +61,8 @@ export interface HubOptions {
   helperPath?: string | null;
   /** new-panel-cert.ps1 location (LAN HTTPS certificate, ADR-026). */
   certScriptPath?: string | null;
+  /** Update source (main.ts on a real install; ADR-025); none in tests and demo mode. */
+  releaseSource?: ReleaseSource | null;
   /** scripts/prepare-target.ps1 served to target PCs (FR-007.3); null = not available. */
   prepareScriptPath?: string | null;
   /** Health checks that leave the process (main.ts on a real install); none in tests. */
@@ -206,6 +208,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       backupsDir: opts.ports ? null : paths.backups,
       requestRestart: () => opts.requestRestart?.(),
       prepareScript: new PrepareScriptFile(opts.prepareScriptPath ?? null),
+      releaseSource: opts.releaseSource ?? null,
       running: {
         panelPort: config.panelPort,
         agentPort: config.agentPort,
@@ -373,12 +376,14 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       services.retention.start();
       services.health.start();
       services.backups?.start();
+      services.update.start();
       logger.info(
         { version: APP_VERSION, ...hub.addresses(), demo: config.demo },
         'UniWake hub started',
       );
     },
     async stop() {
+      services.update.stop();
       services.scheduler.stop();
       services.health.stop();
       services.backups?.stop();

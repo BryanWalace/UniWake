@@ -5,7 +5,9 @@
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolvePrepareScriptPath } from './adapters/prepare-script';
+import { GitHubReleaseSource } from './adapters/github-release-source';
 import { GitHubTimeCheck } from './adapters/github-time';
+import { AllowlistHttpClient } from './adapters/http-client';
 import { NodeProcessRunner } from './adapters/process-runner';
 import { WindowsControl } from './adapters/windows-control';
 import { WindowsHostChecks } from './adapters/windows-host';
@@ -15,6 +17,7 @@ import { createHub, EXIT_CONFIG_ERROR, HubStartError, resolveHelperPath } from '
 /** Asks the service manager for a restart (WinSW restarts on a non-zero exit). */
 export const EXIT_RESTART = 75;
 import { resolveWebDir } from './http/static';
+import { UPDATE_API, UPDATE_REPO, updateHosts } from './update-source';
 import { APP_VERSION } from './version';
 
 export interface CliArgs {
@@ -94,6 +97,11 @@ export async function main(argv: readonly string[], opts: MainOptions = {}): Pro
         ? {}
         : {
             timeCheck: new GitHubTimeCheck(),
+            releaseSource: new GitHubReleaseSource(
+              new AllowlistHttpClient(updateHosts()),
+              UPDATE_API,
+              UPDATE_REPO,
+            ),
             hostChecks:
               process.platform === 'win32' ? new WindowsHostChecks(new NodeProcessRunner()) : null,
           }),
