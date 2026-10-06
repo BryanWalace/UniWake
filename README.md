@@ -42,6 +42,10 @@ Instalação silenciosa (por exemplo, por GPO ou script):
 
 Instalar uma versão nova por cima mantém banco de dados, configurações e usuários.
 
+Se você mudar as portas em **Configurações** (painel ou cadastro), ajuste também as regras
+"UniWake Painel" e "UniWake Cadastro" do Firewall do Windows: o instalador cria as regras só para
+as portas padrão.
+
 ## Primeiro acesso
 
 1. **No próprio computador do UniWake**, abra o atalho **UniWake** (ou

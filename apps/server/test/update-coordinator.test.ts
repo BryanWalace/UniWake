@@ -41,6 +41,7 @@ function setup(at = local(3, 10)) {
   let pending: StoredRelease | null = PENDING;
   let next: number | null = null;
   let active = 0;
+  let skip: string | null = null;
   const prepare = vi.fn(() => Promise.resolve({}));
   const launch = vi.fn(() => Promise.resolve());
   const coordinator = new UpdateCoordinator({
@@ -59,6 +60,7 @@ function setup(at = local(3, 10)) {
     notice: (type, data) => notices.push({ type, data }),
     activeJobs: () => active,
     nextScheduledRunAt: () => next,
+    autoSkip: { get: () => skip, set: (v) => (skip = v) },
   });
   return {
     coordinator,
@@ -214,6 +216,7 @@ describe('task launcher (ADR-023)', () => {
         Promise.resolve()
       ),
       runTask: (name: string) => (calls.push(['run', name]), Promise.resolve()),
+      deleteTask: (name: string) => (calls.push(['delete', name]), Promise.resolve()),
     };
     const now = Date.UTC(2026, 9, 6, 6, 0);
     const plan = join(UPDATES, 'update-plan.json');

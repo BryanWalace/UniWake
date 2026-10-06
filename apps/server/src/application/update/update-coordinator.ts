@@ -39,6 +39,8 @@ export interface UpdateCoordinatorDeps {
   notice: (type: 'update_failed' | 'update_done', data: Record<string, unknown>) => void;
   activeJobs: () => number;
   nextScheduledRunAt: () => number | null;
+  /** M8-F4: a version that failed is not installed automatically again (kept across restarts). */
+  autoSkip: { get(): string | null; set(version: string | null): void };
 }
 
 const GUARD_MS = 60 * 60_000;
@@ -134,8 +136,12 @@ export class UpdateCoordinator {
 
   /** Automatic mode: inside the window, nothing busy, once per day (AC-001-11). */
   async tick(): Promise<void> {
+    // M8-F1: an updater that gave up without restarting this hub still leaves its result.
+    if (this.installing && this.d.installer) await this.recordOutcome(this.d.installer.updatesDir);
     const s = this.d.settings;
-    if (s.get('update.mode') !== 'auto' || !this.d.update.pending() || this.installing) return;
+    const pending = this.d.update.pending();
+    if (s.get('update.mode') !== 'auto' || !pending || this.installing) return;
+    if (pending.version === this.d.autoSkip.get()) return; // failed before: an admin decides
     const now = this.d.clock.now();
     const tz = s.get('scheduler.timezone');
     if (!insideWindow(now, tz, s.get('update.windowStart'), s.get('update.windowEnd'))) return;
@@ -153,12 +159,20 @@ export class UpdateCoordinator {
     }
   }
 
-  /** At start-up: record the updater's outcome once (audit + dashboard), then forget it. */
+  /**
+   * Records the updater's outcome once (audit + dashboard) at start-up or while waiting for it,
+   * then removes the downloaded files (M8-F2).
+   */
   async recordOutcome(updatesDir: string): Promise<Outcome | null> {
     const fs = this.d.fs;
     if (!fs) return null;
     const file = join(updatesDir, 'update-result.json');
     if (!(await fs.exists(file))) return null;
+    this.installing = null;
+    const target = await fs
+      .readText(join(updatesDir, PLAN_FILE))
+      .then((t) => (JSON.parse(t) as { version?: string }).version ?? null)
+      .catch(() => null);
     let outcome: Outcome;
     try {
       outcome = JSON.parse(await fs.readText(file)) as Outcome;
@@ -176,7 +190,13 @@ export class UpdateCoordinator {
       details: { result: outcome.result, reason: outcome.reason ?? null, at: outcome.at },
     });
     this.d.notice(outcome.result === 'success' ? 'update_done' : 'update_failed', { message });
+    this.d.autoSkip.set(outcome.result === 'success' ? null : target);
     await fs.remove(file);
+    for (const name of await fs.list(updatesDir).catch(() => [] as string[])) {
+      if (name === PLAN_FILE || /^UniWake-Setup-.+\.exe(\.sha256)?$/i.test(name)) {
+        await fs.remove(join(updatesDir, name));
+      }
+    }
     return outcome;
   }
 }

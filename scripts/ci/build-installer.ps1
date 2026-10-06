@@ -8,6 +8,8 @@
   Where the installer is written.
 .PARAMETER OutName
   Installer file name without .exe (default UniWake-Setup).
+.PARAMETER Break
+  CI only (M8-T12): the installed hub exits at once, so an update to it must roll back.
 .PARAMETER TestUpdateApi
   CI only: loopback fake release server instead of GitHub (ADR-025). Never for releases.
 #>
@@ -16,7 +18,8 @@ param(
   [Parameter(Mandatory = $true)][string]$Version,
   [Parameter(Mandatory = $true)][string]$OutDir,
   [string]$OutName = 'UniWake-Setup',
-  [string]$TestUpdateApi = ''
+  [string]$TestUpdateApi = '',
+  [switch]$Break
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -36,6 +39,9 @@ try {
   Invoke-Checked 'node' @('scripts/fetch-winsw.ts', '--out', (Join-Path $stage 'WinSW-x64.exe'))
 } finally {
   Pop-Location
+}
+if ($Break) {
+  Set-Content -Path (Join-Path $stage 'app\server.mjs') -Value 'process.exit(3);' -Encoding ascii
 }
 
 $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'

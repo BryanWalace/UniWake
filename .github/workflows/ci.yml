@@ -97,7 +97,34 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: installer-logs
-          path: |
-            ${{ runner.temp }}/uniwake-installer/
-            C:/ProgramData/UniWake/logs/
+          path: build/ci-logs/
+          if-no-files-found: ignore
+
+  update-e2e:
+    name: Update end-to-end (windows)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Build three test installers (fake release server on loopback, ADR-025)
+        shell: pwsh
+        run: |
+          $api = 'http://127.0.0.1:47199'
+          ./scripts/ci/build-installer.ps1 -Version 0.0.3 -OutDir build/out -OutName UniWake-Setup-0.0.3 -TestUpdateApi $api
+          ./scripts/ci/build-installer.ps1 -Version 0.0.4 -OutDir build/out -OutName UniWake-Setup-0.0.4 -TestUpdateApi $api
+          ./scripts/ci/build-installer.ps1 -Version 0.0.5 -OutDir build/out -OutName UniWake-Setup-0.0.5 -TestUpdateApi $api -Break
+      - name: Update through the panel, then roll back a broken version
+        shell: pwsh
+        run: ./scripts/ci/update-e2e.ps1 -BaseSetup build/out/UniWake-Setup-0.0.3.exe -NextSetup build/out/UniWake-Setup-0.0.4.exe -BrokenSetup build/out/UniWake-Setup-0.0.5.exe
+      - name: Upload update logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: update-logs
+          path: build/ci-logs/
           if-no-files-found: ignore

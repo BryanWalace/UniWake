@@ -71,6 +71,7 @@ import { SqliteSchedulesRepo } from './db/repositories/schedules-repo';
 import { SqliteSettingsRepo } from './db/repositories/settings-repo';
 import { SqliteTagsRepo } from './db/repositories/tags-repo';
 import { SqliteTestWolRepo } from './db/repositories/test-wol-repo';
+import { SqliteUpdateAutoSkip } from './db/repositories/update-skip-repo';
 import { SqliteUpdateStateStore } from './db/repositories/update-state-repo';
 import type { HttpServices } from './http/context';
 
@@ -421,6 +422,7 @@ export function createServices(
     notice: (type, data) => notices.system(type, data),
     activeJobs: () => runner.activeCount,
     nextScheduledRunAt: () => schedules.nextRunOverall()?.at ?? null,
+    autoSkip: new SqliteUpdateAutoSkip(db),
   });
 
   return {

@@ -11,7 +11,7 @@ export const WATCHDOG_DELAY_MS = 15 * 60_000;
 
 export class TaskUpdateLauncher implements UpdateLauncher {
   constructor(
-    private readonly control: Pick<WindowsControl, 'createTask' | 'runTask'>,
+    private readonly control: Pick<WindowsControl, 'createTask' | 'runTask' | 'deleteTask'>,
     private readonly nodeExe: string,
     private readonly updaterScript: string,
     private readonly now: () => number = Date.now,
@@ -29,11 +29,17 @@ export class TaskUpdateLauncher implements UpdateLauncher {
       },
       'UniWake: restaura a versão anterior se a atualização não terminar.',
     );
-    await this.control.createTask(
-      'UniWake-Updater',
-      { ...base, args: [this.updaterScript, planFile], at: new Date(now + 60_000) },
-      'UniWake: instala a atualização baixada.',
-    );
-    await this.control.runTask('UniWake-Updater');
+    try {
+      await this.control.createTask(
+        'UniWake-Updater',
+        { ...base, args: [this.updaterScript, planFile], at: new Date(now + 60_000) },
+        'UniWake: instala a atualização baixada.',
+      );
+      await this.control.runTask('UniWake-Updater');
+    } catch (e) {
+      // M8-F3: no updater means nothing for the watchdog to undo later.
+      await this.control.deleteTask('UniWake-Watchdog').catch(() => undefined);
+      throw e;
+    }
   }
 }

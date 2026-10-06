@@ -230,6 +230,14 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M8-T09 | `release.yml` + Windows installer smoke + fake release server E2E. | FR-001.1, FR-001.4 | AC-001-01a, AC-001-02, AC-001-03, AC-001-12 [CI-Win] | — |
 | [x] M8-T10 | README pt-BR (install, first access, prepare targets, troubleshooting, cert trust, backups). | DoD | — | — |
 | [x] M8-T11 | E2E smoke on Edge (`msedge` channel) in the Windows job. | NFR-09 | [E2E] | — |
+| [x] M8-D | Debug break-it pass → `apps/server/test/breakit-m8.test.ts` (updater giving up while the hub keeps running, downloads left behind, launch failing after the watchdog, auto mode after a rollback restart, pt-BR `sc query` output, Linux paths in Windows adapters, secrets in CI scripts). | tasks §Break-it | 4 regression tests | findings filed |
+| [x] M8-F1 | MAJOR: when the updater gave up without restarting the hub (service stop timeout), the hub stayed "installing" forever: the panel said "Instalando…" and every retry was refused with UPDATE_IN_PROGRESS. The 5-minute tick now records an outcome that appears while the hub runs. | FR-001.3 | breakit-m8 F1 | — |
+| [x] M8-F2 | MINOR: every update left its ≈40 MB installer, checksum and plan in updates. They are removed once the outcome is recorded. | FR-001.3 | breakit-m8 F2 | — |
+| [x] M8-F3 | MINOR: if registering or running the updater task failed after the watchdog was registered, the watchdog fired 15 minutes later and reported an interrupted update. The launcher now removes it. | ADR-023 | breakit-m8 F3 | — |
+| [x] M8-F4 | MAJOR: after an automatic update was rolled back, the restarted hub forgot it had tried that day and reinstalled the same broken version in the same window, again and again. A failed version is now remembered (system_state) and skipped by auto mode until a success; admins can still install it. | FR-001.3, AC-001-11 | breakit-m8 F4 | — |
+| [x] M8-R | Code review → `specs/reviews/M8-review.md` (R-M8-01 → M8-T12; R-M8-02 = B-001). | §9 DoD | — | no open CRITICAL/MAJOR |
+| [x] M8-A | Architect conformance → `specs/reviews/M8-architect.md`. | phase 4 | — | M8-T12 open |
+| [ ] M8-T12 | CI end-to-end update on Windows: install a test build pointing at a loopback fake release server, publish a newer installer there, install it through the API and wait for the new version; then a broken version that must roll back. | FR-001.3 | CI-Win | — |
 
 ## M9 — v1.1 network discovery
 | ID | Task | Refs | Tests | Done when |

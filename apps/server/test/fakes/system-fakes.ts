@@ -48,9 +48,11 @@ export class FakeFileSystem implements FileSystem {
 
   list(dir: string): Promise<string[]> {
     return this.wrap(() => {
-      const prefix = dir.endsWith('/') ? dir : `${dir}/`;
+      // Paths come from path.join, so the separator is "/" or "\" depending on the platform.
+      const sep = dir.includes('\\') ? '\\' : '/';
+      const prefix = dir.endsWith(sep) ? dir : `${dir}${sep}`;
       return [...this.files.keys()]
-        .filter((p) => p.startsWith(prefix) && !p.slice(prefix.length).includes('/'))
+        .filter((p) => p.startsWith(prefix) && !/[\\/]/.test(p.slice(prefix.length)))
         .map((p) => p.slice(prefix.length));
     });
   }

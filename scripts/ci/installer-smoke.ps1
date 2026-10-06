@@ -68,50 +68,57 @@ function Test-FirewallRule([string]$Name) {
   return $LASTEXITCODE -eq 0
 }
 
-# ------------------------------------------------------------------ AC-001-01a
-Write-Step "Instalação silenciosa de $V1"
-Install-Setup $V1Setup 'install-v1'
-$svc = Get-Service -Name UniWake
-Confirm-Condition ($svc.Status -eq 'Running') 'serviço UniWake em execução'
-Confirm-Condition ($svc.StartType -eq 'Automatic') 'início automático'
-$failure = (& sc.exe qfailure UniWake) -join "`n"
-Confirm-Condition ($failure -match 'RESTART') 'reinicia em caso de falha'
-Wait-Health 60
-Confirm-Condition (Test-FirewallRule 'UniWake Painel') 'regra de firewall do painel'
-Confirm-Condition (Test-FirewallRule 'UniWake Cadastro') 'regra de firewall do cadastro'
-Confirm-Condition (Test-Path $shortcut) 'atalho no menu Iniciar'
+. (Join-Path $PSScriptRoot 'Report-Failure.ps1')
+try {
+  # ------------------------------------------------------------------ AC-001-01a
+  Write-Step "Instalação silenciosa de $V1"
+  Install-Setup $V1Setup 'install-v1'
+  $svc = Get-Service -Name UniWake
+  Confirm-Condition ($svc.Status -eq 'Running') 'serviço UniWake em execução'
+  Confirm-Condition ($svc.StartType -eq 'Automatic') 'início automático'
+  $failure = (& sc.exe qfailure UniWake) -join "`n"
+  Confirm-Condition ($failure -match 'RESTART') 'reinicia em caso de falha'
+  Wait-Health 60
+  Confirm-Condition (Test-FirewallRule 'UniWake Painel') 'regra de firewall do painel'
+  Confirm-Condition (Test-FirewallRule 'UniWake Cadastro') 'regra de firewall do cadastro'
+  Confirm-Condition (Test-Path $shortcut) 'atalho no menu Iniciar'
 
-Write-Step 'Dados de exemplo'
-Invoke-Api 'POST' '/api/auth/setup' @{ username = 'admin'; password = $ciPassword } | Out-Null
-Invoke-Api 'POST' '/api/auth/login' @{ username = 'admin'; password = $ciPassword } | Out-Null
-$room = Invoke-Api 'POST' '/api/rooms' @{ name = 'Lab CI' }
-Invoke-Api 'POST' '/api/devices' @{ name = 'PC-CI'; mac = '00:1A:2B:3C:4D:5E'; roomId = $room.id } | Out-Null
-Confirm-Condition ((Invoke-Api 'GET' '/api/update').current -eq $V1) "versão $V1 em execução"
+  Write-Step 'Dados de exemplo'
+  Invoke-Api 'POST' '/api/auth/setup' @{ username = 'admin'; password = $ciPassword } | Out-Null
+  Invoke-Api 'POST' '/api/auth/login' @{ username = 'admin'; password = $ciPassword } | Out-Null
+  $room = Invoke-Api 'POST' '/api/rooms' @{ name = 'Lab CI' }
+  Invoke-Api 'POST' '/api/devices' @{ name = 'PC-CI'; mac = '00:1A:2B:3C:4D:5E'; roomId = $room.id } | Out-Null
+  Confirm-Condition ((Invoke-Api 'GET' '/api/update').current -eq $V1) "versão $V1 em execução"
 
-# ------------------------------------------------------------------ AC-001-02
-Write-Step "Atualização para $V2 por cima"
-Install-Setup $V2Setup 'install-v2'
-Wait-Health 60
-Invoke-Api 'POST' '/api/auth/login' @{ username = 'admin'; password = $ciPassword } | Out-Null
-Confirm-Condition ((Invoke-Api 'GET' '/api/update').current -eq $V2) "versão $V2 em execução"
-Confirm-Condition (@((Invoke-Api 'GET' '/api/rooms') | Where-Object { $_.name -eq 'Lab CI' }).Count -eq 1) 'sala mantida'
-$devices = Invoke-Api 'GET' '/api/devices?all=1'
-Confirm-Condition (@($devices | Where-Object { $_.name -eq 'PC-CI' }).Count -eq 1) 'computador mantido'
-Confirm-Condition (Test-Path (Join-Path $appDir "versions\$V1")) 'versão anterior mantida para reverter'
-$node = Join-Path $appDir "versions\$V2\node.exe"
-$db = Join-Path $dataDir 'data\uniwake.db'
-$dup = & $node -e "const { DatabaseSync } = require('node:sqlite'); const d = new DatabaseSync(process.argv[1], { readOnly: true }); console.log(d.prepare('SELECT COUNT(*) AS n FROM (SELECT version FROM schema_migrations GROUP BY version HAVING COUNT(*) > 1)').get().n)" $db
-Confirm-Condition ($dup.Trim() -eq '0') 'cada migração rodou uma vez'
+  # ------------------------------------------------------------------ AC-001-02
+  Write-Step "Atualização para $V2 por cima"
+  Install-Setup $V2Setup 'install-v2'
+  Wait-Health 60
+  Invoke-Api 'POST' '/api/auth/login' @{ username = 'admin'; password = $ciPassword } | Out-Null
+  Confirm-Condition ((Invoke-Api 'GET' '/api/update').current -eq $V2) "versão $V2 em execução"
+  Confirm-Condition (@((Invoke-Api 'GET' '/api/rooms') | Where-Object { $_.name -eq 'Lab CI' }).Count -eq 1) 'sala mantida'
+  $devices = Invoke-Api 'GET' '/api/devices?all=1'
+  Confirm-Condition (@($devices | Where-Object { $_.name -eq 'PC-CI' }).Count -eq 1) 'computador mantido'
+  Confirm-Condition (Test-Path (Join-Path $appDir "versions\$V1")) 'versão anterior mantida para reverter'
+  $node = Join-Path $appDir "versions\$V2\node.exe"
+  $db = Join-Path $dataDir 'data\uniwake.db'
+  $dup = & $node -e "const { DatabaseSync } = require('node:sqlite'); const d = new DatabaseSync(process.argv[1], { readOnly: true }); console.log(d.prepare('SELECT COUNT(*) AS n FROM (SELECT version FROM schema_migrations GROUP BY version HAVING COUNT(*) > 1)').get().n)" $db
+  Confirm-Condition ($dup.Trim() -eq '0') 'cada migração rodou uma vez'
 
-# ------------------------------------------------------------------ AC-001-03
-Write-Step 'Desinstalação silenciosa'
-$uninstaller = Join-Path $appDir 'unins000.exe'
-Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -Wait
-$until = (Get-Date).AddSeconds(90)
-while ((Get-Date) -lt $until -and (Get-Service -Name UniWake -ErrorAction SilentlyContinue)) { Start-Sleep -Seconds 2 }
-Confirm-Condition ($null -eq (Get-Service -Name UniWake -ErrorAction SilentlyContinue)) 'serviço removido'
-Confirm-Condition (-not (Test-FirewallRule 'UniWake Painel')) 'regra do painel removida'
-Confirm-Condition (-not (Test-FirewallRule 'UniWake Cadastro')) 'regra do cadastro removida'
-Confirm-Condition (-not (Test-Path $shortcut)) 'atalho removido'
-Confirm-Condition (Test-Path $db) 'dados mantidos em %ProgramData%\UniWake'
-Write-Step 'Instalador: tudo certo'
+  # ------------------------------------------------------------------ AC-001-03
+  Write-Step 'Desinstalação silenciosa'
+  $uninstaller = Join-Path $appDir 'unins000.exe'
+  Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -Wait
+  $until = (Get-Date).AddSeconds(90)
+  while ((Get-Date) -lt $until -and (Get-Service -Name UniWake -ErrorAction SilentlyContinue)) { Start-Sleep -Seconds 2 }
+  Confirm-Condition ($null -eq (Get-Service -Name UniWake -ErrorAction SilentlyContinue)) 'serviço removido'
+  Confirm-Condition (-not (Test-FirewallRule 'UniWake Painel')) 'regra do painel removida'
+  Confirm-Condition (-not (Test-FirewallRule 'UniWake Cadastro')) 'regra do cadastro removida'
+  Confirm-Condition (-not (Test-Path $shortcut)) 'atalho removido'
+  Confirm-Condition (Test-Path $db) 'dados mantidos em %ProgramData%\UniWake'
+  Write-Step 'Instalador: tudo certo'
+} catch {
+  Write-CiError $_
+  Save-CiLog @($logs, (Join-Path $env:ProgramData 'UniWake\logs'))
+  throw
+}

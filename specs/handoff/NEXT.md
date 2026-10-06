@@ -15,17 +15,13 @@ Updated: 2026-10-05 · Mode: single-agent orchestrator (`.agents/06-orchestrator
   `test_wol_runs`), device diagnostics (`/api/devices/:id/diagnostics`), help pages `/ajuda/*`.
 
 ## In progress: M8 — Service, installer, auto-update, release
-DONE: T01 (scripts/build.ts, `npm run build:app`), T02 (scripts/fetch-node.ts, .nvmrc pin), T03
-(installer/UniWake.iss + UniWakeService.xml, scripts/fetch-winsw.ts, `npm run stage`), T04
-(adapters/windows-control.ts: sc/schtasks XML/eventcreate), T05 (update check: update-source.ts,
-http-client allowlist, GitHubReleaseSource, UpdateService, /api/update), T06 (UpdateInstaller:
-disk space, verified download, pre-update backup, update-plan.json; plan.ts schema).
-Next: `M8-T07` updater.mjs (apps/server/src/updater/main.ts — build.ts bundles it automatically when
-it exists): read+validate plan (parsePlan), stop service, run installer silently, start, poll
-health+version, rollback (repoint XML to previousVersion, restore DB only if schema advanced),
-watchdog task. Then T08 (auto mode/window guard, /api/update/install, web panel), T09 (release.yml,
-CI installer smoke with a fake release server; build.ts needs a --test-update-api flag defining
-__UPDATE_API__), T10 README, T11 Edge E2E. Notes:
+DONE: T01–T11, M8-D (F1–F4), M8-R, M8-A (`specs/reviews/M8-*`). Open: **M8-T12** — CI end-to-end
+update on the Windows runner against a loopback fake release server (`build-installer.ps1
+-TestUpdateApi http://127.0.0.1:<port>`, a small node fake server serving
+`/repos/BryanWalace/UniWake/releases/latest` + the newer installer and its .sha256; then a broken
+version that must roll back). First check that the "Installer (windows)" CI job is green (the GitHub
+API allows 60 unauthenticated requests/hour: poll once a minute at most). Then M9 (discovery).
+Notes:
 - Inno Setup, WinSW and the Node runtime are not installed locally: build/verify the installer in
   the windows CI job (install Inno Setup there, e.g. via choco, pinned version). Keep everything
   that can be unit-tested (plan file, updater state machine, http allowlist) runnable locally.
