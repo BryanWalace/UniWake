@@ -27,9 +27,10 @@
     "dev": "concurrently -k -n hub,web -c blue,green \"tsx watch apps/server/src/main.ts --demo --data-dir .dev-data\" \"npm run dev -w apps/web\"",
     "build": "npm run build -w apps/web",
     "check:trace": "node scripts/check-trace.ts",
-    "e2e": "npm run build && playwright test",
+    "e2e": "npm run build && playwright test --project=chromium",
     "build:app": "node scripts/build.ts",
-    "stage": "node scripts/build.ts && node scripts/fetch-node.ts && node scripts/fetch-winsw.ts"
+    "stage": "node scripts/build.ts && node scripts/fetch-node.ts && node scripts/fetch-winsw.ts",
+    "e2e:edge": "npm run build && playwright test --project=edge"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",

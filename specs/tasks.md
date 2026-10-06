@@ -229,7 +229,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M8-T08 | Auto mode (window, guards), update routes, web update panel. | FR-001.3 | AC-001-10, AC-001-11 | — |
 | [x] M8-T09 | `release.yml` + Windows installer smoke + fake release server E2E. | FR-001.1, FR-001.4 | AC-001-01a, AC-001-02, AC-001-03, AC-001-12 [CI-Win] | — |
 | [x] M8-T10 | README pt-BR (install, first access, prepare targets, troubleshooting, cert trust, backups). | DoD | — | — |
-| [ ] M8-T11 | E2E smoke on Edge (`msedge` channel) in the Windows job. | NFR-09 | [E2E] | — |
+| [x] M8-T11 | E2E smoke on Edge (`msedge` channel) in the Windows job. | NFR-09 | [E2E] | — |
 
 ## M9 — v1.1 network discovery
 | ID | Task | Refs | Tests | Done when |

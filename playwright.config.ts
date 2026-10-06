@@ -16,7 +16,15 @@ export default defineConfig({
     timezoneId: 'America/Sao_Paulo',
     trace: 'retain-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    // NFR-09: the installed Microsoft Edge (Windows CI job; npm run e2e:edge).
+    {
+      name: 'edge',
+      use: { ...devices['Desktop Edge'], channel: 'msedge' },
+      testMatch: ['smoke.spec.ts', 'wake.spec.ts'],
+    },
+  ],
   webServer: {
     command: 'node --import tsx scripts/e2e-server.ts',
     url: `http://127.0.0.1:${PORT}/api/health`,

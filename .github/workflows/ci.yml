@@ -57,7 +57,7 @@ jobs:
   windows:
     name: Tests (windows)
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -70,6 +70,8 @@ jobs:
       - name: PowerShell scripts (PSScriptAnalyzer + Pester)
         shell: powershell
         run: npm run test:ps
+      - name: End-to-end smoke in Microsoft Edge (NFR-09)
+        run: npm run e2e:edge
 
   installer:
     name: Installer (windows)
