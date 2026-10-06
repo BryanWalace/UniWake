@@ -80,4 +80,24 @@ describe('check:trace (IMP-030)', () => {
       'M8-T09 references AC-001-77, which is not in spec.md',
     ]);
   });
+
+  it('CI-only ACs can be traced by a workflow step name, other ACs cannot', () => {
+    const spec = [
+      '- AC-001-01a [CI-Win]: Given a clean runner …',
+      '- AC-001-12 [CI]: Given tag v1.2.3 …',
+      '- AC-001-04: Given running 1.0.0 …',
+    ].join('\n');
+    const tasks = '| [x] M8-T09 | Release | FR-001 | AC-001-01a, AC-001-12, AC-001-04 | — |';
+    const workflow = [
+      'jobs:',
+      '  installer:',
+      '    steps:',
+      '      - name: Install, upgrade and uninstall (AC-001-01a)',
+      '      - name: Publish (AC-001-12, AC-001-04)',
+    ].join('\n');
+    const report = checkTrace(spec, tasks, [], [workflow]);
+    expect(report.errors).toEqual([
+      'M8-T09 is done but AC-001-04 has no test whose title contains "AC-001-04"',
+    ]);
+  });
 });

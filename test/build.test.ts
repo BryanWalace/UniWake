@@ -4,7 +4,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { buildApp, normalizeVersion } from '../scripts/build';
+import { buildApp, normalizeVersion, testUpdateApi } from '../scripts/build';
 
 const root = join(import.meta.dirname, '..');
 let dir: string;
@@ -52,6 +52,17 @@ describe('build (M8-T01, ADR-022)', () => {
         readFileSync(join(root, 'scripts/prepare-target.ps1')),
       ),
     ).toBe(true);
+  });
+
+  it('ADR-025: a release bundle updates from GitHub; only loopback test servers can replace it', () => {
+    const bundle = readFileSync(join(out, 'server.mjs'), 'utf8');
+    expect(bundle).toContain('https://api.github.com');
+    expect(bundle).toContain('BryanWalace/UniWake');
+    expect(testUpdateApi(undefined)).toBeUndefined();
+    expect(testUpdateApi('http://127.0.0.1:47199')).toBe('http://127.0.0.1:47199');
+    for (const bad of ['https://api.github.com', 'http://10.0.0.5:80', 'http://127.0.0.1:1/x']) {
+      expect(() => testUpdateApi(bad), bad).toThrow(/127.0.0.1|127.0.0.1/);
+    }
   });
 
   it('the bundle reports the embedded version (node server.mjs --version)', () => {

@@ -5,6 +5,10 @@
  * The Node runtime (M8-T02) and the installer (M8-T03) are added by later steps.
  *
  *   node scripts/build.ts [--version 1.2.3 | v1.2.3] [--out build/stage/app] [--skip-web]
+ *                         [--test-update-api http://127.0.0.1:47199]
+ *
+ * --test-update-api is for CI's fake release server only (ADR-025): it must be a loopback http URL,
+ * and release builds never pass it.
  *
  * The version comes from the tag in CI (`--version $GITHUB_REF_NAME`); `0.0.0-dev` otherwise.
  */
@@ -34,7 +38,21 @@ const BANNER = [
   'const __dirname = __uwDirname(__filename);',
 ].join('\n');
 
-export async function buildApp(opts: { version: string; out: string; skipWeb: boolean }) {
+/** Only a loopback http server may stand in for GitHub in a test build (ADR-025). */
+export function testUpdateApi(url: string | undefined): string | undefined {
+  if (url === undefined) return undefined;
+  if (!/^http:\/\/127\.0\.0\.1:\d{1,5}$/.test(url)) {
+    throw new Error(`--test-update-api must be http://127.0.0.1:<port>, got ${url}`);
+  }
+  return url;
+}
+
+export async function buildApp(opts: {
+  version: string;
+  out: string;
+  skipWeb: boolean;
+  testUpdateApi?: string;
+}) {
   const out = resolve(opts.out);
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
@@ -51,7 +69,10 @@ export async function buildApp(opts: { version: string; out: string; skipWeb: bo
     target: 'node24',
     format: 'esm',
     banner: { js: BANNER },
-    define: { __APP_VERSION__: JSON.stringify(opts.version) },
+    define: {
+      __APP_VERSION__: JSON.stringify(opts.version),
+      ...(opts.testUpdateApi ? { __UPDATE_API__: JSON.stringify(opts.testUpdateApi) } : {}),
+    },
     legalComments: 'linked',
     logLevel: 'warning',
   });
@@ -80,9 +101,16 @@ if (import.meta.main) {
       version: { type: 'string' },
       out: { type: 'string', default: join(root, 'build/stage/app') },
       'skip-web': { type: 'boolean', default: false },
+      'test-update-api': { type: 'string' },
     },
   });
   const version = normalizeVersion(values.version ?? process.env.UNIWAKE_VERSION);
-  const out = await buildApp({ version, out: values.out, skipWeb: values['skip-web'] });
+  const api = testUpdateApi(values['test-update-api']);
+  const out = await buildApp({
+    version,
+    out: values.out,
+    skipWeb: values['skip-web'],
+    ...(api ? { testUpdateApi: api } : {}),
+  });
   process.stdout.write(`UniWake ${version} → ${out}\n`);
 }

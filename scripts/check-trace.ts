@@ -4,6 +4,8 @@
  *  2. Tasks reference only ACs that exist in spec.md.
  *  3. For every task marked [x], each of its non-[manual] ACs appears in a test title
  *     (Vitest or Playwright `it/test/describe('AC-…')`, or Pester `It/Describe 'AC-…'`).
+ *     ACs tagged [CI] or [CI-Win] may instead appear in the `name:` of a step in
+ *     .github/workflows/*.yml (installer and release checks run only on CI runners).
  * Run with `node scripts/check-trace.ts`.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -14,6 +16,8 @@ const AC_RE = /AC-\d{3}-\d{2}[ab]?/g;
 export interface SpecAc {
   id: string;
   manual: boolean;
+  /** [CI] / [CI-Win]: verified by a CI workflow step. */
+  ci: boolean;
 }
 
 /** ACs are list items like `- AC-001-01b [manual]: Given …`. */
@@ -24,7 +28,7 @@ export function parseSpecAcs(spec: string): Map<string, SpecAc> {
     if (!m) continue;
     const id = m[1]!;
     const head = (m[2] ?? '').split(':')[0] ?? '';
-    acs.set(id, { id, manual: /\[manual\]/i.test(head) });
+    acs.set(id, { id, manual: /\[manual\]/i.test(head), ci: /\[CI(?:-Win)?\]/.test(head) });
   }
   return acs;
 }
@@ -61,17 +65,35 @@ export function acsInTestTitles(source: string): Set<string> {
   return found;
 }
 
+/** AC IDs in the `name:` of workflow steps (CI-only checks). */
+export function acsInWorkflowSteps(yaml: string): Set<string> {
+  const found = new Set<string>();
+  for (const line of yaml.split('\n')) {
+    const m = /^\s*(?:-\s+)?name:\s*(.*)$/.exec(line);
+    for (const id of m?.[1]?.match(AC_RE) ?? []) found.add(id);
+  }
+  return found;
+}
+
 export interface TraceReport {
   errors: string[];
   testedAcs: number;
   totalAcs: number;
 }
 
-export function checkTrace(spec: string, tasks: string, testSources: string[]): TraceReport {
+export function checkTrace(
+  spec: string,
+  tasks: string,
+  testSources: string[],
+  workflowSources: string[] = [],
+): TraceReport {
   const specAcs = parseSpecAcs(spec);
   const rows = parseTasks(tasks);
   const tested = new Set<string>();
   for (const src of testSources) for (const id of acsInTestTitles(src)) tested.add(id);
+  for (const src of workflowSources) {
+    for (const id of acsInWorkflowSteps(src)) if (specAcs.get(id)?.ci) tested.add(id);
+  }
 
   const errors: string[] = [];
   const referenced = new Set(rows.flatMap((r) => r.acs));
@@ -113,10 +135,14 @@ if (import.meta.main) {
       return [];
     }
   });
+  const workflows = readdirSync('.github/workflows')
+    .filter((n) => n.endsWith('.yml'))
+    .map((n) => readFileSync(join('.github/workflows', n), 'utf8'));
   const report = checkTrace(
     readFileSync('specs/spec.md', 'utf8'),
     readFileSync('specs/tasks.md', 'utf8'),
     files.map((f) => readFileSync(f, 'utf8')),
+    workflows,
   );
   for (const e of report.errors) console.error(`✖ ${e}`);
   console.log(`ACs with tests: ${report.testedAcs}/${report.totalAcs} (automated)`);

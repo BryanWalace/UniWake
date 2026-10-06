@@ -1,0 +1,81 @@
+name: Release
+
+# FR-001.4, AC-001-12: a v* tag runs every quality gate, builds the installer with the tag's
+# version and publishes it with its SHA-256 and generated notes. Release builds always update from
+# GitHub (no --test-update-api, ADR-025).
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify (ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run verify
+      - run: npm audit --omit=dev --audit-level=high
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: |
+          npx playwright install --with-deps chromium
+          npm run e2e
+
+  windows:
+    name: Tests (windows)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - shell: powershell
+        run: npm run test:ps
+
+  publish:
+    name: Build and publish the installer
+    needs: [verify, windows]
+    runs-on: windows-latest
+    timeout-minutes: 40
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Build the installer with the tag's version and its SHA-256 (AC-001-12)
+        shell: pwsh
+        run: |
+          $version = '${{ github.ref_name }}'.TrimStart('v')
+          ./scripts/ci/build-installer.ps1 -Version $version -OutDir build/release
+          $embedded = (& "build/stage-$version/app/node.exe" "build/stage-$version/app/server.mjs" --version).Trim()
+          if ($embedded -ne $version) { throw "embedded version $embedded differs from the tag $version" }
+          $hash = (Get-FileHash -Algorithm SHA256 build/release/UniWake-Setup.exe).Hash.ToLower()
+          Set-Content -Path build/release/UniWake-Setup.exe.sha256 -Value "$hash  UniWake-Setup.exe" -NoNewline -Encoding ascii
+      - name: Publish the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $extra = if ('${{ github.ref_name }}'.Contains('-')) { @('--prerelease') } else { @() }
+          gh release create '${{ github.ref_name }}' build/release/UniWake-Setup.exe build/release/UniWake-Setup.exe.sha256 --generate-notes --title "UniWake ${{ github.ref_name }}" @extra

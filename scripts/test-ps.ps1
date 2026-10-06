@@ -51,6 +51,7 @@ if (-not $SkipAnalyzer) {
     (Join-Path $root 'scripts\prepare-target.ps1'),
     (Join-Path $root 'scripts\test-ps.ps1')
   ) + @(Get-ChildItem -Path (Join-Path $root 'apps\server\helper') -Filter '*.ps1' | ForEach-Object FullName)
+  $targets += @(Get-ChildItem -Path (Join-Path $root 'scripts\ci') -Filter '*.ps1' | ForEach-Object FullName)
   $issues = @($targets | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ -Settings $settings })
   if ($issues.Count -gt 0) {
     $issues | Format-Table -AutoSize RuleName, Severity, ScriptName, Line, Message | Out-String -Width 220 | Write-Host
