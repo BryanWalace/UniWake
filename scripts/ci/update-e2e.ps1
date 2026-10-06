@@ -17,6 +17,11 @@ param(
   [string]$BrokenVersion = '0.0.5'
 )
 $ErrorActionPreference = 'Stop'
+# Any error, even outside the main try block, is reported as a public annotation.
+trap {
+  Write-Host "::error title=$($MyInvocation.MyCommand.Name)::$($_.Exception.Message -replace '\r?\n', ' | ') (line $($_.InvocationInfo.ScriptLineNumber))"
+  break
+}
 if ($env:CI -ne 'true') { throw 'update-e2e.ps1 só roda no CI (instala um serviço de verdade).' }
 
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -27,7 +32,8 @@ $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
 # Throwaway admin of the throwaway runner install.
 $ciPassword = 'teste-do-instalador'
 
-function Write-Step([string]$Message) { Write-Host "==> $Message" }
+# Steps are notices too, so a failure shows how far the run got.
+function Write-Step([string]$Message) { Write-Host "::notice title=passo::$Message" }
 function Confirm-Condition([bool]$Condition, [string]$Message) {
   if (-not $Condition) { throw "FALHOU: $Message" }
   Write-Host "   ok: $Message"
@@ -105,7 +111,11 @@ try {
     Invoke-Api 'POST' '/api/update/install' @{ override = $true } | Out-Null
     Wait-Version $NextVersion 600 | Out-Null
     Confirm-Condition $true "versão $NextVersion em execução"
-    $done = Get-DashboardNotice | Where-Object { $_.type -eq 'update_done' }
+    $until = (Get-Date).AddSeconds(90)
+    do {
+      $done = Get-DashboardNotice | Where-Object { $_.type -eq 'update_done' }
+      if ($null -eq $done) { Start-Sleep -Seconds 5 }
+    } while ($null -eq $done -and (Get-Date) -lt $until)
     Confirm-Condition ($null -ne $done) 'aviso de atualização concluída no painel'
   } finally {
     Stop-Process -Id $fake.Id -Force -ErrorAction SilentlyContinue
@@ -121,7 +131,11 @@ try {
     # stop + install + 120 s of failed health + rollback
     Start-Sleep -Seconds 60
     Wait-Version $NextVersion 900 | Out-Null
+    $until = (Get-Date).AddSeconds(90)
+  do {
     $failed = Get-DashboardNotice | Where-Object { $_.type -eq 'update_failed' }
+    if ($null -eq $failed) { Start-Sleep -Seconds 5 }
+  } while ($null -eq $failed -and (Get-Date) -lt $until)
     Confirm-Condition ($null -ne $failed -and $failed.data.message -like 'Atualização revertida*') 'aviso "Atualização revertida" no painel'
   } finally {
     Stop-Process -Id $fake.Id -Force -ErrorAction SilentlyContinue

@@ -66,6 +66,7 @@ export function outcomeMessage(o: Outcome): string {
 
 export class UpdateCoordinator {
   private timer: TimerHandle | null = null;
+  private early: TimerHandle[] = [];
   private installing: string | null = null;
   /** Local day of the last automatic attempt: one try per window, even if it failed. */
   private lastAutoDay: string | null = null;
@@ -121,6 +122,14 @@ export class UpdateCoordinator {
 
   start(): void {
     if (!this.canInstall) return;
+    // The updater writes its result after this (new) hub answered health, i.e. moments after
+    // start: look for it every 10 s for the first 3 minutes.
+    const updatesDir = this.d.installer?.updatesDir;
+    for (let i = 1; updatesDir && i <= 18; i++) {
+      this.early.push(
+        this.d.clock.setTimeout(() => void this.recordOutcome(updatesDir), i * 10_000),
+      );
+    }
     const tick = () => {
       this.timer = this.d.clock.setTimeout(() => {
         void this.tick().finally(tick);
@@ -130,6 +139,7 @@ export class UpdateCoordinator {
   }
 
   stop(): void {
+    for (const t of this.early.splice(0)) this.d.clock.clearTimeout(t);
     if (this.timer) this.d.clock.clearTimeout(this.timer);
     this.timer = null;
   }

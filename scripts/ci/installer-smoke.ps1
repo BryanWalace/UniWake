@@ -12,6 +12,11 @@ param(
   [string]$V2 = '0.0.2'
 )
 $ErrorActionPreference = 'Stop'
+# Any error, even outside the main try block, is reported as a public annotation.
+trap {
+  Write-Host "::error title=$($MyInvocation.MyCommand.Name)::$($_.Exception.Message -replace '\r?\n', ' | ') (line $($_.InvocationInfo.ScriptLineNumber))"
+  break
+}
 if ($env:CI -ne 'true') { throw 'installer-smoke.ps1 só roda no CI (instala um serviço de verdade).' }
 
 $base = 'http://127.0.0.1:47100'
@@ -24,7 +29,8 @@ $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
 # Throwaway admin of the throwaway runner install.
 $ciPassword = 'teste-do-instalador'
 
-function Write-Step([string]$Message) { Write-Host "==> $Message" }
+# Steps are notices too, so a failure shows how far the run got.
+function Write-Step([string]$Message) { Write-Host "::notice title=passo::$Message" }
 function Confirm-Condition([bool]$Condition, [string]$Message) {
   if (-not $Condition) { throw "FALHOU: $Message" }
   Write-Host "   ok: $Message"

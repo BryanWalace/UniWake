@@ -164,9 +164,8 @@ begin
   WriteServiceXml();
   AddFirewallRule('UniWake Painel', '{#PanelPort}');
   AddFirewallRule('UniWake Cadastro', '{#AgentPort}');
-  if ServiceExists() then
-    Run(ExpandConstant('{app}\UniWakeService.exe'), 'refresh')
-  else
+  { WinSW 2.12 has no "refresh": an existing service re-reads the new XML when it starts. }
+  if not ServiceExists() then
     Run(ExpandConstant('{app}\UniWakeService.exe'), 'install');
   Run(ExpandConstant('{app}\UniWakeService.exe'), 'start');
   PruneVersions();

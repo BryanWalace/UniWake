@@ -140,3 +140,19 @@ describe('M8-F4: automatic mode does not retry a version that was rolled back', 
     expect(new SqliteUpdateAutoSkip(db).get()).toBeNull();
   });
 });
+
+describe('M8-T12: the outcome written moments after the new hub started', () => {
+  it('is recorded within seconds, not at the next restart', async () => {
+    const a = hub(undefined, undefined, local(10));
+    a.coordinator.start();
+    a.clock.advance(5_000);
+    a.fs.files.set(
+      join(UPDATES, 'update-result.json'),
+      result({ result: 'success', version: '1.1.0' }),
+    );
+    await a.clock.advanceAsync(10_000);
+    expect(a.fs.files.has(join(UPDATES, 'update-result.json'))).toBe(false);
+    a.coordinator.stop();
+    expect(a.clock.pendingTimers).toBe(0);
+  });
+});
