@@ -6,7 +6,7 @@
  * absolute System32 path (plan §9.1); outputs are read by numeric codes, never by localized text.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { win32 } from 'node:path';
+import { join, win32 } from 'node:path';
 import type { ProcessRunner } from '../application/ports';
 
 export type ServiceState =
@@ -143,7 +143,7 @@ export class WindowsControl {
   async createTask(name: string, spec: TaskSpec, description: string): Promise<void> {
     if (!/^UniWake-[A-Za-z]+$/.test(name)) throw new Error(`unexpected task name: ${name}`);
     mkdirSync(this.workDir, { recursive: true });
-    const file = win32.join(this.workDir, `${name}.xml`);
+    const file = join(this.workDir, `${name}.xml`);
     // schtasks reads task XML as UTF-16 with a byte order mark.
     writeFileSync(file, `\ufeff${taskXml(spec, description)}`, 'utf16le');
     const r = await this.runner.run(
