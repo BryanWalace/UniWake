@@ -289,3 +289,26 @@ describe('job progress links (FR-009)', () => {
     );
   });
 });
+
+describe('help links (FR-007.5)', () => {
+  it('AC-007-15: a job that failed with NO_NETWORK_INTERFACE links to the VLAN/broadcast help', async () => {
+    loggedInApi().on('GET', '/api/jobs/12', {
+      body: { ...JOB, job: { ...JOB.job, id: 12, state: 'falhou', error: 'NO_NETWORK_INTERFACE' } },
+    });
+    renderApp('/historico/jobs/12');
+    expect(
+      await screen.findByRole('link', {
+        name: 'Como resolver: Redes diferentes (VLAN) e broadcast',
+      }),
+    ).toHaveAttribute('href', '/ajuda/vlan-broadcast');
+  });
+
+  it('other failures have no help link', async () => {
+    loggedInApi().on('GET', '/api/jobs/10', {
+      body: { ...JOB, job: { ...JOB.job, id: 10, state: 'falhou', error: 'boom' } },
+    });
+    renderApp('/historico/jobs/10');
+    await screen.findByText(/erro inesperado/);
+    expect(screen.queryByRole('link', { name: /Como resolver/ })).not.toBeInTheDocument();
+  });
+});

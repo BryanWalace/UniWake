@@ -15,6 +15,7 @@ export const t = {
     audit: 'Auditoria',
     users: 'Usuários',
     logs: 'Logs',
+    help: 'Ajuda',
   },
   user: {
     logout: 'Sair',

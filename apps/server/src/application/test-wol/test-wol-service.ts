@@ -97,7 +97,7 @@ export class TestWolService {
   /** Starts a test, or returns the one already running for this computer. */
   start(deviceId: number, actor: Actor): TestWolRun {
     const device = this.d.device(deviceId);
-    if (!device) throw new AppError('DEVICE_NOT_FOUND', { ids: String(deviceId) });
+    if (!device) throw new AppError('NOT_FOUND');
     const running = this.d.repo.activeForDevice(deviceId);
     if (running) return running;
     if (!device.enabled) {

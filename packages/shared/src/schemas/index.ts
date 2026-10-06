@@ -2,6 +2,7 @@ export * from './audit';
 export * from './common';
 export * from './dashboard';
 export * from './devices';
+export * from './diagnostics';
 export * from './enrollment';
 export * from './notices';
 export * from './rooms';

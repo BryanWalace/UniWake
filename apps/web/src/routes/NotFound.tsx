@@ -11,11 +11,3 @@ export function NotFound() {
     </section>
   );
 }
-
-export function Placeholder({ title }: { title: string }) {
-  return (
-    <section>
-      <h1 className="text-2xl font-bold">{title}</h1>
-    </section>
-  );
-}

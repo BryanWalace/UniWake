@@ -9,6 +9,7 @@ import { DashboardPage } from './features/dashboard/DashboardPage';
 import { DevicePage } from './features/devices/DevicePage';
 import { DevicesPage } from './features/devices/DevicesPage';
 import { PreparePage } from './features/enrollment/PreparePage';
+import { HelpIndexPage, HelpPage } from './features/help/HelpPage';
 import { ImportPage } from './features/devices/ImportPage';
 import { RoomPage } from './features/rooms/RoomPage';
 import { HistoryPage, JobPage } from './features/wake/HistoryPage';
@@ -41,6 +42,8 @@ export const routes: RouteObject[] = [
       { path: 'auditoria', element: <AuditPage /> },
       { path: 'logs', element: <LogsPage /> },
       { path: 'saude', element: <HealthPage /> },
+      { path: 'ajuda', element: <HelpIndexPage /> },
+      { path: 'ajuda/:topico', element: <HelpPage /> },
       { path: '*', element: <NotFound /> },
     ],
   },

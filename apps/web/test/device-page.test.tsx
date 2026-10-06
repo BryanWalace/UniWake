@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Device, DeviceHistoryItem } from '@uniwake/shared';
+import type { Device, DeviceDiagnostics, DeviceHistoryItem } from '@uniwake/shared';
 import { historyText } from '../src/features/devices/DevicePage';
 import { type FakeApi, loggedInApi, renderApp } from './helpers';
 
@@ -36,8 +36,41 @@ const PC: Device = {
 
 const at = (h: number) => Date.UTC(2026, 9, 5, h, 0);
 
-function deviceApi(over: Partial<Device> = {}): FakeApi {
+const DIAG: DeviceDiagnostics = {
+  deviceId: 5,
+  problems: [
+    {
+      code: 'nunca_respondeu',
+      title: 'Nunca respondeu',
+      message:
+        'Esta máquina nunca respondeu às verificações. Se ela estiver ligada, o firewall do Windows provavelmente bloqueia ping (ICMP) e as portas 135, 445 e 3389.',
+      help: 'firewall-icmp',
+    },
+  ],
+  mac: '00:AA:00:00:00:05',
+  macLocallyAdministered: false,
+  otherMacs: [],
+  wake: {
+    attempts: 0,
+    successes: 0,
+    successRate: null,
+    lastSuccessAt: null,
+    consecutiveFailures: 0,
+    stoppedWaking: false,
+  },
+  network: {
+    deviceIp: '10.0.3.25',
+    interfaces: [{ name: 'Ethernet', address: '10.0.3.5', prefixLength: 24 }],
+    sameSubnet: true,
+    destinations: [{ sourceIp: '10.0.3.5', destination: '255.255.255.255' }],
+  },
+  lastTestWol: null,
+  prepare: { preparedAt: null, enrolledAt: null, results: null },
+};
+
+function deviceApi(over: Partial<Device> = {}, diag: Partial<DeviceDiagnostics> = {}): FakeApi {
   return loggedInApi()
+    .on('GET', '/api/devices/5/diagnostics', { body: { ...DIAG, ...diag } })
     .on('GET', '/api/devices/5', { body: { ...PC, ...over } })
     .on('GET', '/api/rooms', {
       body: [
@@ -138,13 +171,87 @@ describe('device page (FR-004.6)', () => {
     deviceApi();
     renderApp('/dispositivos/5');
     const diag = await screen.findByRole('region', { name: 'Diagnóstico' });
-    expect(within(diag).getByText('Nunca respondeu')).toBeInTheDocument();
+    expect(await within(diag).findByText('Nunca respondeu')).toBeInTheDocument();
     expect(within(diag).getByText(/firewall do Windows/)).toBeInTheDocument();
-    expect(within(diag).getByRole('link', { name: 'Preparar máquinas' })).toHaveAttribute(
-      'href',
-      '/preparar',
-    );
+    expect(
+      within(diag).getByRole('link', { name: 'Como resolver: Firewall e ping (ICMP)' }),
+    ).toHaveAttribute('href', '/ajuda/firewall-icmp');
     expect(diag).toHaveAttribute('id', 'diagnostico');
+  });
+
+  it('AC-007-15: "parou de acordar" links to its help page; wake stats and the last test are shown', async () => {
+    deviceApi(
+      {},
+      {
+        problems: [
+          {
+            code: 'parou_de_acordar',
+            title: 'Parou de acordar',
+            message: 'Ligava pela rede, mas não respondeu às últimas 3 tentativas.',
+            help: 'fast-startup',
+          },
+        ],
+        wake: {
+          attempts: 8,
+          successes: 5,
+          successRate: 0.625,
+          lastSuccessAt: at(6),
+          consecutiveFailures: 3,
+          stoppedWaking: true,
+        },
+        lastTestWol: {
+          id: 3,
+          deviceId: 5,
+          deviceName: 'LAB1-PC05',
+          state: 'nao_acordou',
+          requestedBy: 'admin',
+          startedAt: at(7),
+          offlineAt: at(7),
+          sentAt: at(7),
+          finishedAt: at(8),
+          jobId: 9,
+          detail: null,
+        },
+        prepare: { preparedAt: at(5), enrolledAt: at(5), results: { 'Fast Startup': 'OK' } },
+      },
+    );
+    renderApp('/dispositivos/5');
+    const diag = await screen.findByRole('region', { name: 'Diagnóstico' });
+    const problems = await within(diag).findByRole('list', { name: 'Problemas encontrados' });
+    expect(problems).toHaveTextContent('Parou de acordar');
+    expect(
+      within(problems).getByRole('link', {
+        name: 'Como resolver: Inicialização Rápida (Fast Startup)',
+      }),
+    ).toHaveAttribute('href', '/ajuda/fast-startup');
+    expect(diag).toHaveTextContent('63% (5 de 8)');
+    expect(diag).toHaveTextContent('Não acordou em');
+    expect(diag).toHaveTextContent('Fast Startup: OK');
+  });
+
+  it('AC-010-02: a device on another subnet shows "Dispositivo em outra sub-rede" with the VLAN help', async () => {
+    deviceApi(
+      {},
+      {
+        problems: [
+          {
+            code: 'outra_subrede',
+            title: 'Dispositivo em outra sub-rede',
+            message: 'O IP 10.0.9.5 não está na rede de nenhuma placa do UniWake (10.0.3.0/24).',
+            help: 'vlan-broadcast',
+          },
+        ],
+        network: { ...DIAG.network, deviceIp: '10.0.9.5', sameSubnet: false },
+      },
+    );
+    renderApp('/dispositivos/5');
+    const diag = await screen.findByRole('region', { name: 'Diagnóstico' });
+    expect(await within(diag).findByText('Dispositivo em outra sub-rede')).toBeInTheDocument();
+    expect(
+      within(diag).getByRole('link', {
+        name: 'Como resolver: Redes diferentes (VLAN) e broadcast',
+      }),
+    ).toHaveAttribute('href', '/ajuda/vlan-broadcast');
   });
 
   it('"Ligar" previews a wake for this device only', async () => {

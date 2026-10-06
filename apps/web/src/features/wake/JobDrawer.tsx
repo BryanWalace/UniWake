@@ -1,7 +1,14 @@
 import { Link } from 'react-router';
-import { DEVICE_RESULT_LABEL, JOB_STATE_LABEL } from '@uniwake/shared';
+import {
+  DEVICE_RESULT_LABEL,
+  ERROR_DEFS,
+  type ErrorCode,
+  helpTopicFor,
+  JOB_STATE_LABEL,
+} from '@uniwake/shared';
 import { ErrorState, LoadingState } from '../../components/Banner';
 import { Button } from '../../components/ui';
+import { HelpLink } from '../help/HelpPage';
 import { formatDuration, useNow } from '../../lib/format';
 import { FINAL_STATES, useJob } from './api';
 
@@ -69,6 +76,11 @@ export function JobProgress({
           ': erro inesperado. Veja os logs em Saúde do sistema e tente novamente.'}
         {job.state === 'interrompido' && ': o serviço foi reiniciado durante a ligação.'}
       </p>
+      {job.error !== null && job.error in ERROR_DEFS && helpTopicFor(job.error as ErrorCode) && (
+        <p className="text-sm">
+          <HelpLink topic={helpTopicFor(job.error as ErrorCode)!} />
+        </p>
+      )}
       <dl className="grid grid-cols-2 gap-2 text-sm">
         <Stat label="Pacotes enviados" value={`${sent}/${job.summary.total}`} />
         <Stat label="Acordaram" value={job.summary.woke} />

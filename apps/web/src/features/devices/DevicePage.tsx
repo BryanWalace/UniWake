@@ -1,11 +1,13 @@
-import { useInfiniteQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { type ReactNode, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import {
   DEVICE_RESULT_LABEL,
   type Device,
+  type DeviceDiagnostics,
   type DeviceHistoryItem,
   type DeviceHistoryPage,
+  TEST_WOL_STATE_LABEL,
 } from '@uniwake/shared';
 import { api, ApiRequestError } from '../../api/client';
 import { useDevice, useRooms, useTags } from '../../api/hooks';
@@ -15,6 +17,7 @@ import { formatDateTime } from '../../lib/format';
 import { useUptime } from '../dashboard/api';
 import { useWakeUi } from '../wake/WakeProvider';
 import { DeviceFormDialog } from './DeviceFormDialog';
+import { HelpLink } from '../help/HelpPage';
 import { TestWolDialog } from './TestWolDialog';
 import { noticeFromSave, SaveNotice } from './DevicesPage';
 
@@ -303,37 +306,113 @@ function History({ deviceId }: { deviceId: number }) {
 
 /** Full diagnostics arrive with FR-010 (M7); the "nunca respondeu" hint is AC-004-12. */
 function Diagnostics({ device: d }: { device: Device }) {
+  const q = useQuery({
+    queryKey: ['diagnostics', d.id] as const,
+    queryFn: () => api.get<DeviceDiagnostics>(`/api/devices/${d.id}/diagnostics`),
+  });
   return (
     <section
       id="diagnostico"
       aria-labelledby="diagnostico-titulo"
-      className="rounded-lg border border-slate-200 bg-white p-4"
+      className="space-y-4 rounded-lg border border-slate-200 bg-white p-4"
     >
-      <h2 id="diagnostico-titulo" className="mb-3 text-lg font-bold">
+      <h2 id="diagnostico-titulo" className="text-lg font-bold">
         Diagnóstico
       </h2>
-      {d.flags.neverResponded ? (
-        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
-          <p className="font-semibold">Nunca respondeu</p>
-          <p>
-            Esta máquina nunca respondeu às verificações de status. Se ela estiver ligada, o
-            firewall do Windows provavelmente está bloqueando ping (ICMP) e as portas 135, 445 e
-            3389.{' '}
-            <Link to="/preparar" className="underline">
-              Preparar máquinas
-            </Link>{' '}
-            libera essas verificações.
-          </p>
-        </div>
+      {q.isPending ? (
+        <LoadingState />
+      ) : q.isError ? (
+        <ErrorState message={q.error.message} onRetry={() => void q.refetch()} />
       ) : (
-        <p className="text-sm text-slate-700">Nenhum problema detectado.</p>
-      )}
-      {d.flags.macLocallyAdministered && (
-        <p className="mt-2 text-sm text-amber-900">
-          O MAC parece ser de Wi-Fi, virtual ou aleatório: Wake-on-LAN costuma funcionar só pela
-          placa de rede cabeada.
-        </p>
+        <DiagnosticsBody diag={q.data} />
       )}
     </section>
+  );
+}
+
+const percent = (r: number | null) => (r === null ? '—' : `${Math.round(r * 100)}%`);
+
+function DiagnosticsBody({ diag }: { diag: DeviceDiagnostics }) {
+  const { wake, network: net, lastTestWol: test, prepare } = diag;
+  return (
+    <>
+      {diag.problems.length === 0 ? (
+        <p className="text-sm text-slate-700">Nenhum problema detectado.</p>
+      ) : (
+        <ul className="space-y-2" aria-label="Problemas encontrados">
+          {diag.problems.map((p) => (
+            <li
+              key={p.code}
+              className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
+            >
+              <p className="font-semibold">{p.title}</p>
+              <p>{p.message}</p>
+              {p.help && (
+                <p className="mt-1">
+                  <HelpLink topic={p.help} />
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+        <DiagItem label="Última vez que ligou pela rede">
+          {wake.lastSuccessAt !== null ? formatDateTime(wake.lastSuccessAt) : 'nunca'}
+        </DiagItem>
+        <DiagItem label="Taxa de sucesso (últimas tentativas)">
+          {percent(wake.successRate)} ({wake.successes} de {wake.attempts})
+        </DiagItem>
+        <DiagItem label="Último teste de WoL">
+          {test
+            ? `${TEST_WOL_STATE_LABEL[test.state]} em ${formatDateTime(test.finishedAt ?? test.startedAt)}`
+            : 'nunca testado'}
+        </DiagItem>
+        <DiagItem label="Preparada em">
+          {prepare.preparedAt !== null ? formatDateTime(prepare.preparedAt) : 'não preparada'}
+        </DiagItem>
+        <DiagItem label="Outros MACs informados">
+          {diag.otherMacs.length > 0 ? diag.otherMacs.join(', ') : '—'}
+        </DiagItem>
+        <DiagItem label="Mesma rede do UniWake">
+          {net.sameSubnet === null ? '—' : net.sameSubnet ? 'sim' : 'não'}
+        </DiagItem>
+      </dl>
+      <details className="text-sm">
+        <summary className="cursor-pointer font-semibold">Para onde o Magic Packet vai</summary>
+        <ul className="mt-2 space-y-1">
+          {net.destinations.map((x) => (
+            <li key={`${x.sourceIp}>${x.destination}`}>
+              de {x.sourceIp} para {x.destination}
+            </li>
+          ))}
+        </ul>
+      </details>
+      {prepare.results && (
+        <details className="text-sm">
+          <summary className="cursor-pointer font-semibold">Resultado da preparação</summary>
+          <ul className="mt-2 space-y-1">
+            {Object.entries(prepare.results).map(([step, result]) => (
+              <li key={step}>
+                {step}: {result}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      <p className="text-sm">
+        Confira também a <HelpLink topic="bios-erp">BIOS/UEFI</HelpLink> (Wake on LAN ativado, ErP
+        desativado).
+      </p>
+    </>
+  );
+}
+
+function DiagItem({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <dt className="text-slate-600">{label}</dt>
+      <dd className="font-medium">{children}</dd>
+    </div>
   );
 }

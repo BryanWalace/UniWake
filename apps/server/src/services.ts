@@ -17,6 +17,7 @@ import {
 import { NetworkPreviewService } from './application/network/network-preview';
 import { NoticesService } from './application/notices/notices-service';
 import { DevicesService } from './application/devices/devices-service';
+import { DiagnosticsService } from './application/devices/diagnostics-service';
 import { EnrollmentService, type PrepareScript } from './application/enrollment/enrollment-service';
 import { EventsBus } from './application/events-bus';
 import { MonitorService } from './application/monitor/monitor-service';
@@ -53,6 +54,7 @@ import { SqliteAuditRepo } from './db/repositories/audit-repo';
 import { SqliteSessionsRepo, SqliteUsersRepo } from './db/repositories/auth-repos';
 import { SqliteDashboardRepo } from './db/repositories/dashboard-repo';
 import { SqliteDevicesRepo } from './db/repositories/devices-repo';
+import { SqliteDiagnosticsRepo } from './db/repositories/diagnostics-repo';
 import { SqliteEnrollmentRepo } from './db/repositories/enrollment-repo';
 import { SqliteJobsRepo } from './db/repositories/jobs-repo';
 import { SqliteMonitorRepo } from './db/repositories/monitor-repo';
@@ -239,6 +241,15 @@ export function createServices(
     logger: ports.logger.child({ module: 'test-wol' }),
   });
 
+  const diagnostics = new DiagnosticsService({
+    repo: new SqliteDiagnosticsRepo(db),
+    device: (id) => devicesRepo.get(id),
+    roomBroadcast: (roomId) => roomsRepo.get(roomId)?.directedBroadcast ?? null,
+    lastTestWol: (deviceId) => testWol.latestForDevice(deviceId),
+    interfaces: ports.interfaces,
+    settings,
+  });
+
   const refs = {
     room: (id: number) => roomsRepo.get(id) !== undefined,
     tag: (id: number) => tagsRepo.get(id) !== undefined,
@@ -372,5 +383,6 @@ export function createServices(
     backups,
     enrollment,
     testWol,
+    diagnostics,
   };
 }

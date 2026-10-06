@@ -15,6 +15,7 @@ const NAV: { to: string; label: string; end?: boolean; admin?: boolean }[] = [
   { to: '/configuracoes', label: t.nav.settings, admin: true },
   { to: '/logs', label: t.nav.logs, admin: true },
   { to: '/saude', label: t.nav.health },
+  { to: '/ajuda', label: t.nav.help },
 ];
 
 export interface LayoutProps {
