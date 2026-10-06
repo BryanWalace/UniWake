@@ -111,7 +111,7 @@ try {
     Stop-Process -Id $fake.Id -Force -ErrorAction SilentlyContinue
   }
 
-  Write-Step "Versão quebrada $BrokenVersion: deve voltar para $NextVersion"
+  Write-Step "Versão quebrada ${BrokenVersion}: deve voltar para $NextVersion"
   $fake = Open-FakeRelease $BrokenVersion $BrokenSetup
   try {
     Start-Sleep -Seconds 2

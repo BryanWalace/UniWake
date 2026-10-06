@@ -74,6 +74,10 @@ try {
   Write-Step "Instalação silenciosa de $V1"
   Install-Setup $V1Setup 'install-v1'
   $svc = Get-Service -Name UniWake
+  # "start" returns once the SCM accepted it (StartPending); give the service time to run.
+  $until = (Get-Date).AddSeconds(60)
+  while ((Get-Date) -lt $until -and (Get-Service -Name UniWake).Status -ne 'Running') { Start-Sleep -Seconds 1 }
+  $svc = Get-Service -Name UniWake
   Confirm-Condition ($svc.Status -eq 'Running') 'serviço UniWake em execução'
   Confirm-Condition ($svc.StartType -eq 'Automatic') 'início automático'
   $failure = (& sc.exe qfailure UniWake) -join "`n"
