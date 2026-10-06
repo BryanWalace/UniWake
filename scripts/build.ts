@@ -91,6 +91,8 @@ export async function buildApp(opts: {
   for (const f of readdirSync(join(root, 'apps/server/helper'))) {
     if (f.endsWith('.ps1')) cpSync(join(root, 'apps/server/helper', f), join(out, 'helper', f));
   }
+  mkdirSync(join(out, 'data'));
+  cpSync(join(root, 'apps/server/data/oui.tsv.gz'), join(out, 'data/oui.tsv.gz'));
   writeFileSync(join(out, 'VERSION'), `${opts.version}\n`);
   return out;
 }

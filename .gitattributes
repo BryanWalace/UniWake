@@ -10,3 +10,4 @@
 *.png binary
 *.ico binary
 *.exe binary
+*.gz binary
