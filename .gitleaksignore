@@ -1,0 +1,3 @@
+# Fake enrollment token in a web test (M7-T07), replaced by a low-entropy value in the next commit.
+62cb43bf066f5c309ff78828416760fdc222fd9f:apps/web/test/prepare-page.test.tsx:generic-api-key:39
+62cb43bf066f5c309ff78828416760fdc222fd9f:apps/web/test/prepare-page.test.tsx:generic-api-key:80

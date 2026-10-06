@@ -36,7 +36,7 @@ const CREATED: CreatedEnrollmentToken = {
   ...TOKEN,
   id: 10,
   uses: 0,
-  token: 'abcDEF_123-xyz456789',
+  token: 'token-de-teste-aaaaaaaa',
 };
 const commandFor = (address: string) => ({
   command: `& { Invoke-WebRequest -Uri 'http://${address}:47101/agent/prepare-target.ps1' }`,
@@ -77,7 +77,7 @@ describe('Preparar máquinas (FR-007.3)', () => {
     const box = await within(section).findByLabelText('Comando (PowerShell como Administrador)');
     expect(box).toHaveValue(commandFor('10.0.3.5').command);
     expect(fake.calls.find((c) => c.path === '/api/enrollment/command')?.body).toEqual({
-      token: 'abcDEF_123-xyz456789',
+      token: 'token-de-teste-aaaaaaaa',
       address: '10.0.3.5',
     });
     await user.click(within(section).getByRole('button', { name: 'Copiar comando' }));
