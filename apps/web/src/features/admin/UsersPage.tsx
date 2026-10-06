@@ -134,7 +134,7 @@ export function UsersPage() {
           onClose={() => setResetting(null)}
           onDone={() => {
             setMessage(
-              `Senha de ${resetting.username} redefinida; as sessões dele foram encerradas.`,
+              `Senha de ${resetting.username} redefinida; as sessões abertas desse usuário foram encerradas.`,
             );
             setResetting(null);
           }}

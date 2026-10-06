@@ -3,40 +3,45 @@
 Updated: 2026-10-05 · Mode: single-agent orchestrator (`.agents/06-orchestrator.md`)
 
 ## Current state
-- Phases 0–3 DONE. Phase 4: **M1–M6 DONE** (reviews in `specs/reviews/M1-*` … `M6-*`).
-- `npm run verify` green: ≈560 unit/integration tests (UTC by default, like CI), then `test:perf`
-  (sequential), check:deps, check:trace (reads `e2e/*.spec.ts` too). Playwright 18/18 incl. the
-  axe sweep (`npm run e2e`, unseeded demo hub). CI green.
-- M6 delivered: password policy, login backoff + per-IP limit, users API/page (LAST_ADMIN),
-  permission matrix test, audit viewer + CSV, settings admin (DB keys + config.json bootstrap keys,
-  `requiresRestart`), LAN HTTPS listener (`helper/` cert script, PanelCertificateStore), log viewer,
-  health service/page (HostChecks/TimeCheck ports), backups + restore (swap at start, exit 75),
-  GlobalBanners on every page.
+- Phases 0–3 DONE. Phase 4: **M1–M7 DONE** (reviews in `specs/reviews/M1-*` … `M7-*`).
+- `npm run verify` green: ≈625 unit/integration tests (UTC by default, like CI), then `test:perf`,
+  check:deps, check:trace (reads `e2e/*.spec.ts` and `scripts/tests/*.Tests.ps1` too). Playwright
+  21/21 (`npm run e2e`). `npm run test:ps`: PSScriptAnalyzer + 28 Pester tests (windows CI job
+  runs it too). CI green.
+- M7 delivered: enrollment tokens + hash-pinned one-liner (`/api/enrollment/*`), agent listener
+  with exactly 3 routes (`/api/health`, `/agent/enroll` with Bearer token, `/agent/prepare-target.ps1`),
+  `scripts/prepare-target.ps1` (NIC wake, Fast Startup, advanced NIC properties, own ICMP rule per
+  ADR-028, enrollment, exit codes 0/1/2/3), /preparar page, "Testar WoL" flow (migration 003
+  `test_wol_runs`), device diagnostics (`/api/devices/:id/diagnostics`), help pages `/ajuda/*`.
 
-## Next: M7 — prepare-target.ps1 and self-enrollment
-Start at `M7-T01`. Notes:
-- The agent listener (ADR-011, plan §6) is separate from the panel; check `hub.ts` for what M1
-  set up (route table must end up with exactly 3 agent routes, M7-T02).
-- Enrollment tokens: store only SHA-256 (like sessions in `auth-service.ts`); value shown once.
-- `KeyedLimiter` (`application/rate-limit.ts`) gives the 10/min per-IP agent limit.
-- Device moves (AC-007-07) raise a 24 h dashboard notice: reuse the notices service from M5.
-- Pester/PSScriptAnalyzer run only in the windows CI job; locally `pwsh` is absent, Windows
-  PowerShell 5.1 is present (check if Pester 3.x ships with it; tests may need Pester 5 via
-  `Install-Module` in CI only). PowerShell files: UTF-8 BOM + CRLF (`scratchpad/fix-bom.cjs`).
-- R-M6-04: document in the README (M8) that `npm run dev` does not restart after a restore.
+## Next: M8 — Service, installer, auto-update, release
+Start at `M8-T01`. Notes:
+- Inno Setup, WinSW and the Node runtime are not installed locally: build/verify the installer in
+  the windows CI job (install Inno Setup there, e.g. via choco, pinned version). Keep everything
+  that can be unit-tested (plan file, updater state machine, http allowlist) runnable locally.
+- Installed layout is plan §9: `versions\<ver>\` holds `server.mjs`, `updater.mjs`, `web\`,
+  `scripts\prepare-target.ps1`, `helper\*.ps1`. `resolvePrepareScriptPath` and
+  `resolveHelperPath` already look next to the bundle first.
+- R-M7-05: the installer must open the agent port (47101) inbound, besides the panel's LAN port.
+- R-M7-02: README (M8-T10) tells technicians to revoke a room's code when done.
+- R-M6-04: README for developers: `npm run dev` does not restart after a restore (exit 75).
+- Health already reports update status placeholders; notices support `update_failed` banners.
 
 ## Working conventions
 - Commit via the verify-gated helper (scratchpad `commit-task.sh <TASK|-> <msg>`: prettier → mark
-  task → `npm run verify` → commit → push → prints the last CI result; reverts the mark on
-  failure). Check that CI line after every push and investigate any failure immediately.
-- Edit with the editor tool or node scripts written to the scratchpad; never put backticks or
-  `${…}` inside bash-quoted node snippets (bash expands them). When a scripted edit fails midway,
-  re-read the file: prettier may have reformatted it.
-- Web fixtures use local-time instants (`new Date(y, m, d, h, mi)`), never `Date.UTC` for values
-  shown as wall-clock text. Wall-clock assertions go in `apps/server/test/perf/*.perf.test.ts`.
-- Sessions idle out after 12 h and expire after 7 d: API tests that move the clock by days log
-  in per request (`h.login('operator-user')`).
+  task → `npm run verify` → staged gitleaks scan → commit → push → prints the last CI result;
+  reverts the mark on failure). If the scratchpad is gone, recreate it from this description;
+  gitleaks lives in `.tools/gitleaks/` (download v8.30.1 from GitHub releases if missing).
+- Fake secrets in tests must be low-entropy (`token-de-teste-aaaaaaaa`): CI runs gitleaks.
+- PowerShell files: UTF-8 BOM + CRLF; after editing them with sed/node, re-normalize. Pester tests
+  call `Register-UwFakeSystem` (scripts/tests/FakeSystem.ps1) first; add every new system-touching
+  wrapper to its list.
+- Edit with the editor tool or node scripts in the scratchpad; in JS `String.replace` use a
+  function replacer when the replacement contains `$` (PowerShell text!).
+- Web fixtures use local-time instants; wall-clock assertions go in `apps/server/test/perf/`.
+- API tests that move the clock by days log in per request (`h.login('operator-user')`).
+- The GitHub API allows 60 unauthenticated requests/hour: poll CI sparingly.
 
 ## Files to read first
-`CLAUDE.md`, `specs/tasks.md` (M7), `specs/spec.md` FR-007, FR-010, `specs/plan.md` §6,
-`specs/decisions.md` ADR-011.
+`CLAUDE.md`, `specs/tasks.md` (M8), `specs/spec.md` FR-001, `specs/plan.md` §8–§9,
+`specs/decisions.md` ADR-009, ADR-015, ADR-021..ADR-025.

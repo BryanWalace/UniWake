@@ -213,6 +213,8 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M7-F1 | MAJOR: a computer registered earlier with its Wi-Fi MAC (typical of inventory CSVs) became a second device when the script enrolled it by its wired MAC. Enrollment now also matches the MACs in otherMacs and switches that device to the wired MAC (audited as macChangedFrom). | FR-007.2 | breakit-m7 F1 | — |
 | [x] M7-F2 | MINOR: a test-WoL step whose probe answered after the hub stopped armed a new timer on the stopped service. stop() now blocks further scheduling. | FR-007.4 | breakit-m7 F2 | — |
 | [x] M7-F3 | MINOR: CI secret scan failed on a high-entropy fake token in a web test. Fake tokens are now low-entropy, `.gitleaksignore` records the old findings and the commit helper runs gitleaks on staged files before committing. | constitution §6 | gitleaks | — |
+| [x] M7-R | Code review → `specs/reviews/M7-review.md` (R-M7-01 gender-neutral reset message fixed; R-M7-02/05 moved to M8). | §9 DoD | — | no open CRITICAL/MAJOR |
+| [x] M7-A | Architect conformance → `specs/reviews/M7-architect.md`. | phase 4 | — | M8 may start |
 
 ## M8 — Service, installer, auto-update, release
 | ID | Task | Refs | Tests | Done when |
