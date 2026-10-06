@@ -1,0 +1,24 @@
+<!--
+  WinSW 2.12 service definition (ADR-021, plan section 9). The installer replaces @VERSION@ with the
+  installed version; the updater repoints it to the previous version on rollback (ADR-023).
+-->
+<service>
+  <id>UniWake</id>
+  <name>UniWake</name>
+  <description>UniWake - liga, monitora e agenda os computadores dos laboratorios.</description>
+  <executable>%BASE%\versions\@VERSION@\node.exe</executable>
+  <arguments>"%BASE%\versions\@VERSION@\server.mjs"</arguments>
+  <workingdirectory>%BASE%\versions\@VERSION@</workingdirectory>
+  <startmode>Automatic</startmode>
+  <!-- Exit 75 (restore requested) and crashes both restart the service. -->
+  <onfailure action="restart" delay="10 sec"/>
+  <onfailure action="restart" delay="30 sec"/>
+  <onfailure action="restart" delay="60 sec"/>
+  <resetfailure>1 hour</resetfailure>
+  <stoptimeout>30 sec</stoptimeout>
+  <logpath>%ProgramData%\UniWake\logs\service</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>3</keepFiles>
+  </log>
+</service>
