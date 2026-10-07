@@ -115,7 +115,7 @@ Ou escolha uma versão em **[Releases](https://github.com/BryanWalace/UniWake/re
 
 > [!NOTE]
 > Enquanto a **v1.0.0** não é publicada, o botão acima não encontra o arquivo: baixe a versão
-> candidata (**v1.0.0-rc.1**, marcada como pré-lançamento) em
+> candidata mais recente (marcada como pré-lançamento) em
 > [Releases](https://github.com/BryanWalace/UniWake/releases).
 
 ### 2. Confira o arquivo (opcional, recomendado)

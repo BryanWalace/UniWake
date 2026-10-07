@@ -77,7 +77,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $extra = if ('${{ github.ref_name }}'.Contains('-')) { @('--prerelease') } else { @() }
+          # Start from an explicit array: an `if` returning @('x') yields a plain string, and += then
+          # concatenates strings ("--prerelease--notes-file ...") instead of adding arguments.
+          [string[]]$extra = @()
+          if ('${{ github.ref_name }}'.Contains('-')) { $extra += '--prerelease' }
           # pt-BR notes for the base version (v1.0.0-rc.1 → specs/releases/v1.0.0.md), then GitHub's.
           $notes = "specs/releases/$(('${{ github.ref_name }}' -split '-')[0]).md"
           if (Test-Path $notes) { $extra += @('--notes-file', $notes) }

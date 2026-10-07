@@ -22,5 +22,5 @@ Date: 2026-10-06 · Scope: UniWake v1.0 (M1–M8) and v1.1 discovery (M9), Phase
 | Local Windows test flake | dev only | `vitest` worker occasionally exits with 0xC0000409 under full parallel load (twice in this project); isolated reruns and CI are green. |
 
 ## Verdict
-**GO for `v1.0.0-rc.1`** (prerelease, ADR-029). **GO for `v1.0.0`** once the owner checklist in
+**GO for `v1.0.0-rc.2`** (prerelease, ADR-029). **GO for `v1.0.0`** once the owner checklist in
 `validation.md` (V-T05) passes on at least one PC model per room type.

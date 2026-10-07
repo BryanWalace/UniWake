@@ -312,3 +312,8 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
   `v1.0.0` on the same commit (or a fix), which publishes the final release.
 - **Consequences:** The owner can install the release candidate from GitHub right away; the final
   release reflects real hardware results.
+- **Addendum (same day):** the `v1.0.0-rc.1` tag ran every gate and built the installer, but the
+  publish step failed before creating the release: PowerShell turned the one-element argument array
+  into a string, so `gh` received `--prerelease--notes-file …` as one argument. Fixed in
+  `release.yml`; the tag was left in place (nothing was published from it) and the first published
+  candidate is `v1.0.0-rc.2`.

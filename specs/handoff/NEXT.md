@@ -14,11 +14,12 @@ Updated: 2026-10-06 · Mode: single-agent orchestrator (`.agents/06-orchestrator
   ADR-028, enrollment, exit codes 0/1/2/3), /preparar page, "Testar WoL" flow (migration 003
   `test_wol_runs`), device diagnostics (`/api/devices/:id/diagnostics`), help pages `/ajuda/*`.
 
-## Status: Phases 0–5 done; release candidate v1.0.0-rc.1
+## Status: Phases 0–5 done; release candidate v1.0.0-rc.2
 - M1–M9 done, Phase 5 validation done (`specs/validation.md`, `specs/validation-acs.md`,
 `specs/reviews/final-audit.md`). CI green on all four jobs (incl. Windows installer and end-to-end
 update with rollback).
-- ADR-029: tag `v1.0.0-rc.1` published as a GitHub prerelease by `release.yml`. **Owner next:** run
+- ADR-029: tag `v1.0.0-rc.2` published as a GitHub prerelease by `release.yml` (`rc.1` failed to
+publish, see the ADR addendum). **Owner next:** run
 the checklist in `specs/validation.md` V-T05 (real WoL per PC model, reboot with nobody logged in,
 VLANs, LAN HTTPS), decide on code signing (B-001), then tag `v1.0.0` on the validated commit
 (`git tag v1.0.0 && git push origin v1.0.0`).
