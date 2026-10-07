@@ -7,7 +7,7 @@
 Wake-on-LAN por sala, etiqueta ou máquina · Painel em tempo real · Agendamentos com feriados ·
 Cadastro automático das máquinas · Atualização automática
 
-[![Baixar para Windows](https://img.shields.io/badge/Baixar%20para%20Windows-UniWake--Setup.exe-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/BryanWalace/UniWake/releases/latest/download/UniWake-Setup.exe)
+[![Baixar para Windows](https://img.shields.io/badge/Baixar%20para%20Windows-v1.0.0--rc.2-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/BryanWalace/UniWake/releases/download/v1.0.0-rc.2/UniWake-Setup.exe)
 
 [![Versão](https://img.shields.io/github/v/release/BryanWalace/UniWake?include_prereleases&label=vers%C3%A3o&style=flat-square)](https://github.com/BryanWalace/UniWake/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/BryanWalace/UniWake/ci.yml?branch=main&label=testes&style=flat-square)](https://github.com/BryanWalace/UniWake/actions/workflows/ci.yml)
@@ -109,14 +109,13 @@ flowchart LR
 
 ### 1. Baixe
 
-<a href="https://github.com/BryanWalace/UniWake/releases/latest/download/UniWake-Setup.exe"><img alt="Baixar UniWake-Setup.exe" src="https://img.shields.io/badge/%E2%AC%87%20Baixar-UniWake--Setup.exe-0078D4?style=for-the-badge"></a>
+<a href="https://github.com/BryanWalace/UniWake/releases/download/v1.0.0-rc.2/UniWake-Setup.exe"><img alt="Baixar UniWake-Setup.exe" src="https://img.shields.io/badge/%E2%AC%87%20Baixar-UniWake--Setup.exe%20(v1.0.0--rc.2)-0078D4?style=for-the-badge"></a>
 
 Ou escolha uma versão em **[Releases](https://github.com/BryanWalace/UniWake/releases)**.
 
 > [!NOTE]
-> Enquanto a **v1.0.0** não é publicada, o botão acima não encontra o arquivo: baixe a versão
-> candidata mais recente (marcada como pré-lançamento) em
-> [Releases](https://github.com/BryanWalace/UniWake/releases).
+> A **v1.0.0-rc.2** é a versão candidata (pré-lançamento): já pode ser instalada e testada; a
+> v1.0.0 final sai depois da validação nos computadores da faculdade.
 
 ### 2. Confira o arquivo (opcional, recomendado)
 

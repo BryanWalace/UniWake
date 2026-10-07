@@ -22,7 +22,9 @@ update with rollback).
 publish, see the ADR addendum). **Owner next:** run
 the checklist in `specs/validation.md` V-T05 (real WoL per PC model, reboot with nobody logged in,
 VLANs, LAN HTTPS), decide on code signing (B-001), then tag `v1.0.0` on the validated commit
-(`git tag v1.0.0 && git push origin v1.0.0`).
+(`git tag v1.0.0 && git push origin v1.0.0`). After that release is published, point the README download buttons back to
+`releases/latest/download/UniWake-Setup.exe` (they name `v1.0.0-rc.2` now because `latest` skips
+prereleases and returned 404).
 - Agent next (if asked): roadmap items in `specs/improvements.md` marked roadmap; keep CI green.
 - Known dev-only flake: a vitest worker on Windows occasionally exits with 0xC0000409 under the full
 parallel run (seen in tcp-prober and hub tests); rerun; CI has never shown it.
