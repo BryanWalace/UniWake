@@ -1,12 +1,12 @@
 # NEXT — handoff
 
-Updated: 2026-10-05 · Mode: single-agent orchestrator (`.agents/06-orchestrator.md`)
+Updated: 2026-10-06 · Mode: single-agent orchestrator (`.agents/06-orchestrator.md`)
 
 ## Current state
-- Phases 0–3 DONE. Phase 4: **M1–M7 DONE** (reviews in `specs/reviews/M1-*` … `M7-*`).
-- `npm run verify` green: ≈625 unit/integration tests (UTC by default, like CI), then `test:perf`,
+- Phases 0–3 DONE. Phase 4: **M1–M9 DONE**, Phase 5 DONE (reviews in `specs/reviews/M1-*` … `M9-*`, `final-audit.md`).
+- `npm run verify` green: ≈728 unit/integration tests (UTC by default, like CI), then `test:perf`,
   check:deps, check:trace (reads `e2e/*.spec.ts` and `scripts/tests/*.Tests.ps1` too). Playwright
-  21/21 (`npm run e2e`). `npm run test:ps`: PSScriptAnalyzer + 28 Pester tests (windows CI job
+  23 specs (`npm run e2e`, Chromium; `npm run e2e:edge` on Windows). `npm run test:ps`: PSScriptAnalyzer + 28 Pester tests (windows CI job
   runs it too). CI green.
 - M7 delivered: enrollment tokens + hash-pinned one-liner (`/api/enrollment/*`), agent listener
   with exactly 3 routes (`/api/health`, `/agent/enroll` with Bearer token, `/agent/prepare-target.ps1`),
@@ -14,17 +14,17 @@ Updated: 2026-10-05 · Mode: single-agent orchestrator (`.agents/06-orchestrator
   ADR-028, enrollment, exit codes 0/1/2/3), /preparar page, "Testar WoL" flow (migration 003
   `test_wol_runs`), device diagnostics (`/api/devices/:id/diagnostics`), help pages `/ajuda/*`.
 
-## In progress: M8-T12 (CI) and M9 close
-- M8: T01–T11, M8-D (F1–F4), M8-R, M8-A done. **M8-T12** (CI end-to-end update) is in the "Update
-end-to-end (windows)" CI job: install 0.0.3 → update to 0.0.4 through the panel already works on
-the runner; last fixes (outcome recorded right after start, no WinSW refresh) pushed in 7fe60fc.
-Mark M8-T12 [x] once that job and "Installer (windows)" are green. CI scripts report failures,
-log tails and step notices as public annotations: read them with
-`curl https://api.github.com/repos/BryanWalace/UniWake/check-runs/<job id>/annotations`
-(job logs and artifacts need a token). Poll at most once a minute (60 requests/hour).
-- M9: T01–T04 done (neighbors.ts, oui.tsv.gz + scripts/update-oui.ts, DiscoveryService,
-/api/discovery, /dispositivos/descobrir). Next: M9-D break-it, M9-R, M9-A, then Phase 5
-(validation, tasks V-T01..V-T08).
+## Status: Phases 0–5 done; release candidate v1.0.0-rc.1
+- M1–M9 done, Phase 5 validation done (`specs/validation.md`, `specs/validation-acs.md`,
+`specs/reviews/final-audit.md`). CI green on all four jobs (incl. Windows installer and end-to-end
+update with rollback).
+- ADR-029: tag `v1.0.0-rc.1` published as a GitHub prerelease by `release.yml`. **Owner next:** run
+the checklist in `specs/validation.md` V-T05 (real WoL per PC model, reboot with nobody logged in,
+VLANs, LAN HTTPS), decide on code signing (B-001), then tag `v1.0.0` on the validated commit
+(`git tag v1.0.0 && git push origin v1.0.0`).
+- Agent next (if asked): roadmap items in `specs/improvements.md` marked roadmap; keep CI green.
+- Known dev-only flake: a vitest worker on Windows occasionally exits with 0xC0000409 under the full
+parallel run (seen in tcp-prober and hub tests); rerun; CI has never shown it.
 Notes:
 - Inno Setup, WinSW and the Node runtime are not installed locally: build/verify the installer in
   the windows CI job (install Inno Setup there, e.g. via choco, pinned version). Keep everything

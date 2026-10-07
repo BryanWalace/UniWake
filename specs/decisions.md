@@ -299,3 +299,16 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
 - **Consequences:** Same end state on every build, idempotent by rule name, nothing opened on
   Public. IT can find and remove the rule by its name. Group Policy that blocks local rules still
   wins; the monitor's TCP probe (incl. refused) covers that case.
+
+## ADR-029 — Release candidate before hardware validation
+- **Date:** 2026-10-06 · **Status:** Accepted · **Amends:** tasks V-T08
+- **Context:** Every automated criterion passes, including install, update and rollback on Windows
+  CI, but real Wake-on-LAN on the college's PCs (B-002) and the reboot-with-nobody-logged-in check
+  (AC-001-01b) need the owner's hands. A final `v1.0.0` published before anyone woke a real PC would
+  claim more than was verified.
+- **Decision:** Phase 5 ends with tag `v1.0.0-rc.1`. The release workflow publishes it as a
+  GitHub prerelease (installer + SHA-256), which also exercises AC-001-12. Hubs never auto-update
+  to prereleases (AC-001-05). The owner runs the checklist in `validation.md` (V-T05) and then tags
+  `v1.0.0` on the same commit (or a fix), which publishes the final release.
+- **Consequences:** The owner can install the release candidate from GitHub right away; the final
+  release reflects real hardware results.

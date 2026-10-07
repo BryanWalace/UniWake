@@ -78,4 +78,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $extra = if ('${{ github.ref_name }}'.Contains('-')) { @('--prerelease') } else { @() }
+          # pt-BR notes for the base version (v1.0.0-rc.1 → specs/releases/v1.0.0.md), then GitHub's.
+          $notes = "specs/releases/$(('${{ github.ref_name }}' -split '-')[0]).md"
+          if (Test-Path $notes) { $extra += @('--notes-file', $notes) }
           gh release create '${{ github.ref_name }}' build/release/UniWake-Setup.exe build/release/UniWake-Setup.exe.sha256 --generate-notes --title "UniWake ${{ github.ref_name }}" @extra

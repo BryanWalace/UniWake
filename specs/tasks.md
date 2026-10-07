@@ -262,5 +262,5 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] V-T04 | Security pass: route table, headers, CSP, enrollment abuse, CSV injection. | FR-006, ADR-016 | `validation.md` |
 | [x] V-T05 | Owner checklist for [manual] items (AC-001-01b, real WoL on hardware). | B-002 | checklist in `validation.md` |
 | [x] V-T06 | Footprint measurement (RAM/CPU idle). | NFR-08 | numbers in `validation.md` |
-| [ ] V-T07 | Code Reviewer final audit → `specs/reviews/final-audit.md`. | — | go/no-go |
-| [ ] V-T08 | Architect approval + release notes + tag `v1.0.0`. | FR-001.4 | Release |
+| [x] V-T07 | Code Reviewer final audit → `specs/reviews/final-audit.md`. | — | go/no-go |
+| [x] V-T08 | Architect approval + release notes + tag `v1.0.0-rc.1` (ADR-029; `v1.0.0` after the owner checklist). | FR-001.4 | Release |
