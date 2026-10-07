@@ -14,13 +14,17 @@ Updated: 2026-10-05 · Mode: single-agent orchestrator (`.agents/06-orchestrator
   ADR-028, enrollment, exit codes 0/1/2/3), /preparar page, "Testar WoL" flow (migration 003
   `test_wol_runs`), device diagnostics (`/api/devices/:id/diagnostics`), help pages `/ajuda/*`.
 
-## In progress: M8 — Service, installer, auto-update, release
-DONE: T01–T11, M8-D (F1–F4), M8-R, M8-A (`specs/reviews/M8-*`). Open: **M8-T12** — CI end-to-end
-update on the Windows runner against a loopback fake release server (`build-installer.ps1
--TestUpdateApi http://127.0.0.1:<port>`, a small node fake server serving
-`/repos/BryanWalace/UniWake/releases/latest` + the newer installer and its .sha256; then a broken
-version that must roll back). First check that the "Installer (windows)" CI job is green (the GitHub
-API allows 60 unauthenticated requests/hour: poll once a minute at most). Then M9 (discovery).
+## In progress: M8-T12 (CI) and M9 close
+- M8: T01–T11, M8-D (F1–F4), M8-R, M8-A done. **M8-T12** (CI end-to-end update) is in the "Update
+end-to-end (windows)" CI job: install 0.0.3 → update to 0.0.4 through the panel already works on
+the runner; last fixes (outcome recorded right after start, no WinSW refresh) pushed in 7fe60fc.
+Mark M8-T12 [x] once that job and "Installer (windows)" are green. CI scripts report failures,
+log tails and step notices as public annotations: read them with
+`curl https://api.github.com/repos/BryanWalace/UniWake/check-runs/<job id>/annotations`
+(job logs and artifacts need a token). Poll at most once a minute (60 requests/hour).
+- M9: T01–T04 done (neighbors.ts, oui.tsv.gz + scripts/update-oui.ts, DiscoveryService,
+/api/discovery, /dispositivos/descobrir). Next: M9-D break-it, M9-R, M9-A, then Phase 5
+(validation, tasks V-T01..V-T08).
 Notes:
 - Inno Setup, WinSW and the Node runtime are not installed locally: build/verify the installer in
   the windows CI job (install Inno Setup there, e.g. via choco, pinned version). Keep everything

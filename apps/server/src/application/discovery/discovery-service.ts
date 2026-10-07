@@ -41,6 +41,7 @@ export interface DiscoveryDeps {
   interfaces: NetworkInterfaces;
   oui: () => OuiTable;
   findByMac: (mac: string) => { id: number; name: string } | undefined;
+  roomName: (id: number) => string | undefined;
   createDevice: (
     d: { name: string; mac: string; ip: string; hostname: string | null; roomId: number | null },
     actor: Actor,
@@ -162,7 +163,13 @@ export class DiscoveryService {
 
     const now = this.d.clock.now();
     const table = this.d.oui();
-    const entries = (await this.d.neighbors.read()).filter((n) => contains(cidr, n.ip));
+    // M9-F1: routers are not machines to wake; leave the default gateways out.
+    const gateways = new Set(
+      (await this.d.interfaces.list()).flatMap((i) => (i.gateway ? [i.gateway] : [])),
+    );
+    const entries = (await this.d.neighbors.read()).filter(
+      (n) => contains(cidr, n.ip) && !gateways.has(n.ip),
+    );
     const names = await this.reverseNames(entries.map((n) => n.ip));
     const found: DiscoveredDevice[] = entries.map((n) => {
       const seen = this.seen.get(n.mac) ?? { first: now, last: now };
@@ -225,7 +232,11 @@ export class DiscoveryService {
       this.d.audit.record({
         actor,
         action: 'discovery.add',
-        target: req.roomId === null ? 'room:Sem sala' : `room:${req.roomId}`,
+        // M9-F2: audit targets name the room, like every other entry ("room:Lab 3").
+        target:
+          req.roomId === null
+            ? 'room:Sem sala'
+            : `room:${this.d.roomName(req.roomId) ?? req.roomId}`,
         details: { added, skipped: skipped.length },
       });
       // Refresh "já cadastrado" on the current results.

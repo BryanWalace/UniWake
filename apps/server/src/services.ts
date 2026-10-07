@@ -438,6 +438,7 @@ export function createServices(
     interfaces: ports.interfaces,
     oui: opts.oui ?? (() => new Map()),
     findByMac: (mac) => devicesRepo.findByMac(mac),
+    roomName: (id) => roomsRepo.get(id)?.name,
     createDevice: (d, actor) => {
       devices.create(
         { name: d.name, mac: d.mac, ip: d.ip, hostname: d.hostname, roomId: d.roomId },

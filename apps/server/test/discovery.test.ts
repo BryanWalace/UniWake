@@ -51,6 +51,7 @@ function setup() {
     interfaces,
     oui: () => parseOuiTable('001A2B\tAyecom Technology Co., Ltd.\n'),
     findByMac: (mac) => registered.get(mac),
+    roomName: (id) => (id === 3 ? 'Lab 3' : undefined),
     createDevice: (d) => {
       created.push(d);
       registered.set(d.mac, { id: 100 + created.length, name: d.name });
@@ -272,5 +273,23 @@ describe('discovery in demo mode (FR-015, FR-101)', () => {
       DEMO_UNREGISTERED.map((d) => d.mac),
     );
     expect(await sim.dns.reverse!(extra.ip!)).toEqual(['sala-nova-pc01.demo.local']);
+  });
+
+  describe('M9 break-it', () => {
+    it('M9-F1: the default gateway (a router) is not listed as a machine', async () => {
+      const t = setup();
+      t.setNeighbors([n('10.0.3.1', '00:1A:2B:3C:4D:01'), n('10.0.3.42', '00:1A:2B:3C:4D:42')]);
+      await t.service.scan({ cidr: '10.0.3.0/24' }, ACTOR);
+      expect((await t.done()).found.map((f) => f.ip)).toEqual(['10.0.3.42']);
+    });
+
+    it('M9-F2: bulk add is audited with the room name', () => {
+      const t = setup();
+      t.service.add(
+        { roomId: 3, devices: [{ mac: '00:1A:2B:3C:4D:42', ip: '10.0.3.42', name: 'PC' }] },
+        ACTOR,
+      );
+      expect(t.audits()[0]).toMatchObject({ action: 'discovery.add', target: 'room:Lab 3' });
+    });
   });
 });

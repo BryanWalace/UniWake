@@ -237,7 +237,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M8-F4 | MAJOR: after an automatic update was rolled back, the restarted hub forgot it had tried that day and reinstalled the same broken version in the same window, again and again. A failed version is now remembered (system_state) and skipped by auto mode until a success; admins can still install it. | FR-001.3, AC-001-11 | breakit-m8 F4 | — |
 | [x] M8-R | Code review → `specs/reviews/M8-review.md` (R-M8-01 → M8-T12; R-M8-02 = B-001). | §9 DoD | — | no open CRITICAL/MAJOR |
 | [x] M8-A | Architect conformance → `specs/reviews/M8-architect.md`. | phase 4 | — | M8-T12 open |
-| [ ] M8-T12 | CI end-to-end update on Windows: install a test build pointing at a loopback fake release server, publish a newer installer there, install it through the API and wait for the new version; then a broken version that must roll back. | FR-001.3 | CI-Win | — |
+| [x] M8-T12 | CI end-to-end update on Windows: install a test build pointing at a loopback fake release server, publish a newer installer there, install it through the API and wait for the new version; then a broken version that must roll back. | FR-001.3 | CI-Win | — |
 
 ## M9 — v1.1 network discovery
 | ID | Task | Refs | Tests | Done when |
@@ -246,6 +246,12 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M9-T02 | OUI vendor DB (bundled with releases; no runtime download, NFR-05) + lookup. | FR-101; NFR-05 | lookup tests | — |
 | [x] M9-T03 | Discovery service: CIDR sweep, hostname, already-registered, locally-administered flag. | FR-101 | AC-101-03 | — |
 | [x] M9-T04 | Discovery API + page + bulk add to room. | FR-101 | AC-101-01 | — |
+| [x] M9-D | Debug break-it pass (discovery): sweeps outside own subnets and huge CIDRs, two sweeps at once, router in the results, registered-meanwhile machines, pt-BR arp output, demo extras vs registered MACs → regressions in `apps/server/test/discovery.test.ts` ("M9 break-it"). | tasks §Break-it | 3 regression tests | findings filed |
+| [x] M9-F1 | MINOR: the default gateway (router) appeared as an addable machine. Gateways are left out of the results. | FR-101 | discovery M9-F1 | — |
+| [x] M9-F2 | MINOR: bulk add was audited as room:<id> while every other entry names the room. Now room:<name>. | FR-006.5 | discovery M9-F2 | — |
+| [x] M9-F3 | MINOR: two sweep requests arriving together both started a sweep (an await between the check and the start). Fixed while writing M9-T03; covered by its "returns the running sweep" test. | FR-101 | discovery | — |
+| [x] M9-R | Code review → `specs/reviews/M9-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+| [x] M9-A | Architect conformance → `specs/reviews/M9-architect.md`. | phase 4 | — | Phase 5 may start |
 
 ## Phase 5 — Validate (lead: Debug)
 | ID | Task | Refs | Evidence |
