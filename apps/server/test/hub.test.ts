@@ -176,3 +176,22 @@ describe('M3-F3: stopping the hub during a wake job', () => {
     expect(['interrompido', 'verificando', 'concluido']).toContain(job.state);
   });
 });
+
+describe('demo mode never uses real data (D2-14, plan §9)', () => {
+  it('refuses --demo on a data folder a real hub has used; a fresh folder is fine', async () => {
+    const real = testConfig();
+    const first = await createHub({ config: real, logger: silent });
+    await first.stop();
+    await expect(
+      createHub({ config: { ...real, demo: true }, logger: silent }),
+    ).rejects.toMatchObject({
+      name: 'HubStartError',
+      message: expect.stringMatching(/real data/) as string,
+    });
+    const demo = await createHub({ config: testConfig({ demo: true }), logger: silent });
+    hubs.push(demo);
+    // The real hub can still open its own folder afterwards.
+    const again = await createHub({ config: real, logger: silent });
+    hubs.push(again);
+  });
+});

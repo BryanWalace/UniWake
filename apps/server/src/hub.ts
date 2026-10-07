@@ -169,6 +169,24 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
     throw databaseError(paths.db, paths.backups, e);
   }
 
+  // D2-14 / plan §9: a database a real hub has used is never opened in demo mode (the seed and
+  // the forced dry-run would mix fake machines into real data and silence real wakes).
+  const mode = db.get<{ value: string }>(
+    "SELECT value FROM system_state WHERE key = 'data.mode'",
+  )?.value;
+  if (config.demo && mode === 'real') {
+    db.close();
+    await fileLogger?.close();
+    throw new HubStartError(
+      `the data folder ${config.dataDir} holds real data; demo mode cannot use it (choose another folder with --data-dir)`,
+    );
+  }
+  if (!config.demo && mode !== 'real') {
+    db.run(
+      "INSERT INTO system_state (key, value) VALUES ('data.mode', 'real') ON CONFLICT(key) DO UPDATE SET value = 'real'",
+    );
+  }
+
   // Demo mode never constructs the real sender (AC-015-01): no packet can leave the machine, and
   // interfaces, probes and DNS are simulated too (FR-015, R-M3-03).
   const demoDevices = new SqliteDevicesRepo(db);

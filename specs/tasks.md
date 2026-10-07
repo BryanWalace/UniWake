@@ -256,11 +256,11 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 ## Phase 5 — Validate (lead: Debug)
 | ID | Task | Refs | Evidence |
 |---|---|---|---|
-| [ ] V-T01 | Walk every AC; record pass/fail with test names / CI run links in `validation.md`. | all | `validation.md` |
-| [ ] V-T02 | Walk every failure mode from `phase-0-debug.md` / `phase-1-debug.md` / `phase-2-debug.md`. | — | `validation.md` |
-| [ ] V-T03 | Install → update → rollback with the local fake release server (Windows CI). | FR-001 | CI run |
-| [ ] V-T04 | Security pass: route table, headers, CSP, enrollment abuse, CSV injection. | FR-006, ADR-016 | `validation.md` |
-| [ ] V-T05 | Owner checklist for [manual] items (AC-001-01b, real WoL on hardware). | B-002 | checklist in `validation.md` |
-| [ ] V-T06 | Footprint measurement (RAM/CPU idle). | NFR-08 | numbers in `validation.md` |
+| [x] V-T01 | Walk every AC; record pass/fail with test names / CI run links in `validation.md`. | all | `validation.md` |
+| [x] V-T02 | Walk every failure mode from `phase-0-debug.md` / `phase-1-debug.md` / `phase-2-debug.md`. | — | `validation.md` |
+| [x] V-T03 | Install → update → rollback with the local fake release server (Windows CI). | FR-001 | CI run |
+| [x] V-T04 | Security pass: route table, headers, CSP, enrollment abuse, CSV injection. | FR-006, ADR-016 | `validation.md` |
+| [x] V-T05 | Owner checklist for [manual] items (AC-001-01b, real WoL on hardware). | B-002 | checklist in `validation.md` |
+| [x] V-T06 | Footprint measurement (RAM/CPU idle). | NFR-08 | numbers in `validation.md` |
 | [ ] V-T07 | Code Reviewer final audit → `specs/reviews/final-audit.md`. | — | go/no-go |
 | [ ] V-T08 | Architect approval + release notes + tag `v1.0.0`. | FR-001.4 | Release |
