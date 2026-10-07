@@ -146,3 +146,5 @@ try {
   Save-CiLog @($logs, (Join-Path $env:ProgramData 'UniWake\logs'), (Join-Path $env:ProgramData 'UniWake\updates'))
   throw
 }
+# The runner returns $LASTEXITCODE of the last native command; success is success.
+exit 0

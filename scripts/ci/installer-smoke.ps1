@@ -132,3 +132,5 @@ try {
   Save-CiLog @($logs, (Join-Path $env:ProgramData 'UniWake\logs'))
   throw
 }
+# The last native command (netsh: "no such rule") sets $LASTEXITCODE, which the runner would return.
+exit 0
