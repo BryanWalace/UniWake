@@ -442,3 +442,104 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
   each run records `claimed_by_instance`.
 - **Consequences:** An instance that declines leaves no record; the executor's run arrives by sync.
   Offering missed wakes at start-up (roadmap §B) builds on the same port in v1.2.
+
+## ADR-035 — Team mode: peer-to-peer pull sync, replicated membership, one port
+- **Date:** 2026-10-09 · **Status:** Accepted · **Amends:** spec FR-201..205; plan §14
+- **Context:** Roadmap §B. No PC is always on; two staff, different shifts; sometimes a third PC.
+  The data layer is already sync-ready (ADR-031).
+- **Decision:**
+  - **Peer-to-peer, pull only.** Each PC pulls "changes since N" from every online peer and keeps a
+    cursor per peer; a "poke" asks a peer to pull now. Because a PC's change log also holds what it
+    received (with the original revision and instance), changes gossip through any PC that is on.
+  - **Membership is a replicated entity** (`team_member`: instance id as UUID, name, verifier of the
+    member secret, joined/revoked times), so every PC can check every other PC and a rename or
+    revocation spreads like any change. Keys are not replicated (ADR-038).
+  - **Who keeps data.** The PC that shows the code keeps its data; the joining PC replaces its
+    replicated data with the team's (after a backup and a typed confirmation). Merging two
+    independently built inventories at pairing time would turn every room name and MAC into a
+    conflict; the UI says which PC to pair from.
+  - **One port, 47102.** UDP for announcements; TCP for both pairing and sync, told apart by the first
+    byte (TLS records start with 0x16, pairing JSON with `{`). One firewall rule.
+- **Consequences:** No coordinator to install or keep on. A PC that was off catches up from whichever
+  PC is on. Cost: each PC opens one inbound port on Domain/Private networks.
+
+## ADR-036 — Pairing with SPAKE2 over the RFC 3526 group, no new dependency
+- **Date:** 2026-10-09 · **Status:** Accepted · **Amends:** plan §4, §14
+- **Context:** Roadmap §B requires a PAKE (SPAKE2/CPace) or an equivalent proven scheme so the
+  6-digit code authenticates the key exchange without travelling. `node:crypto` has no elliptic-curve
+  point arithmetic; the audited JS curve libraries would be a new runtime dependency (P6).
+- **Decision:** SPAKE2 as specified by RFC 9382 (transcript, key schedule, key confirmation with
+  HMAC), instantiated in the prime-order subgroup of the RFC 3526 2048-bit MODP group (safe prime,
+  generator 4) with `BigInt` exponentiation. `M` and `N` are hashed into the group (squares of
+  SHA-512-expanded integers: nobody knows their discrete logs). Received elements are validated
+  (range and subgroup membership). `w` = hash of the code and the session's nonces, reduced mod q.
+  Pairing traffic is JSON over TCP; after confirmation the inviter's payload is encrypted with
+  AES-256-GCM under a key derived from the SPAKE2 output.
+- **Alternatives:** CPace or SPAKE2 on ristretto255 via a curve library (smaller messages, new
+  dependency); SRP-6a (augmented, needs a stored verifier: no benefit for a one-time code).
+- **Consequences:** ~260-byte messages and tens of milliseconds of CPU per pairing; an attacker on the
+  wire gets no offline guess; an online guesser has 5 tries in 10⁶. Known-answer tests pin the group
+  constants; property tests check both sides agree on the right code and disagree on any other.
+
+## ADR-037 — Team secrets protected with DPAPI (LocalMachine)
+- **Date:** 2026-10-09 · **Status:** Accepted · **Amends:** plan §9, §14
+- **Context:** The team key must be stored encrypted on each PC (roadmap §B). The service runs as
+  LocalSystem.
+- **Decision:** A `SecretProtector` port. The Windows adapter calls
+  `ProtectedData.Protect/Unprotect` (scope LocalMachine, fixed entropy) through PowerShell with the
+  bytes on stdin, never on the command line. Blobs live in the machine-local `team` table; the
+  plaintext exists only in memory. Tests and non-Windows development use a fake protector that marks
+  its output, so a test can prove nothing plain reaches the database.
+- **Consequences:** A copied database (or backup) cannot be used to join the team on another PC: the
+  blobs only open on the PC that made them. Restoring a backup on the same PC keeps team mode working
+  (the restored identity is new, ADR-033, and re-announced as the same member name).
+
+## ADR-038 — Sync transport: TLS 1.3 PSK per key epoch, member secrets, re-keying
+- **Date:** 2026-10-09 · **Status:** Accepted · **Amends:** plan §14
+- **Context:** Mutual authentication and encryption derived from the team key (roadmap §B); revoking
+  a PC rotates the key for the others, including PCs that are off at the time.
+- **Decision:** `node:tls` with TLS 1.3 PSK (spiked on Node 24.15 / OpenSSL 3.5; (EC)DHE key
+  exchange, so recorded traffic stays secret even if the key leaks later). PSK = HKDF(team key,
+  "uniwake sync psk"), identity `uniwake/1/<instance id>/<epoch>`. Each PC keeps the current and the
+  previous epoch's key. After the handshake both sides send `hello` with their member secret; the
+  other side checks it against the member's replicated verifier and refuses revoked or unknown
+  members. A connection on the previous epoch may only carry the new key: when one side has a
+  newer epoch, it hands the key to the other (which proved it is a non-revoked member) and closes.
+  Revocation = mark the member revoked (replicated) + new random key at epoch + 1, pushed to every
+  online member; concurrent rotations converge on the higher (epoch, key hash).
+- **Consequences:** A revoked PC still holding the old key cannot pass the member check, cannot
+  open a current-epoch session and never receives the new key. A member that was off longer than
+  two rotations must pair again (shown in pt-BR).
+
+## ADR-039 — Team execution lease: deterministic election with fallback
+- **Date:** 2026-10-09 · **Status:** Accepted · **Amends:** ADR-034; plan §7.2, §14
+- **Context:** Online peers elect one executor per run; alone → execute (roadmap §B). The lease port
+  (ADR-034) is synchronous.
+- **Decision:** `TeamLease.shouldHandle` elects, for each occurrence, the smallest instance id among
+  this PC and the non-revoked members seen (announcement or sync) in the last 60 s. The scheduler
+  keeps declined occurrences in memory and asks again on each tick: when the run record arrives by
+  sync the claim fails (same schedule and planned time) and the occurrence is dropped; 90 s after
+  the planned time without a record, the lease answers yes for the next candidate (fallback, logged
+  `atrasado`). The deterministic run UUID makes any double record one entity. In team mode, start-up
+  does not replay missed runs: after the first sync round, a run inside the grace window with no
+  record becomes a notice "Agendamento não executado" with "Ligar agora".
+- **Alternatives:** Message-based leases with grants and expiry (more traffic and failure modes for
+  two or three PCs); executing everywhere and deduplicating packets (wakes twice, logs twice).
+- **Consequences:** No extra messages. A split view (A sees B, B does not see A) can at worst run a
+  schedule twice, never zero times. The fallback costs 90 s only when the elected PC is on but stuck.
+
+## ADR-040 — Conflict rules: last writer wins, deterministic duplicate merges
+- **Date:** 2026-10-09 · **Status:** Accepted · **Amends:** spec FR-203; plan §14
+- **Context:** Deterministic last-writer-wins with a "conflitos resolvidos" log (roadmap §B). Two
+  PCs editing apart can also create duplicates the schema forbids (MAC, room name/code, tag name,
+  username).
+- **Decision:** Versions compare by (rev, instance id). An incoming version that loses is ignored;
+  one that wins replaces the row and its log entry, keeping the remote revision. A conflict is
+  recorded when the overwritten (or ignored) version differs and the sender had not acknowledged
+  it (its cursor into our log is older than that version's sequence): the edits were concurrent.
+  Unique-key clashes between different UUIDs are resolved by UUID order on every PC: same MAC → the
+  larger UUID is deleted (tombstone); same room/tag name or room code → the larger UUID is renamed
+  with " (2)"/"-2" (next free suffix); same username → "-2". A rename made while applying is a new
+  local write, so it propagates; every PC computes the same result.
+- **Consequences:** Convergence without coordination. Renamed rooms and merged devices are visible
+  in "Conflitos resolvidos" so staff can fix names by hand.

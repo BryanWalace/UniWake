@@ -1,8 +1,9 @@
 # UniWake — Technical Plan
 
-Version: **1.1** · Date: 2026-10-08 · Owner: Architect
+Version: **1.2** · Date: 2026-10-09 · Owner: Architect
 History: v0.1 draft → reviewed in `specs/reviews/phase-2-*.md` → consolidated as v1.0 → v1.1
-(Phase 6: §5.2 sync-ready data, §7.2 lease, ADR-030..034).
+(Phase 6: §5.2 sync-ready data, §7.2 lease, ADR-030..034) → v1.2 (Phase 7: §14 team mode,
+ADR-035..040).
 Inputs: `specs/constitution.md` v1.1, `specs/spec.md` v1.0, ADR-001..026.
 
 ---
@@ -486,3 +487,67 @@ sequenceDiagram
 | RK-14 | WinSW kills the updater with the service | High (if unmitigated) | Critical | Task Scheduler launch + watchdog (ADR-023). |
 | RK-15 | Synchronous DB blocks the event loop | Medium | Medium | §5.1 rules + benchmark tests. |
 | RK-16 | Toolchain churn (TS 7, ESLint 10 plugins) | Medium | Low | Pins in ADR-024; Dependabot PRs reviewed. |
+| RK-17 | Team PCs disagree on who is online (split view) | Low | Medium | ADR-039: worst case a schedule runs twice, never zero times; deterministic run UUID merges the records. |
+| RK-18 | Firewall/Group Policy blocks 47102 between staff PCs | Medium | Medium | Installer rule; status page shows "offline" with the last error; README/help explain. |
+
+## 14. Team mode (v1.2; ADR-035..040)
+
+### 14.1 Modules
+```
+apps/server/src/
+  application/team/  spake2.ts (RFC 9382 over RFC 3526 group 14, pure), pairing.ts (code
+                     lifecycle + inviter/joiner state machines), team-service.ts (members, keys,
+                     revoke, rename, leave, rekey), sync-service.ts (peer table, pull loop, poke,
+                     status, tombstone pruning), team-lease.ts (ExecutionLease, ADR-039),
+                     missed-runs.ts, protocol.ts (Zod schemas of every message)
+  adapters/          sync-server.ts (TCP 47102, first-byte demux → pairing JSON lines | TLS-PSK),
+                     sync-client.ts, udp-announcer.ts (send + listen 47102/udp),
+                     dpapi-protector.ts (PowerShell ProtectedData, stdin), json-lines.ts
+  db/sync/apply.ts   applies remote entries (dependency order, LWW, duplicate rules, cascades,
+                     conflict records) through the same snapshot definitions
+  db/repositories/team-repo.ts   team, sync_peers, sync_conflicts
+```
+Ports added to `application/ports.ts`: `SecretProtector`, `SyncNetwork` (listen/connect/announce),
+so the application layer never imports `node:net|tls|dgram`. Tests use the real adapters on
+127.0.0.1 with distinct ports (two hubs on one machine) and a fake protector.
+
+### 14.2 Data (migration 005)
+| Table | Kind | Columns |
+|---|---|---|
+| `team` | machine-local, singleton | team_id, epoch, key_blob, prev_epoch, prev_key_blob, member_secret_blob, joined_at |
+| `team_members` | replicated `team_member` (uuid = instance id) | id, uuid, name, verifier (SHA-256 of the member secret, hex), joined_at, revoked_at, rev, updated_by_instance, updated_at |
+| `sync_peers` | machine-local | instance_id PK, address, manual_address, last_seen_at, last_sync_at, last_error, pulled_seq (our cursor into their log), acked_seq (their cursor into ours) |
+| `sync_conflicts` | machine-local | id, at, entity, entity_id, label, kind (`concurrent`,`duplicate_mac`,`duplicate_name`), kept JSON, discarded JSON, winner_instance |
+
+### 14.3 Protocol (JSON lines, max 8 MB per line)
+Pairing (plain TCP, first byte `{`):
+`pair.hello {v, instance, name, nonce}` → `pair.start {nonce, pA}` → joiner `pair.finish {pB, cB}`
+→ inviter `pair.confirm {cA, box}` (box = AES-256-GCM of `{teamId, epoch, key, memberSecret,
+inviter}`) → joiner `pair.done {member}` (joiner's name, encrypted). Errors: `pair.error {code}`.
+Sync (TLS-PSK): client `hello {v, instance, epoch, memberSecret, seq}` → server `hello` (same
+fields) → `rekey {epoch, key}` if one side is newer, then close; else client `pull {since}` →
+`changes {entries, seq}`; `poke {}`; `bye`.
+
+### 14.4 Flows
+- **Join (D7-01):** the joiner pulls the full team state (since 0) into memory, then, in one
+  transaction, backs up (before), deletes its replicated rows and log, and applies the state.
+- **Pull:** connect (current epoch; on handshake failure, previous) → hellos → `pull {since:
+  pulled_seq}` → `applyRemote(entries)` in one transaction → `pulled_seq = seq`, `last_sync_at` →
+  the server records `acked_seq = since` for that peer.
+- **Loop:** every 30 s for each online peer (seen ≤ 60 s or manual address); debounced poke 2 s
+  after a local change; "Sincronizar agora" = pull all + poke all.
+- **Discovery:** announce every 15 s to each interface's subnet broadcast (tests: configured
+  loopback targets); listener updates `sync_peers.address/last_seen_at` for the same team hash.
+- **Apply:** order user, team_member, room, tag, device, schedule, schedule_exception,
+  schedule_run, setting, scheduler_pause; LWW by (rev, instance); duplicates per ADR-040; for room/tag
+  tombstones the devices that referenced them are re-logged if their snapshot changed; schedule
+  tombstones tombstone local exceptions/runs; settings service reloads; events `sync` pushed to SSE.
+- **Lamport:** clock = max(clock, max incoming rev) before any local write in the batch.
+- **Tombstone pruning (nightly):** delete `op='delete'` rows older than 30 d whose seq ≤ every
+  non-revoked member's `acked_seq`.
+- **Lease:** ADR-039; online set from `sync_peers.last_seen_at`.
+
+### 14.5 Limits
+Pairing: code 6 digits, 5 min, 5 attempts, one open code; pairing connection 30 s total. Sync:
+handshake 10 s, request 30 s, 64 MB per message; a pull returns every change since the cursor (one
+entry per entity: a team with 5 000 devices is a few MB), so references never span two batches.

@@ -1,9 +1,10 @@
 # UniWake — Specification
 
-Version: **1.2** · Date: 2026-10-08 · Owner: Architect
+Version: **1.3** · Date: 2026-10-09 · Owner: Architect
 History: v0.1 draft → reviewed in `specs/reviews/phase-1-*.md` → consolidated as v1.0 → v1.1
 (Phase 2: AC-001-13/14, FR-004.7) → v1.2 (Phase 6, `specs/reviews/phase-6-*.md`: FR-017 sync-ready
-data from `.agents/07-roadmap-features.md` §A, AC-005-12, FR-012/FR-014 additions).
+data from `.agents/07-roadmap-features.md` §A, AC-005-12, FR-012/FR-014 additions) → v1.3 (Phase 7,
+`specs/reviews/phase-7-*.md`: §6a v1.2 Modo equipe, FR-201..207).
 Sources: `.agents/01-project-brief.md`, `.agents/07-roadmap-features.md`, `specs/constitution.md`, `specs/improvements.md`,
 `specs/decisions.md`.
 
@@ -597,6 +598,150 @@ own subnets.
 - AC-101-03: Given a discovered MAC already registered, Then it is marked "já cadastrado" and
   cannot be added twice.
 
+## 6a. Functional requirements — v1.2 "Modo equipe" (roadmap §B)
+Two (or a few) IT staff each run UniWake on their own PC, which is not always on. Team mode keeps
+their installations in sync over the LAN with no server: whatever one registers, edits or deletes
+reaches the others, and a scheduled wake runs on exactly one of the PCs that are on. Built on
+FR-017. Ports: TCP and UDP **47102** (`bootstrap.syncPort`, machine scope, `config.json`).
+
+### FR-201 Pairing
+**FR-201.1 Code.** On the page "Modo equipe" (admin), "Parear com outro PC" shows a 6-digit code,
+the PC's addresses and a 5-minute countdown. The code is single use, at most one is open at a time,
+and after 5 wrong attempts it is cancelled. While a code is open, the PC announces "pareamento
+aberto" (name only) on the LAN.
+
+**FR-201.2 Joining.** On the other PC, "Entrar em uma equipe" lists PCs with an open pairing on the
+LAN and accepts a typed address (hostname or IP, for other subnets), then the code. The PC that
+**shows** the code keeps its data; the PC that **types** it adopts the team's data: if it has rooms,
+devices, tags, schedules or users, it shows how many, takes an automatic backup and requires typing
+`SUBSTITUIR`. Its users and sessions are replaced by the team's (the operator logs in again with the
+team's accounts). A PC already in a team cannot join another one without leaving first.
+
+**FR-201.3 Key exchange (ADR-036).** The code authenticates a SPAKE2 exchange (RFC 9382 structure,
+RFC 3526 2048-bit group); the code itself never travels. Both sides confirm the derived key before
+anything else is sent; a wrong code derives no key and counts as an attempt. The inviter then sends,
+encrypted with the confirmed key, the team id, the current team key and epoch, and a new per-member
+secret for the joiner.
+
+**FR-201.4 Storage.** The team key (current and previous epoch) and this PC's member secret are
+stored encrypted with Windows DPAPI (LocalMachine scope, ADR-037); never in plain text in the
+database, logs, API responses, backups or exports.
+
+**FR-201.5 Members.** The page lists the team's PCs (name, address, online/offline, last sync,
+pending changes). Admins can rename any PC (team-wide), set a fixed address for a PC in another
+subnet, revoke a PC and leave the team. Revoking rotates the team key (new epoch) and pushes it to
+the remaining online PCs; a PC that was off receives it on its next contact, after proving it is a
+non-revoked member. A revoked PC can no longer sync, and when it learns of its revocation it leaves
+the team (its data stays local).
+
+- AC-201-01: Given "Parear com outro PC", Then a 6-digit code valid for 5 minutes is shown; it
+  cannot be used twice, a second code cancels the first, and after 5 wrong attempts it is cancelled.
+- AC-201-02: Given a wrong code, Then pairing fails with a pt-BR message, no key is stored on either
+  PC, the attempt is counted, and the code's digits appear in no message on the wire.
+- AC-201-03: Given the right code, Then both PCs hold the same team id and key, and each lists the
+  other as a member.
+- AC-201-04: Given a paired PC, Then the team key and member secret exist only as DPAPI-protected
+  blobs (no plain copy in the database or logs).
+- AC-201-05: Given three PCs and one revoked, Then the key epoch increases, the remaining PCs (also
+  one that was off during the revocation) keep syncing, and the revoked PC can no longer pull.
+- AC-201-06: Given a joining PC that has data, Then without the typed confirmation nothing changes;
+  with it, a backup exists and the PC ends with exactly the team's data.
+
+### FR-202 Synchronization
+**FR-202.1 Discovery.** Every 15 s each PC broadcasts a UDP announcement on its subnets with only:
+protocol version, a hash of the team id (never the id or key), its instance id, sync port, latest
+change sequence, and — while pairing is open — its display name. PCs in other subnets are reached by
+the fixed address set on the members page.
+
+**FR-202.2 Transport (ADR-038).** TCP with TLS 1.3 PSK: the PSK is derived from the team key of an
+epoch (HKDF), the PSK identity names instance and epoch; both sides then prove membership with
+their member secret. Wrong key, unknown or revoked member → connection closed, nothing exchanged.
+
+**FR-202.3 Pull.** A PC asks a peer for "changes since N" (its cursor into that peer's log) and
+applies the answer in one database transaction, in dependency order; applying twice changes nothing.
+The request's cursor acknowledges what it already has. Received revisions advance the local Lamport
+clock. Each PC pulls from every online peer every 30 s and asks peers to pull from it 2 s after a
+local change ("Sincronizar agora" does both at once).
+
+**FR-202.4 What travels.** Only replicated entities (FR-017.1) and team members. Machine settings,
+history, jobs, packets, sessions, audit, notices, backups and keys never travel.
+
+**FR-202.5 Tombstones.** A delete travels as a tombstone; a tombstone is pruned only when every
+non-revoked member has acknowledged it and it is older than 30 days.
+
+**FR-202.6 Status.** The members page shows, per PC: online/offline, last successful sync, last
+error in pt-BR, and pending changes (local changes the PC has not acknowledged yet).
+
+- AC-202-01: Given rooms, devices, tags and schedules created on A and others on B, When they sync,
+  Then both PCs hold the same entities with identical snapshots.
+- AC-202-02: Given the same batch applied twice, Then the second application changes nothing; given
+  a failure in the middle of a batch, Then nothing of it is applied.
+- AC-202-03: Given a discovery announcement, Then it carries only the listed fields and the team
+  id hash, never data, the team id or a key.
+- AC-202-04: Given a client with a wrong key or a revoked member secret, Then it is disconnected
+  without receiving any change.
+- AC-202-05: Given a device deleted on A, Then it disappears on B; the tombstone is pruned only after
+  every member acknowledged it.
+- AC-202-06: Given a machine setting and a shared setting changed on A, Then only the shared one
+  reaches B.
+- AC-202-07: Given B off, Then A shows B offline with its pending changes; "Sincronizar agora" with
+  B on brings pending to zero.
+
+### FR-203 Conflicts
+**FR-203.1 Last writer wins.** Two versions of an entity are ordered by (revision, instance id); the
+higher wins on every PC. When the peer had not seen the version it overwrote (concurrent edits), the
+PC records the entity, both values and the winner in "Conflitos resolvidos".
+
+**FR-203.2 Duplicates.** The same MAC registered on two PCs is one machine: the version with the
+smaller UUID is kept and the other is deleted. Two rooms or tags with the same name (or rooms with
+the same code) are both kept and the one with the larger UUID is renamed ("Lab 1 (2)", code
+"LAB1-2"); two users with the same username: the larger UUID becomes "nome-2". Each case is recorded
+in "Conflitos resolvidos". Every PC reaches the same result.
+
+- AC-203-01: Given the same room renamed differently on A and B while apart, When they sync, Then
+  both show the same name and "Conflitos resolvidos" lists the discarded one.
+- AC-203-02: Given the same MAC registered on A and B while apart, Then after sync one device remains
+  on both PCs, and the merge is listed.
+- AC-203-03: Given a room "Lab 1" created on both, Then after sync both PCs have "Lab 1" and
+  "Lab 1 (2)", the same way round.
+
+### FR-204 Scheduling in a team
+**FR-204.1 One executor (ADR-039).** For each due run, the PCs that are on elect one: the PC with the
+smallest instance id among this PC and the members seen in the last 60 s. The others wait; if no run
+record has arrived 90 s after the planned time, the next one executes it (late, `atrasado`). Alone, a
+PC executes. The run record (same identity on every PC) syncs; the schedule log shows which PC ran
+it.
+
+**FR-204.2 Missed runs at start-up.** In team mode, runs missed while this PC was off are not
+executed automatically at start-up (another PC may have run them): after the first sync round (or
+60 s), runs still without a record that fall inside the grace window become a notice
+"Agendamento não executado" with "Ligar agora".
+
+- AC-204-01: Given two PCs on and a due run, Then exactly one wake job exists across both and both
+  show the same run record naming the executor.
+- AC-204-02: Given the elected PC off, Then the other runs the schedule on time.
+- AC-204-03: Given the elected PC on but not executing, Then the other executes within 90 s, once.
+- AC-204-04: Given a team PC that starts 5 minutes after a missed run, Then no wake starts by itself
+  and a notice offers "Ligar agora".
+
+### FR-205 Firewall
+The installer adds the inbound rule "UniWake - Modo equipe" for TCP and UDP 47102, Domain and
+Private profiles only, and removes it on uninstall.
+- AC-205-01 [CI-Win]: Given an installation, Then the rule exists for both protocols with only the
+  Domain and Private profiles; after uninstall it is gone.
+
+### FR-206 Help pages
+"Ajuda › Modo equipe" explains pairing, what is synced, the firewall port, PCs in other subnets and
+the BIOS "Power On by RTC" tip for unattended mornings.
+- AC-206-01: Given the help menu, Then "Modo equipe" opens that page.
+
+### FR-207 Report a problem / suggest a feature
+The "Ajuda" menu has "Relatar problema" and "Sugerir função", which open GitHub's new-issue page with
+the matching issue form and the app version pre-filled (`?template=…&version=…`).
+- AC-207-01: Given version 1.2.0, Then "Relatar problema" links to
+  `https://github.com/BryanWalace/UniWake/issues/new?template=bug_report.yml&version=1.2.0` and
+  "Sugerir função" to the feature form, both opening in a new tab.
+
 ## 7. Non-functional requirements
 | ID | Requirement | Measure / test |
 |---|---|---|
@@ -656,7 +801,7 @@ touch targets ≥ 44 px on primary actions; every list has loading/empty/error s
 - FR-101 (v1.1) and the roadmap.
 - IPv6 Wake-on-LAN; Wake-on-Wireless.
 - Per-room permissions (every operator can wake every room).
-- Syncing several installations (team mode, v1.2); v1.0 only stores data ready for it (FR-017).
+- (v1.0 only) Syncing several installations: team mode is v1.2 (§6a); v1.0 stores data ready for it.
 - Mobile app (the panel is usable on a tablet).
 - TLS on the agent listener (RM-5).
 
