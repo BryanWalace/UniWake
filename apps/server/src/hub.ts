@@ -13,6 +13,8 @@ import { PrepareScriptFile } from './adapters/prepare-script';
 import { createFileLogger } from './adapters/logger';
 import { JsonConfigFile } from './adapters/config-file';
 import { applyPendingRestore, snapshotBefore } from './db/backups';
+import { baselineChangeLog, configureChangeLog } from './db/sync/change-log';
+import { ensureInstance, rotateInstance } from './db/sync/instance';
 import type { HostChecks, TimeCheck } from './application/health/health-service';
 import { LogFileReader } from './adapters/log-reader';
 import { type PanelCertificate, PanelCertificateStore } from './adapters/panel-certificate';
@@ -186,6 +188,14 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       "INSERT INTO system_state (key, value) VALUES ('data.mode', 'real') ON CONFLICT(key) DO UPDATE SET value = 'real'",
     );
   }
+
+  // ADR-031/033: this installation's identity (a restored copy gets a new one, D6-03) and the
+  // change-log baseline for rows written before migration 004.
+  configureChangeLog(db, () => clock.now());
+  if (restored && !restored.failed) rotateInstance(db, clock.now());
+  const instance = ensureInstance(db, clock.now());
+  const baselined = baselineChangeLog(db);
+  logger.info({ instanceId: instance.instanceId, baselined }, 'instance ready');
 
   // Demo mode never constructs the real sender (AC-015-01): no packet can leave the machine, and
   // interfaces, probes and DNS are simulated too (FR-015, R-M3-03).

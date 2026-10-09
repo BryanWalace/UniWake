@@ -1,3 +1,4 @@
+import { verifyChangeLog } from '../src/db/sync/change-log';
 import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -137,6 +138,35 @@ describe('restore (FR-014)', () => {
   });
 });
 
+const UNDO_004 = [
+  'DELETE FROM schema_migrations WHERE version = 4',
+  'DROP TABLE instance',
+  'DROP TABLE change_log',
+  'DROP TABLE machine_settings',
+  'ALTER TABLE settings DROP COLUMN rev',
+  'ALTER TABLE settings DROP COLUMN updated_by_instance',
+  ...[
+    'rooms',
+    'tags',
+    'devices',
+    'schedules',
+    'schedule_exceptions',
+    'users',
+    'schedule_runs',
+  ].flatMap((t) => [
+    `DROP INDEX ${t}_uuid`,
+    `DROP INDEX ${t}_rev`,
+    `ALTER TABLE ${t} DROP COLUMN uuid`,
+    `ALTER TABLE ${t} DROP COLUMN rev`,
+    `ALTER TABLE ${t} DROP COLUMN updated_by_instance`,
+  ]),
+  ...['tags', 'schedule_exceptions', 'users', 'schedule_runs'].map(
+    (t) => `ALTER TABLE ${t} DROP COLUMN updated_at`,
+  ),
+  'ALTER TABLE schedule_runs DROP COLUMN claimed_by_instance',
+  'ALTER TABLE schedule_targets DROP COLUMN ref_uuid',
+].join(';\n');
+
 describe('restore and pre-migration backups on a real hub', () => {
   const silent = pino({ level: 'silent' });
   const config = (dataDir: string): Config => ({
@@ -148,7 +178,7 @@ describe('restore and pre-migration backups on a real hub', () => {
     demo: false,
   });
 
-  it('the next start swaps the database for the backup and audits the restore', async () => {
+  it('the next start swaps the database for the backup and audits the restore (AC-017-08: new identity)', async () => {
     const dir = tempDir();
     let asked = 0;
     const first = await createHub({
@@ -157,6 +187,7 @@ describe('restore and pre-migration backups on a real hub', () => {
       requestRestart: () => asked++,
     });
     first.services.rooms.create({ name: 'Antes' }, ACTOR);
+    const identity = first.services.health.details().instanceId;
     const b = first.services.backups!.create('manual');
     first.services.rooms.create({ name: 'Depois' }, ACTOR);
     first.services.backups!.restore(b.id, backupDateLabel(b.createdAt, 'America/Sao_Paulo'), ACTOR);
@@ -166,6 +197,8 @@ describe('restore and pre-migration backups on a real hub', () => {
     const second = await createHub({ config: config(dir), logger: silent });
     hubs.push(second);
     expect(second.services.rooms.list().map((r) => r.name)).toEqual(['Antes']);
+    expect(second.services.health.details().instanceId).not.toBe(identity);
+    expect(verifyChangeLog(second.db)).toEqual([]);
     expect(second.services.audit.query({ action: 'backup.restore' }).items[0]).toMatchObject({
       actorLabel: 'admin',
       target: `backup:${b.file}`,
@@ -179,8 +212,9 @@ describe('restore and pre-migration backups on a real hub', () => {
   it('a migration on an existing database is preceded by a pre-migration backup', async () => {
     const dir = tempDir();
     const first = await createHub({ config: config(dir), logger: silent });
-    // Undo the newest migration (003_test_wol) so the next start has one pending.
-    first.db.exec('DELETE FROM schema_migrations WHERE version = 3; DROP TABLE test_wol_runs;');
+    // Make the next start see a pending migration: forget 004 and drop what it created that would
+    // collide when it runs again (new tables; added columns are dropped with their indexes).
+    first.db.exec(UNDO_004);
     await first.stop();
     const second = await createHub({ config: config(dir), logger: silent });
     hubs.push(second);

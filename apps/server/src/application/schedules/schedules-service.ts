@@ -37,6 +37,8 @@ export interface TargetRow {
 
 export interface ScheduleRecord {
   id: number;
+  /** Global identity (ADR-031); null only before the start-up baseline logged the row. */
+  uuid?: string | null;
   name: string;
   enabled: boolean;
   weekdays: number;
@@ -52,7 +54,7 @@ export interface ScheduleRecord {
   targets: TargetRow[];
 }
 
-export type ScheduleWrite = Omit<ScheduleRecord, 'id' | 'createdAt' | 'createdBy'>;
+export type ScheduleWrite = Omit<ScheduleRecord, 'id' | 'uuid' | 'createdAt' | 'createdBy'>;
 
 export interface SchedulesRepo {
   list(): ScheduleRecord[];

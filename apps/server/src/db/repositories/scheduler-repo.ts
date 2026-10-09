@@ -5,6 +5,7 @@ import type {
 } from '../../application/schedules/scheduler';
 import type { ScheduleRecord } from '../../application/schedules/schedules-service';
 import type { Db } from '../connection';
+import { changeLog } from '../sync/change-log';
 import { SqliteSchedulesRepo } from './schedules-repo';
 
 const LAST_TICK = 'scheduler.lastTickAt';
@@ -32,12 +33,18 @@ export class SqliteSchedulerRepo implements SchedulerRepo {
     status: StoredRunStatus,
     detail: string | null,
   ): number | null {
-    const r = this.db.run(
-      `INSERT INTO schedule_runs (schedule_id, planned_at, claimed_at, status, detail)
-       VALUES (?, ?, ?, ?, ?) ON CONFLICT(schedule_id, planned_at) DO NOTHING`,
-      [scheduleId, plannedAt, claimedAt, status, detail],
-    );
-    return r.changes === 1 ? r.lastInsertRowid : null;
+    const log = changeLog(this.db);
+    return this.db.transaction(() => {
+      const r = this.db.run(
+        `INSERT INTO schedule_runs (schedule_id, planned_at, claimed_at, status, detail,
+           claimed_by_instance) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(schedule_id, planned_at) DO NOTHING`,
+        [scheduleId, plannedAt, claimedAt, status, detail, log.instanceId()],
+      );
+      if (r.changes !== 1) return null;
+      log.touch('schedule_run', r.lastInsertRowid);
+      return r.lastInsertRowid;
+    });
   }
 
   finish(
@@ -52,6 +59,7 @@ export class SqliteSchedulerRepo implements SchedulerRepo {
       jobId,
       runId,
     ]);
+    changeLog(this.db).touch('schedule_run', runId);
   }
 
   runInfo(runId: number) {
@@ -67,7 +75,13 @@ export class SqliteSchedulerRepo implements SchedulerRepo {
    * only a run without a job is a failure.
    */
   failStale(before: number): number {
-    return this.db.run(
+    const ids = this.db
+      .all<{ id: number }>(
+        "SELECT id FROM schedule_runs WHERE status = 'executando' AND claimed_at <= ?",
+        [before],
+      )
+      .map((r) => r.id);
+    const n = this.db.run(
       `UPDATE schedule_runs SET
          job_id = (SELECT j.id FROM wake_jobs j WHERE j.schedule_run_id = schedule_runs.id ORDER BY j.id LIMIT 1),
          status = CASE
@@ -83,6 +97,8 @@ export class SqliteSchedulerRepo implements SchedulerRepo {
        WHERE status = 'executando' AND claimed_at <= ?`,
       [before],
     ).changes;
+    changeLog(this.db).touchAll('schedule_run', ids);
+    return n;
   }
 
   private getState(key: string): string | null {
@@ -117,6 +133,9 @@ export class SqliteSchedulerRepo implements SchedulerRepo {
   }
 
   setPause(p: PauseState | null): void {
-    this.setState(PAUSE, p === null ? null : JSON.stringify(p));
+    this.db.transaction(() => {
+      this.setState(PAUSE, p === null ? null : JSON.stringify(p));
+      changeLog(this.db).touchPause();
+    });
   }
 }

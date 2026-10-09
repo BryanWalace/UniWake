@@ -1,3 +1,4 @@
+import { changeLog } from '../src/db/sync/change-log';
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
@@ -168,6 +169,7 @@ describe('login and sessions (constitution §6.2, plan §6.4)', () => {
     const id = await h.createUser('ana', 'operator');
     const cookie = await h.login('ana');
     h.services.db.run('UPDATE users SET enabled = 0 WHERE id = ?', [id]);
+    changeLog(h.services.db).touch('user', id);
     expect((await h.inject({ url: '/api/auth/me', cookie })).statusCode).toBe(401);
     const r = await h.app.inject({
       method: 'POST',

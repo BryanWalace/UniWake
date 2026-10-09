@@ -1,5 +1,6 @@
 import type { RoomRow, RoomsRepo, RoomWrite } from '../../application/rooms/rooms-service';
 import type { Db } from '../connection';
+import { changeLog } from '../sync/change-log';
 
 interface Row {
   id: number;
@@ -82,11 +83,13 @@ export class SqliteRoomsRepo implements RoomsRepo {
   }
 
   insert(r: RoomWrite, now: number): number {
-    return this.db.run(
+    const id = this.db.run(
       `INSERT INTO rooms (name, code, block, floor, color, notes, directed_broadcast, batch_size,
          batch_delay_ms, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [...params(r), now, now],
     ).lastInsertRowid;
+    changeLog(this.db).touch('room', id);
+    return id;
   }
 
   update(id: number, r: RoomWrite, now: number): void {
@@ -95,10 +98,23 @@ export class SqliteRoomsRepo implements RoomsRepo {
          directed_broadcast = ?, batch_size = ?, batch_delay_ms = ?, updated_at = ? WHERE id = ?`,
       [...params(r), now, id],
     );
+    changeLog(this.db).touch('room', id);
   }
 
+  /** ADR-031 §5/§8: tombstone, targets lose the local id, devices are re-logged without the room. */
   delete(id: number): void {
-    this.db.run('DELETE FROM rooms WHERE id = ?', [id]);
+    this.db.transaction(() => {
+      const log = changeLog(this.db);
+      const devices = this.db
+        .all<{ id: number }>('SELECT id FROM devices WHERE room_id = ?', [id])
+        .map((d) => d.id);
+      log.tombstone('room', id);
+      this.db.run("UPDATE schedule_targets SET ref_id = NULL WHERE type = 'room' AND ref_id = ?", [
+        id,
+      ]);
+      this.db.run('DELETE FROM rooms WHERE id = ?', [id]);
+      log.touchAll('device', devices);
+    });
   }
 
   schedulesReferencing(id: number): { id: number; name: string }[] {

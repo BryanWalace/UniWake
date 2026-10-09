@@ -68,8 +68,27 @@ export interface SchedulerRepo {
   setPause(p: PauseState | null): void;
 }
 
+/**
+ * ADR-034: decides whether this installation handles (executes or logs) a due occurrence. With
+ * several installations online, v1.2's lease elects one; it keeps its own state current in the
+ * background so this question is answered synchronously inside the tick.
+ */
+export interface ExecutionLease {
+  shouldHandle(o: {
+    scheduleId: number;
+    scheduleUuid: string | null;
+    plannedAt: number;
+    now: number;
+  }): boolean;
+}
+
+/** A single installation always handles its runs (v1.0). */
+export const SOLO_LEASE: ExecutionLease = { shouldHandle: () => true };
+
 export interface SchedulerDeps {
   repo: SchedulerRepo;
+  /** Defaults to {@link SOLO_LEASE}. */
+  lease?: ExecutionLease;
   refs: TargetRefs;
   startWake: (req: WakeRequestParams, actor: Actor, opts: StartOptions) => StartResult;
   settings: SettingsService;
@@ -148,7 +167,16 @@ export class Scheduler {
           pausedAt: (at) =>
             pause !== null && at >= pause.since && (pause.resumeAt === null || at < pause.resumeAt),
         });
+        const lease = this.d.lease ?? SOLO_LEASE;
         for (const decision of decisions) {
+          const handle = lease.shouldHandle({
+            scheduleId: s.id,
+            scheduleUuid: s.uuid ?? null,
+            plannedAt: decision.occurrence.at,
+            now,
+          });
+          // Another installation handles it; its run record arrives by sync (ADR-034).
+          if (!handle) continue;
           if (decision.action === 'log') {
             const id = this.d.repo.claim(
               s.id,

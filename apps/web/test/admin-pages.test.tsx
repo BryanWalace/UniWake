@@ -58,6 +58,16 @@ describe('settings form (FR-016)', () => {
     }
   });
 
+  it('AC-017-09: machine-specific settings, and only those, are marked "Somente neste PC"', async () => {
+    settingsApi();
+    renderApp('/configuracoes');
+    await screen.findByRole('heading', { level: 1, name: 'Configurações' });
+    const marked = screen.getAllByText(/^Somente neste PC/);
+    const machine = SETTING_KEYS.filter((k) => SETTING_DEFS[k].meta.scope === 'machine');
+    // One note per machine-scope control, none on shared ones.
+    expect(marked).toHaveLength(machine.length);
+  });
+
   it('converts values between inputs and settings', () => {
     expect(toInput('wake.ports', [9, 7])).toBe('9, 7');
     expect(fromInput('wake.ports', '9, 7')).toEqual([9, 7]);

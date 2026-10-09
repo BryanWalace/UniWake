@@ -75,6 +75,7 @@ import { SqliteTagsRepo } from './db/repositories/tags-repo';
 import { SqliteTestWolRepo } from './db/repositories/test-wol-repo';
 import { SqliteUpdateAutoSkip } from './db/repositories/update-skip-repo';
 import { SqliteUpdateStateStore } from './db/repositories/update-state-repo';
+import { changeLog, configureChangeLog } from './db/sync/change-log';
 import type { HttpServices } from './http/context';
 
 export interface ServicePorts {
@@ -145,6 +146,8 @@ export function createServices(
   opts: ServiceOptions = {},
 ): Services {
   const tx = <T>(fn: () => T): T => db.transaction(fn);
+  // ADR-031: change-log times come from the hub clock (fake in tests).
+  configureChangeLog(db, () => clock.now());
   const audit = new AuditService(new SqliteAuditRepo(db), clock);
   const settings = new SettingsService(new SqliteSettingsRepo(db), clock);
   const usersRepo = new SqliteUsersRepo(db);
@@ -340,6 +343,7 @@ export function createServices(
     clock,
     logger: ports.logger.child({ module: 'health' }),
     version: opts.version ?? '0.0.0-dev',
+    instanceId: () => changeLog(db).instanceId(),
     startedAt: clock.now(),
     dbOk: () => {
       try {

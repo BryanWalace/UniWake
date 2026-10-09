@@ -3,6 +3,7 @@
  * pass (`npm run test:perf`): inside the parallel coverage run, scheduler noise alone exceeds them.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { baselineChangeLog } from '../../src/db/sync/change-log';
 import { apiHarness, type ApiHarness } from '../helpers/api';
 
 let h: ApiHarness;
@@ -34,6 +35,8 @@ beforeAll(async () => {
       db.run('INSERT INTO device_tags (device_id, tag_id) VALUES (?, ?)', [id, tag]);
     }
   });
+  // Bulk fixture written with raw SQL, like data from before migration 004 (ADR-031 §7).
+  baselineChangeLog(db);
 });
 
 afterAll(async () => {
@@ -86,5 +89,24 @@ describe('uptime budget (NFR-01)', () => {
       }
     });
     expect(time(() => h.services.dashboard.uptime({ roomId: room, days: 180 }))).toBeLessThan(150);
+  });
+});
+
+describe('change-log cost at 500 devices (D6-05)', () => {
+  it('logging a bulk move of 500 devices stays under 250 ms; one edit under 5 ms', () => {
+    const ids = h.services.devices.list({ all: true, page: 1, pageSize: 50 }) as { id: number }[];
+    const rooms = h.services.rooms.list();
+    let flip = 0;
+    const bulk = time(() =>
+      h.services.devices.bulk(
+        { deviceIds: ids.map((d) => d.id), action: 'move', roomId: rooms[flip++ % 2]!.id },
+        ACTOR,
+      ),
+    );
+    expect(bulk).toBeLessThan(250);
+    const one = time(() =>
+      h.services.devices.update(ids[0]!.id, { notes: `nota ${flip++}` }, ACTOR),
+    );
+    expect(one).toBeLessThan(5);
   });
 });

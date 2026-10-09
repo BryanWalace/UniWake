@@ -23,8 +23,15 @@ export type SettingsGroup = keyof typeof SETTINGS_GROUPS;
 export type SettingInput =
   'number' | 'boolean' | 'text' | 'select' | 'time' | 'timezone' | 'number-list' | 'text-list';
 
+/**
+ * ADR-032: `machine` settings belong to this PC (interfaces, addresses, ports, update and backup
+ * schedule) and live in `machine_settings`, never synced or exported; `shared` ones are team policy.
+ */
+export type SettingScope = 'shared' | 'machine';
+
 export interface SettingMeta {
   group: SettingsGroup;
+  scope: SettingScope;
   label: string;
   help?: string;
   input: SettingInput;
@@ -73,6 +80,7 @@ export const SETTING_DEFS = {
   // Wake
   'wake.confirmThreshold': def(int(1, 5000), 40, {
     group: 'wake',
+    scope: 'shared',
     label: 'Pedir confirmação acima de',
     help: 'Ligações com mais máquinas que isso, em mais de uma sala ou em "Todos" pedem confirmação.',
     input: 'number',
@@ -82,6 +90,7 @@ export const SETTING_DEFS = {
   }),
   'wake.ports': def(z.array(port).min(1).max(4), [9, 7], {
     group: 'wake',
+    scope: 'shared',
     label: 'Portas UDP do pacote mágico',
     input: 'number-list',
     min: 1,
@@ -89,6 +98,7 @@ export const SETTING_DEFS = {
   }),
   'wake.repeat': def(int(1, 10), 3, {
     group: 'wake',
+    scope: 'shared',
     label: 'Repetições de cada pacote',
     input: 'number',
     min: 1,
@@ -96,6 +106,7 @@ export const SETTING_DEFS = {
   }),
   'wake.repeatIntervalMs': def(int(0, 2000), 100, {
     group: 'wake',
+    scope: 'shared',
     label: 'Intervalo entre repetições',
     input: 'number',
     unit: 'ms',
@@ -104,6 +115,7 @@ export const SETTING_DEFS = {
   }),
   'wake.batchSize': def(int(1, 500), 10, {
     group: 'wake',
+    scope: 'shared',
     label: 'Máquinas por lote (padrão)',
     help: 'Ligar aos poucos evita pico de energia. Cada sala pode ter seu próprio valor.',
     input: 'number',
@@ -112,6 +124,7 @@ export const SETTING_DEFS = {
   }),
   'wake.batchDelaySeconds': def(int(0, 600), 5, {
     group: 'wake',
+    scope: 'shared',
     label: 'Espera entre lotes (padrão)',
     input: 'number',
     unit: 's',
@@ -120,6 +133,7 @@ export const SETTING_DEFS = {
   }),
   'wake.maxDevicesPerStep': def(int(1, 1000), 30, {
     group: 'wake',
+    scope: 'shared',
     label: 'Máximo de máquinas por etapa (todas as salas)',
     input: 'number',
     min: 1,
@@ -127,6 +141,7 @@ export const SETTING_DEFS = {
   }),
   'wake.verifyIntervalSeconds': def(int(5, 300), 15, {
     group: 'wake',
+    scope: 'shared',
     label: 'Verificar se ligou a cada',
     input: 'number',
     unit: 's',
@@ -135,6 +150,7 @@ export const SETTING_DEFS = {
   }),
   'wake.verifyWindowMinutes': def(int(1, 60), 5, {
     group: 'wake',
+    scope: 'shared',
     label: 'Tempo máximo para considerar que não ligou',
     input: 'number',
     unit: 'min',
@@ -143,17 +159,20 @@ export const SETTING_DEFS = {
   }),
   'wake.dryRun': def(z.boolean(), false, {
     group: 'wake',
+    scope: 'machine',
     label: 'Modo simulação (não envia pacotes)',
     input: 'boolean',
   }),
   'wake.interfaces': def(z.array(ipv4).max(16), [], {
     group: 'wake',
+    scope: 'machine',
     label: 'Placas de rede usadas',
     help: 'Vazio = automático (placas com gateway padrão).',
     input: 'text-list',
   }),
   'wake.rateLimitPerMinute': def(int(1, 1000), 30, {
     group: 'wake',
+    scope: 'shared',
     label: 'Limite de ligações por usuário',
     input: 'number',
     unit: 'por minuto',
@@ -163,6 +182,7 @@ export const SETTING_DEFS = {
   // Monitor
   'monitor.intervalSeconds': def(int(10, 3600), 60, {
     group: 'monitor',
+    scope: 'shared',
     label: 'Intervalo entre varreduras',
     input: 'number',
     unit: 's',
@@ -171,6 +191,7 @@ export const SETTING_DEFS = {
   }),
   'monitor.concurrency': def(int(1, 512), 64, {
     group: 'monitor',
+    scope: 'shared',
     label: 'Verificações simultâneas',
     input: 'number',
     min: 1,
@@ -178,6 +199,7 @@ export const SETTING_DEFS = {
   }),
   'monitor.icmpTimeoutMs': def(int(100, 10000), 1000, {
     group: 'monitor',
+    scope: 'shared',
     label: 'Tempo limite do ping',
     input: 'number',
     unit: 'ms',
@@ -186,6 +208,7 @@ export const SETTING_DEFS = {
   }),
   'monitor.tcpTimeoutMs': def(int(100, 10000), 800, {
     group: 'monitor',
+    scope: 'shared',
     label: 'Tempo limite da verificação TCP',
     input: 'number',
     unit: 'ms',
@@ -194,6 +217,7 @@ export const SETTING_DEFS = {
   }),
   'monitor.tcpPorts': def(z.array(port).max(10), [135, 445, 3389], {
     group: 'monitor',
+    scope: 'shared',
     label: 'Portas TCP verificadas',
     help: 'Usadas quando o ping é bloqueado pelo firewall do Windows.',
     input: 'number-list',
@@ -202,6 +226,7 @@ export const SETTING_DEFS = {
   }),
   'monitor.offlineAfter': def(int(1, 10), 2, {
     group: 'monitor',
+    scope: 'shared',
     label: 'Considerar desligada após',
     input: 'number',
     unit: 'varreduras sem resposta',
@@ -210,6 +235,7 @@ export const SETTING_DEFS = {
   }),
   'monitor.dnsCacheMinutes': def(int(0, 1440), 5, {
     group: 'monitor',
+    scope: 'shared',
     label: 'Cache de nomes (DNS)',
     input: 'number',
     unit: 'min',
@@ -219,6 +245,7 @@ export const SETTING_DEFS = {
   // Scheduler
   'scheduler.graceMinutes': def(int(0, 240), 15, {
     group: 'scheduler',
+    scope: 'shared',
     label: 'Tolerância para agendamentos atrasados',
     help: 'Se o serviço estava parado no horário, a ligação ainda acontece dentro deste prazo.',
     input: 'number',
@@ -228,12 +255,14 @@ export const SETTING_DEFS = {
   }),
   'scheduler.timezone': def(timeZoneSchema, 'America/Sao_Paulo', {
     group: 'scheduler',
+    scope: 'shared',
     label: 'Fuso horário padrão',
     input: 'timezone',
   }),
   // Update
   'update.mode': def(z.enum(['auto', 'manual']), 'auto', {
     group: 'update',
+    scope: 'machine',
     label: 'Atualização',
     input: 'select',
     options: [
@@ -243,16 +272,19 @@ export const SETTING_DEFS = {
   }),
   'update.windowStart': def(timeOfDaySchema, '03:00', {
     group: 'update',
+    scope: 'machine',
     label: 'Início da janela de manutenção',
     input: 'time',
   }),
   'update.windowEnd': def(timeOfDaySchema, '05:00', {
     group: 'update',
+    scope: 'machine',
     label: 'Fim da janela de manutenção',
     input: 'time',
   }),
   'update.checkIntervalHours': def(int(1, 168), 6, {
     group: 'update',
+    scope: 'machine',
     label: 'Verificar atualizações a cada',
     input: 'number',
     unit: 'h',
@@ -262,6 +294,7 @@ export const SETTING_DEFS = {
   // Security
   'security.sessionIdleHours': def(int(1, 72), 12, {
     group: 'security',
+    scope: 'shared',
     label: 'Encerrar sessão inativa após',
     input: 'number',
     unit: 'h',
@@ -270,6 +303,7 @@ export const SETTING_DEFS = {
   }),
   'security.sessionAbsoluteDays': def(int(1, 30), 7, {
     group: 'security',
+    scope: 'shared',
     label: 'Duração máxima da sessão',
     input: 'number',
     unit: 'dias',
@@ -278,6 +312,7 @@ export const SETTING_DEFS = {
   }),
   'security.loginRatePerMinute': def(int(1, 1000), 20, {
     group: 'security',
+    scope: 'shared',
     label: 'Tentativas de login por IP',
     input: 'number',
     unit: 'por minuto',
@@ -287,6 +322,7 @@ export const SETTING_DEFS = {
   // Panel
   'panel.lanEnabled': def(z.boolean(), false, {
     group: 'panel',
+    scope: 'machine',
     label: 'Permitir acesso ao painel pela rede (HTTPS)',
     help: 'Desligado = o painel só abre neste computador.',
     input: 'boolean',
@@ -294,6 +330,7 @@ export const SETTING_DEFS = {
   }),
   'panel.lanAddress': def(z.union([z.literal(''), ipv4]), '', {
     group: 'panel',
+    scope: 'machine',
     label: 'Endereço de rede do painel',
     help: 'Endereço IPv4 deste computador na rede da faculdade (ex.: 10.0.3.5).',
     input: 'text',
@@ -302,6 +339,7 @@ export const SETTING_DEFS = {
   // Enrollment
   'enrollment.tokenExpiryHours': def(int(1, 168), 8, {
     group: 'enrollment',
+    scope: 'shared',
     label: 'Validade do código de cadastro',
     input: 'number',
     unit: 'h',
@@ -310,6 +348,7 @@ export const SETTING_DEFS = {
   }),
   'enrollment.tokenMaxUses': def(int(1, 10000), 100, {
     group: 'enrollment',
+    scope: 'shared',
     label: 'Usos por código de cadastro',
     input: 'number',
     min: 1,
@@ -317,6 +356,7 @@ export const SETTING_DEFS = {
   }),
   'enrollment.hubAddress': def(z.union([z.literal(''), ipv4]), '', {
     group: 'enrollment',
+    scope: 'machine',
     label: 'Endereço usado pelas máquinas para se cadastrar',
     help: 'Vazio = placa com gateway padrão.',
     input: 'text',
@@ -324,6 +364,7 @@ export const SETTING_DEFS = {
   // Retention
   'retention.historyDays': def(int(7, 3650), 180, {
     group: 'retention',
+    scope: 'shared',
     label: 'Histórico de status',
     input: 'number',
     unit: 'dias',
@@ -332,6 +373,7 @@ export const SETTING_DEFS = {
   }),
   'retention.packetLogDays': def(int(1, 365), 30, {
     group: 'retention',
+    scope: 'shared',
     label: 'Registro de pacotes',
     input: 'number',
     unit: 'dias',
@@ -340,6 +382,7 @@ export const SETTING_DEFS = {
   }),
   'retention.auditDays': def(int(30, 3650), 365, {
     group: 'retention',
+    scope: 'shared',
     label: 'Auditoria',
     input: 'number',
     unit: 'dias',
@@ -349,11 +392,13 @@ export const SETTING_DEFS = {
   // Backup
   'backup.time': def(timeOfDaySchema, '02:30', {
     group: 'backup',
+    scope: 'machine',
     label: 'Horário do backup diário',
     input: 'time',
   }),
   'backup.retention': def(int(1, 365), 14, {
     group: 'backup',
+    scope: 'machine',
     label: 'Backups diários mantidos',
     input: 'number',
     min: 1,
@@ -362,6 +407,7 @@ export const SETTING_DEFS = {
   // Bootstrap (config.json)
   'bootstrap.panelPort': def(port, 47100, {
     group: 'bootstrap',
+    scope: 'machine',
     label: 'Porta do painel',
     input: 'number',
     min: 1,
@@ -371,6 +417,7 @@ export const SETTING_DEFS = {
   }),
   'bootstrap.agentPort': def(port, 47101, {
     group: 'bootstrap',
+    scope: 'machine',
     label: 'Porta de cadastro das máquinas',
     input: 'number',
     min: 1,
@@ -380,6 +427,7 @@ export const SETTING_DEFS = {
   }),
   'bootstrap.logLevel': def(z.enum(['debug', 'info', 'warn', 'error']), 'info', {
     group: 'bootstrap',
+    scope: 'machine',
     label: 'Nível de log',
     input: 'select',
     options: [
