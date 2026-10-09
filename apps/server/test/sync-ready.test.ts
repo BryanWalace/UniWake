@@ -442,3 +442,44 @@ describe('migration 004 on a populated v1.0 database (D6-01)', () => {
     expect(s.settings.get('wake.repeat')).toBe(4);
   });
 });
+
+describe('M10 break-it', () => {
+  it('a failure while logging rolls the write back with it (D6-02)', () => {
+    const db = testDb();
+    const clock = new FakeClock(T0);
+    const s = createServices(db, clock, fakePorts(clock));
+    worlds.push(s);
+    const original = db.run.bind(db);
+    db.run = (sql, params) => {
+      if (sql.includes('INSERT INTO change_log')) throw new Error('disk I/O error');
+      return original(sql, params);
+    };
+    expect(() => s.rooms.create({ name: 'Lab 9' }, ACTOR)).toThrow('disk I/O error');
+    db.run = original;
+    expect(db.all('SELECT * FROM rooms')).toEqual([]);
+    expect(db.all('SELECT * FROM audit_log')).toEqual([]);
+    expect(verifyChangeLog(db)).toEqual([]);
+  });
+
+  it('touching a row that does not exist and tombstoning a never-logged row are no-ops', () => {
+    const db = testDb();
+    changeLog(db).touch('room', 999);
+    const id = db.run("INSERT INTO tags (name, color) VALUES ('x', '#000000')").lastInsertRowid;
+    changeLog(db).tombstone('tag', id);
+    expect(db.all('SELECT * FROM change_log')).toEqual([]);
+  });
+
+  it('the Lamport clock only moves forward, across entities and deletes', () => {
+    const db = testDb();
+    const log = changeLog(db);
+    const id = db.run("INSERT INTO tags (name, color) VALUES ('x', '#000000')").lastInsertRowid;
+    log.touch('tag', id);
+    log.touch('tag', id);
+    const r1 = db.get<{ rev: number }>('SELECT rev FROM change_log')!.rev;
+    log.tombstone('tag', id);
+    const r2 = db.get<{ rev: number; op: string }>('SELECT rev, op FROM change_log')!;
+    expect(r1).toBe(2);
+    expect(r2).toEqual({ rev: 3, op: 'delete' });
+    expect(readInstance(db)!.clock).toBe(3);
+  });
+});

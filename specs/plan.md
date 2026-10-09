@@ -198,8 +198,7 @@ MUST be added here):
 
 Machine-local: every other table, plus users' `failed_logins`/`last_failed_at` and
 `system_state` keys other than the pause. Code: `apps/server/src/db/sync/` (`entities.ts`
-snapshot builders, `change-log.ts` touch/tombstone/baseline/verify, `instance.ts`); the domain
-helper `uuid-v5.ts` is pure. Writes keep their existing SQL; `touch` fills `uuid`, `rev`,
+snapshot builders, `change-log.ts` touch/tombstone/baseline/verify, `instance.ts`, `uuid.ts` name-based run UUIDs). Writes keep their existing SQL; `touch` fills `uuid`, `rev`,
 `updated_by_instance` (and `updated_at` on tables whose repositories did not set it).
 
 ### 5.1 Database performance rules (synchronous driver)

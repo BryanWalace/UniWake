@@ -1,3 +1,4 @@
+import { verifyChangeLog } from '../src/db/sync/change-log';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { HubEvent } from '../src/application/events-bus';
 import { ProbeQueue } from '../src/application/monitor/probe-queue';
@@ -22,6 +23,8 @@ const worlds: World[] = [];
 afterEach(async () => {
   for (const w of worlds.splice(0)) {
     await w.s.monitor.stop();
+    // R6-01: whatever the test wrote through services is in the change log.
+    expect(verifyChangeLog(w.s.db)).toEqual([]);
     w.s.db.close();
   }
 });

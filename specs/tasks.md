@@ -262,9 +262,9 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M10-T04 | Settings scope (`shared`/`machine`) in the registry; machine keys in `machine_settings`; "Somente neste PC" mark in the settings page. | FR-017.4; ADR-032 | AC-017-05, AC-017-09 | — |
 | [x] M10-T05 | Scheduler `ExecutionLease` port + `SoloLease`; runs record `claimed_by_instance`. | FR-017.5; ADR-034 | AC-017-06 | — |
 | [x] M10-T06 | Hub start-up: ensure instance, baseline; restore rotates the instance; health shows the identifier. | FR-012; FR-014; ADR-033 | AC-017-01, AC-017-08 | — |
-| [ ] M10-D | Debug break-it pass (sync-ready data): migration on a populated copy, crash between write and log (same transaction), bulk operations at 500 devices, demo seed, restore. | tasks §Break-it | regressions | findings filed |
-| [ ] M10-R | Code review → `specs/reviews/M10-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
-| [ ] M10-A | Architect conformance → `specs/reviews/M10-architect.md`. | — | — | v1.2 may start |
+| [x] M10-D | Debug break-it pass (sync-ready data): migration on a populated copy, crash between write and log (same transaction), bulk operations at 500 devices, demo seed, restore. | tasks §Break-it | regressions | findings filed |
+| [x] M10-R | Code review → `specs/reviews/M10-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+| [x] M10-A | Architect conformance → `specs/reviews/M10-architect.md`. | — | — | v1.2 may start |
 
 ## Phase 5 — Validate (lead: Debug)
 | ID | Task | Refs | Evidence |

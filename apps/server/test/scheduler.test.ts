@@ -1,3 +1,4 @@
+import { verifyChangeLog } from '../src/db/sync/change-log';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Scheduler } from '../src/application/schedules/scheduler';
 import { SqliteSchedulerRepo } from '../src/db/repositories/scheduler-repo';
@@ -19,6 +20,8 @@ afterEach(async () => {
     s.scheduler.stop();
     for (let i = 0; i < 400 && s.runner.activeCount > 0; i++)
       await (s.clock as FakeClock).advanceAsync(5_000);
+    // R6-01: whatever the test wrote through services is in the change log.
+    expect(verifyChangeLog(s.db)).toEqual([]);
     s.db.close();
   }
 });
