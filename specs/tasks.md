@@ -324,8 +324,8 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | ID | Task | Refs | Tests | Done when |
 |---|---|---|---|---|
 | [x] M15-T01 | "Ajuda" menu: "Relatar problema" / "Sugerir função" with version pre-filled. | FR-207 | AC-207-01 | — |
-| [ ] M15-T02 | Issue forms (bug, feature, question, config), SECURITY.md, CONTRIBUTING.md (labels). | owner item 5 | yaml lint test | — |
-| [ ] M15-T03 | README (pt-BR) rewritten to the current product, planned items marked "planejado". | owner item 4 | — | reviewed against code |
+| [x] M15-T02 | Issue forms (bug, feature, question, config), SECURITY.md, CONTRIBUTING.md (labels). | owner item 5 | yaml lint test | — |
+| [x] M15-T03 | README (pt-BR) rewritten to the current product, planned items marked "planejado". | owner item 4 | — | reviewed against code |
 
 ## Phase 8 — Validate v1.2 (lead: Debug)
 | ID | Task | Refs | Evidence |

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Vulnerabilidade de segurança (não abra issue pública)
+    url: https://github.com/BryanWalace/UniWake/security/advisories/new
+    about: Relate de forma privada pelo GitHub, como explicado no SECURITY.md.
+  - name: Política de segurança (SECURITY.md)
+    url: https://github.com/BryanWalace/UniWake/blob/main/SECURITY.md
+    about: O que reportar, como e o que esperar da resposta.

@@ -5,7 +5,7 @@
 **Ligue, monitore e agende os computadores dos laboratórios da faculdade, direto do navegador.**
 
 Wake-on-LAN por sala, etiqueta ou máquina · Painel em tempo real · Agendamentos com feriados ·
-Cadastro automático das máquinas · Atualização automática
+Cadastro automático das máquinas · Descoberta na rede · Modo equipe · Atualização automática
 
 [![Baixar para Windows](https://img.shields.io/badge/Baixar%20para%20Windows-v1.0.0--rc.2-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/BryanWalace/UniWake/releases/download/v1.0.0-rc.2/UniWake-Setup.exe)
 
@@ -16,8 +16,9 @@ Cadastro automático das máquinas · Atualização automática
 
 [Todas as versões](https://github.com/BryanWalace/UniWake/releases) ·
 [Instalação](#-instalação) ·
-[Primeiros passos](#-primeiros-passos) ·
-[Solução de problemas](#-solução-de-problemas)
+[Modo equipe](#-modo-equipe-dois-ou-mais-pcs-da-ti) ·
+[Solução de problemas](#-solução-de-problemas) ·
+[Relatar problema](#-relatar-problemas-e-sugerir-funções)
 
 </div>
 
@@ -27,30 +28,42 @@ Cadastro automático das máquinas · Atualização automática
 
 - [Visão geral](#-visão-geral)
 - [Funcionalidades](#-funcionalidades)
+- [Capturas de tela](#-capturas-de-tela)
 - [Como funciona](#-como-funciona)
 - [Requisitos](#-requisitos)
 - [Instalação](#-instalação)
 - [Primeiros passos](#-primeiros-passos)
-- [Preparar as máquinas](#-preparar-as-máquinas)
+- [Preparar as máquinas (BIOS + prepare-target.ps1)](#-preparar-as-máquinas)
+- [Salas e etiquetas](#-salas-e-etiquetas)
+- [Agendamentos](#-agendamentos)
+- [Descobrir na rede](#-descobrir-na-rede)
+- [Modo equipe (dois ou mais PCs da TI)](#-modo-equipe-dois-ou-mais-pcs-da-ti)
 - [Uso diário](#-uso-diário)
 - [Atualizações](#-atualizações)
 - [Backups e restauração](#-backups-e-restauração)
 - [Segurança](#-segurança)
 - [Solução de problemas](#-solução-de-problemas)
+- [Roadmap](#-roadmap)
+- [Relatar problemas e sugerir funções](#-relatar-problemas-e-sugerir-funções)
 - [Desinstalar](#-desinstalar)
 - [Perguntas frequentes](#-perguntas-frequentes)
 - [Para desenvolvedores](#-para-desenvolvedores)
+- [Licença](#-licença)
 
 ---
 
 ## 🔭 Visão geral
 
-O UniWake roda como um **serviço do Windows** em um computador da rede (o "computador do
-UniWake") e é usado pelo **navegador**. A equipe de TI liga uma sala inteira com um clique, vê em
-tempo real quem acordou, agenda as aulas da semana e descobre por que uma máquina não liga.
+O UniWake roda como um **serviço do Windows** no PC de quem cuida da TI e é usado pelo
+**navegador**. A equipe liga uma sala inteira com um clique, vê em tempo real quem acordou, agenda
+as aulas da semana e descobre por que uma máquina não liga.
 
-> Sem servidor dedicado, sem banco de dados para instalar, sem nada a configurar nas máquinas além
-> de um único comando.
+Não existe servidor dedicado: se a TI tem mais de uma pessoa (por exemplo, turnos da manhã e da
+tarde), cada uma instala o UniWake no próprio PC e o **Modo equipe** mantém os dois com o mesmo
+cadastro, sincronizando pela rede local.
+
+> Sem servidor, sem banco de dados para instalar, sem nada a configurar nas máquinas além de um
+> único comando.
 
 ## ✨ Funcionalidades
 
@@ -61,11 +74,27 @@ tempo real quem acordou, agenda as aulas da semana e descobre por que uma máqui
 | 🗓️ | **Agendamentos** | Dias da semana e horário, feriados, pausa para férias e o "Resultado da manhã". |
 | 🛠️ | **Preparar máquinas** | Um comando, conferido por SHA-256, ajusta a placa de rede, desliga a Inicialização Rápida, libera o ping e cadastra a máquina na sala. |
 | 🔎 | **Descobrir na rede** | Encontra os computadores da rede e cadastra vários de uma vez, com o fabricante de cada placa. |
+| 🤝 | **Modo equipe** | Dois ou mais PCs da TI pareados por um código de 6 dígitos mantêm o mesmo cadastro; cada agendamento roda em um só PC ligado. |
 | 🩺 | **Diagnóstico** | Taxa de sucesso, "parou de acordar", outra sub-rede, **Testar WoL** e páginas de ajuda. |
 | 👥 | **Usuários e auditoria** | Perfis administrador e operador; tudo fica registrado e pode ser exportado em CSV. |
 | 💾 | **Backups** | Cópia diária automática, antes de cada atualização, e restauração pelo painel. |
 | 🔄 | **Atualização automática** | Na janela de manutenção, com volta automática à versão anterior se algo der errado. |
 | 🎮 | **Modo demonstração** | Uma rede de laboratórios simulada para conhecer o sistema sem enviar nada. |
+
+> [!NOTE]
+> O **Modo equipe** faz parte da versão **1.2**. A versão publicada para download hoje é a
+> **1.0.0-rc.2** (sem Modo equipe); a 1.2 sai quando for validada nos computadores da faculdade.
+
+## 📸 Capturas de tela
+
+> *Espaço reservado:* as imagens serão adicionadas em `docs/screenshots/`.
+
+| Tela | Imagem |
+|---|---|
+| Painel com as salas e os contadores | *em breve: `docs/screenshots/painel.png`* |
+| Ligar uma sala e acompanhar ao vivo | *em breve: `docs/screenshots/ligar-sala.gif`* |
+| Preparar máquinas (comando de cadastro) | *em breve: `docs/screenshots/preparar.png`* |
+| Modo equipe (pareamento e PCs da equipe) | *em breve: `docs/screenshots/modo-equipe.png`* |
 
 ## 🧭 Como funciona
 
@@ -74,36 +103,43 @@ flowchart LR
   subgraph TI["Equipe de TI"]
     N["Navegador"]
   end
-  subgraph Hub["Computador do UniWake (serviço do Windows)"]
+  subgraph Hub["PC da TI (serviço do Windows)"]
     P["Painel :47100"]
     A["Cadastro :47101"]
+    E["Modo equipe :47102"]
     DB[("Banco local")]
+  end
+  subgraph Hub2["Outro PC da TI (opcional)"]
+    E2["Modo equipe :47102"]
   end
   subgraph Labs["Laboratórios"]
     M1["PC 01"]
     M2["PC 02"]
     M3["PC …"]
   end
-  N -- HTTPS na rede / local --> P
+  N -- "local / HTTPS na rede" --> P
   P --> DB
   P -- "Magic Packet (UDP)" --> Labs
   P -. "ping / TCP: quem está ligado" .-> Labs
   Labs -- "cadastro (comando de preparo)" --> A
+  E <-- "sincronização criptografada" --> E2
   Hub -. "atualizações (GitHub)" .-> GH[(GitHub Releases)]
 ```
 
-1. O painel envia o **Magic Packet** pela placa de rede do computador do UniWake.
+1. O painel envia o **Magic Packet** pela placa de rede do PC da TI.
 2. O UniWake verifica com **ping e TCP** quem acordou e mostra o resultado ao vivo.
 3. As máquinas se **cadastram sozinhas** ao rodar o comando de preparo.
+4. No Modo equipe, os PCs da TI trocam as alterações pela porta **47102**, cifradas com a chave da
+   equipe.
 
 ## 🧰 Requisitos
 
 | Item | Requisito |
 |---|---|
-| **Computador do UniWake** | Windows 10 ou 11 (64 bits), sempre ligado, **conectado por cabo** à rede dos laboratórios. Não precisa de ninguém logado. |
+| **PC da TI** | Windows 10 ou 11 (64 bits), **conectado por cabo** à rede dos laboratórios. Não precisa de ninguém logado. Para os agendamentos da manhã, ele (ou outro PC da equipe) precisa estar ligado no horário. |
 | **Máquinas dos laboratórios** | Windows 10 ou 11, placa de rede cabeada com suporte a Wake-on-LAN. |
 | **Rede** | Mesma rede (ou VLAN com broadcast dirigido liberado). Veja [Redes diferentes](#redes-diferentes-vlan). |
-| **Portas** | 47100 (painel) e 47101 (cadastro), liberadas pelo instalador nas redes de domínio e privadas. |
+| **Portas** | 47100 (painel), 47101 (cadastro) e 47102 TCP+UDP (Modo equipe), liberadas pelo instalador nas redes de domínio e privadas. |
 
 ## 📦 Instalação
 
@@ -114,8 +150,7 @@ flowchart LR
 Ou escolha uma versão em **[Releases](https://github.com/BryanWalace/UniWake/releases)**.
 
 > [!NOTE]
-> A **v1.0.0-rc.2** é a versão candidata (pré-lançamento): já pode ser instalada e testada; a
-> v1.0.0 final sai depois da validação nos computadores da faculdade.
+> A **v1.0.0-rc.2** é uma versão candidata (pré-lançamento): já pode ser instalada e testada.
 
 ### 2. Confira o arquivo (opcional, recomendado)
 
@@ -132,7 +167,8 @@ Execute `UniWake-Setup.exe` **como administrador**. O instalador:
 - [x] instala em `C:\Program Files\UniWake` e guarda os dados em `C:\ProgramData\UniWake`
   (acesso só para Administradores e o sistema);
 - [x] registra o serviço **UniWake** (início automático, reinicia sozinho se falhar);
-- [x] libera as portas **47100** e **47101** no Firewall do Windows (redes de domínio e privadas);
+- [x] libera no Firewall do Windows (redes de domínio e privadas) as portas **47100** e **47101** e,
+  a partir da 1.2, a **47102 TCP e UDP** do Modo equipe (regra "UniWake - Modo equipe");
 - [x] cria o atalho **UniWake** no menu Iniciar.
 
 <details>
@@ -143,8 +179,8 @@ Execute `UniWake-Setup.exe` **como administrador**. O instalador:
 ```
 
 Instalar uma versão nova por cima mantém banco de dados, configurações e usuários. Se você mudar
-as portas em **Configurações**, ajuste também as regras "UniWake Painel" e "UniWake Cadastro" do
-Firewall: o instalador cria as regras só para as portas padrão.
+as portas em **Configurações**, ajuste também as regras "UniWake Painel", "UniWake Cadastro" e
+"UniWake - Modo equipe" do Firewall: o instalador cria as regras só para as portas padrão.
 
 </details>
 
@@ -152,19 +188,20 @@ Firewall: o instalador cria as regras só para as portas padrão.
 
 | Passo | O que fazer |
 |:---:|---|
-| **1** | No **próprio computador do UniWake**, abra o atalho **UniWake** (ou <http://127.0.0.1:47100>). |
+| **1** | No **próprio PC da TI**, abra o atalho **UniWake** (ou <http://127.0.0.1:47100>). |
 | **2** | Crie o **primeiro administrador**. Por segurança, essa tela só funciona nesse computador. |
-| **3** | Cadastre as **salas** em **Salas**. |
+| **3** | Cadastre as **salas** em **Salas** (e, se quiser, etiquetas). |
 | **4** | Cadastre as máquinas: **Preparar máquinas** (recomendado), **Descobrir na rede** ou **Importar CSV**. |
-| **5** | Crie os **agendamentos** e pronto. |
+| **5** | Crie os **agendamentos**. |
+| **6** | Tem um colega com outro PC? Pareie os dois no [Modo equipe](#-modo-equipe-dois-ou-mais-pcs-da-ti). |
 
-**Perfis:** *Administrador* (tudo, inclusive usuários, configurações, logs e backups) e
-*Operador* (ligar, agendar, cadastrar máquinas e salas).
+**Perfis:** *Administrador* (tudo, inclusive usuários, configurações, logs, backups e Modo equipe)
+e *Operador* (ligar, agendar, cadastrar máquinas e salas).
 
 <details>
 <summary><b>Acessar o painel de outros computadores (HTTPS)</b></summary>
 
-Por padrão o painel só abre no computador do UniWake. Em **Configurações → Painel**, ligue
+Por padrão o painel só abre no próprio PC. Em **Configurações → Acesso ao painel**, ligue
 "Permitir acesso ao painel pela rede", informe o IP deste computador e reinicie o serviço. O
 painel passa a abrir em `https://<IP>:47100`, com um certificado criado pelo UniWake.
 
@@ -175,6 +212,24 @@ do navegador e distribua-o por GPO em "Autoridades de Certificação Raiz Confi�
 </details>
 
 ## 🛠️ Preparar as máquinas
+
+São duas partes: a **BIOS** (uma vez por modelo de computador, à mão) e o **comando de preparo**
+(uma vez por máquina, em segundos).
+
+### 1. BIOS/UEFI (uma vez por modelo)
+
+Nenhum script consegue alterar a BIOS. Entre nela ao ligar (normalmente **F2, F10, F1 ou Del**) e
+confira:
+
+| Opção (os nomes variam) | Valor |
+|---|---|
+| Wake on LAN / Power On by PCI-E / Remote Wake Up | **Ativado** |
+| ErP / EuP / Deep Sleep / "Block Sleep" | **Desativado** (senão a placa de rede fica sem energia) |
+| Dell | *Power Management → Wake on LAN = LAN Only*; *Deep Sleep Control = Disabled* |
+| HP | *Advanced → Power-On Options → Remote Wake Up Boot Source = Remote Server*; *S5 Wake on LAN = Enabled* |
+| Lenovo | *Power → Wake on LAN = Automatic ou Primary*; *Enhanced Power Saving Mode = Disabled* |
+
+### 2. Comando de preparo (`prepare-target.ps1`)
 
 Em **Preparar máquinas**, escolha a sala, clique em **Gerar código** e copie o comando. Em cada
 máquina, abra o **PowerShell como Administrador**, cole e pressione Enter.
@@ -197,12 +252,87 @@ registro fica em `C:\ProgramData\UniWake-Prepare\`. Para só ver o que mudaria: 
 
 > [!TIP]
 > **Revogue o código** da sala quando terminar: o comando colado fica no histórico do PowerShell
-> até o código expirar (8 horas, por padrão).
+> até o código expirar (8 horas, por padrão). Depois, use **Testar WoL** na página da máquina.
 
-> [!IMPORTANT]
-> A BIOS não pode ser alterada pelo script. Em cada modelo de computador, confira uma vez:
-> **Wake on LAN ativado** e **ErP/EuP/Deep Sleep desativado** (dicas para Dell, HP e Lenovo na
-> própria página e em **Ajuda**). Depois use **Testar WoL** na página da máquina.
+## 🏷️ Salas e etiquetas
+
+- **Salas** agrupam as máquinas por lugar (bloco, andar, laboratório). Cada sala tem cor, código
+  (usado no comando de preparo), lote e intervalo de ligação próprios e, se ficar em outra rede, um
+  **broadcast dirigido**. Excluir uma sala manda as máquinas para "Sem sala".
+- **Etiquetas** agrupam por característica, atravessando salas: "Projetor", "Professor",
+  "Servidor"… Você pode ligar ou agendar por etiqueta.
+- Uma ação vale **só para o alvo escolhido**: ligar a sala A nunca envia pacotes para a sala B.
+  Ações grandes (mais de 40 máquinas, várias salas ou "Todos") pedem confirmação.
+
+## 🗓️ Agendamentos
+
+- Dias da semana + horário (fuso padrão **America/Sao_Paulo**), para salas, etiquetas, máquinas ou
+  todas; opção "só as desligadas" e lote próprio.
+- **Exceções**: feriados e recessos (globais ou por agendamento) aparecem como `pulado (feriado)`.
+- **Pausar agendamentos** (férias) exige um motivo e pode voltar sozinho numa data; uma faixa
+  vermelha avisa em todas as páginas.
+- Se o PC estava desligado no horário e liga em até **15 minutos**, o agendamento roda atrasado;
+  depois disso fica como `perdido` (no Modo equipe, veja abaixo).
+- O **Resultado da manhã** mostra, por sala, quem não acordou e fica fixado no painel até alguém
+  clicar em **Ciente**.
+
+## 🔎 Descobrir na rede
+
+Em **Dispositivos → Descobrir na rede**, o UniWake varre **apenas as sub-redes deste PC**, lista os
+computadores encontrados (IP, MAC, nome e fabricante da placa) e marca os que já estão cadastrados.
+Escolha vários e cadastre de uma vez numa sala. O roteador (gateway) fica de fora, e MACs de Wi-Fi,
+virtuais ou aleatórios são sinalizados.
+
+## 🤝 Modo equipe (dois ou mais PCs da TI)
+
+> Disponível a partir da versão **1.2**.
+
+Não existe servidor ligado o tempo todo: cada pessoa da TI roda o UniWake no próprio PC. O Modo
+equipe mantém esses PCs com o **mesmo cadastro** e garante que cada agendamento seja executado por
+**um único PC** ligado.
+
+### Parear dois PCs
+
+1. No PC que **já tem o cadastro**, abra **Modo equipe** e clique em **Gerar código de pareamento**.
+   Aparecem um código de **6 dígitos** (válido por **5 minutos**, uso único) e o endereço do PC.
+2. No outro PC, abra **Modo equipe → Entrar em uma equipe**, escolha o PC na lista (ou digite o
+   endereço) e digite o código.
+3. Se o PC que entra já tinha cadastro, ele é **substituído** pelo da equipe: um backup é feito antes
+   e é preciso digitar `SUBSTITUIR`. Depois, use os **usuários e senhas da equipe**.
+
+O código nunca passa pela rede: ele autentica uma troca de chaves (SPAKE2), e 5 erros cancelam o
+código. A chave da equipe fica guardada cifrada pelo Windows (DPAPI) em cada PC.
+
+### Como a sincronização funciona
+
+- Sincronizado: salas, máquinas, etiquetas, agendamentos, exceções, pausa, usuários e configurações
+  gerais. **Não** sincronizado: configurações marcadas "Somente neste PC" (placas de rede, endereço
+  do painel, atualização, backup, portas), histórico, ligações, logs, auditoria e backups.
+- Os PCs se anunciam na rede a cada 15 s e trocam as alterações a cada 30 s (e logo depois de cada
+  mudança). A conexão é TLS 1.3 com a chave da equipe; um PC removido não entra mais.
+- Mesmo item alterado nos dois PCs antes de sincronizar: **vale a alteração mais recente**, igual em
+  todos; o caso aparece em **Conflitos resolvidos**. A mesma máquina (MAC) cadastrada nos dois vira
+  uma só; salas ou etiquetas com o mesmo nome ficam as duas, uma renomeada para "(2)".
+- **Agendamentos:** entre os PCs ligados, um só executa; se ele não executar em 90 s, outro
+  executa. Um PC que liga depois do horário **não** executa sozinho o que perdeu: ele mostra
+  "Agendamento não executado" com **Ligar agora**, se nenhum outro PC registrou a execução.
+- A página mostra, para cada PC: online/offline, última sincronização, alterações pendentes e o
+  último erro; **Sincronizar agora** força uma rodada.
+
+### Firewall e PCs em outras sub-redes
+
+- A porta **47102 (TCP e UDP)** precisa estar liberada entre os PCs da equipe. O instalador cria a
+  regra "UniWake - Modo equipe" para redes de domínio e privadas; uma política do domínio ou um
+  antivírus pode bloquear mesmo assim (o PC aparece "offline" com "Sem conexão").
+- PCs na mesma rede se encontram sozinhos. Para um PC em **outra sub-rede**, clique em **Editar** na
+  lista e informe um **endereço fixo** (nome do computador ou IP).
+- **Remover da equipe** troca a chave da equipe; os PCs que estavam desligados recebem a chave nova
+  quando ligam. **Sair da equipe** para a sincronização neste PC (o cadastro continua nele).
+
+> [!TIP]
+> Para a ligação da manhã funcionar sem ninguém por perto, deixe pelo menos um PC da equipe ligado
+> no horário ou configure na BIOS dele **Power On by RTC** (ligar em horário programado) alguns
+> minutos antes do primeiro agendamento.
 
 ## 🖥️ Uso diário
 
@@ -213,9 +343,9 @@ registro fica em `C:\ProgramData\UniWake-Prepare\`. Para só ver o que mudaria: 
 | **Agendamentos** | Dias, horário, salas/etiquetas; feriados e "Pausar agendamentos" (férias). |
 | **Histórico** | Cada ligação, quem acordou e quem não respondeu (com link para o diagnóstico). |
 | **Dispositivos** | Inventário, importação/exportação CSV, **Descobrir na rede**, diagnóstico e **Testar WoL**. |
-| **Saúde do sistema** | Agendador, verificações, relógio, backups, atualizações e avisos do Windows. |
-
-O **"Resultado da manhã"** fica fixado no painel até alguém clicar em **Ciente**.
+| **Modo equipe** | PCs da equipe, sincronização, conflitos resolvidos (administradores). |
+| **Saúde do sistema** | Agendador, verificações, relógio, backups, atualizações, avisos do Windows e o identificador deste PC. |
+| **Ajuda** | Páginas de ajuda, **Relatar problema** e **Sugerir função**. |
 
 ## 🔄 Atualizações
 
@@ -229,14 +359,17 @@ O UniWake procura versões novas a cada 6 horas (veja em **Saúde do sistema**).
 Antes de instalar, o UniWake **confere o SHA-256**, verifica o espaço em disco e faz um **backup**.
 Se a versão nova não responder em 2 minutos, ele **volta sozinho** para a anterior (restaurando o
 banco, se preciso) e avisa no painel. Uma tarefa de segurança restaura a versão anterior se a
-atualização for interrompida (por exemplo, por falta de energia).
+atualização for interrompida (por exemplo, por falta de energia). No Modo equipe, cada PC se
+atualiza sozinho, na própria janela de manutenção.
 
 ## 💾 Backups e restauração
 
 - Backup automático **diário às 02:30**; os últimos **14** são mantidos (configurável).
-- Também antes de cada atualização e de cada restauração, e quando você pedir.
+- Também antes de cada atualização, de cada restauração e antes de um PC entrar numa equipe, e
+  quando você pedir.
 - Ficam em `C:\ProgramData\UniWake\backups` — copie essa pasta para outro lugar periodicamente.
 - **Restaurar:** **Configurações → Backups**, escolha o backup e digite a data dele para confirmar.
+  Um backup restaurado vale para o mesmo PC (as chaves do Modo equipe só abrem nele).
 
 ## 🔒 Segurança
 
@@ -245,34 +378,63 @@ atualização for interrompida (por exemplo, por falta de energia).
 - Códigos de cadastro guardados só como hash, com validade, limite de usos e revogação.
 - Comando de preparo **conferido por SHA-256**; instalador e atualizações **conferidos por
   SHA-256**; origem das atualizações fixa no programa.
+- Modo equipe: pareamento por código que não trafega (SPAKE2), sincronização TLS 1.3 com a chave da
+  equipe, chave guardada com DPAPI, PCs removidos ficam de fora.
 - **Auditoria** de todas as ações, com exportação CSV protegida contra fórmulas.
 - Nenhum dado sai da rede: o UniWake só acessa o GitHub para procurar atualizações.
+- Encontrou uma falha? Veja o [SECURITY.md](SECURITY.md) (não abra issue pública).
 
 ## 🧯 Solução de problemas
 
 | Sintoma | O que fazer |
 |---|---|
-| A máquina **não liga** | Abra a máquina em **Dispositivos**, veja o diagnóstico e use **Testar WoL**; confira a BIOS (Wake on LAN, ErP) e rode o preparo de novo. |
+| A máquina **não liga** | Abra a máquina em **Dispositivos**, veja o diagnóstico e use **Testar WoL**. |
+| **Inicialização Rápida (Fast Startup)** | Com ela, o Windows hiberna em vez de desligar e a placa não espera o pacote. Rode o comando de preparo de novo (ele desliga) ou: Painel de Controle → Opções de Energia → "Escolher a função dos botões de energia" → desmarque "Ligar inicialização rápida". |
+| **BIOS / ErP** | Wake on LAN precisa estar ativado e **ErP/EuP/Deep Sleep desativado** — veja [a tabela da BIOS](#1-biosuefi-uma-vez-por-modelo). |
 | **"Parou de acordar"** | Uma atualização do Windows reativou a Inicialização Rápida ou mudou a placa de rede: rode o comando de preparo de novo. |
-| **"Nunca respondeu"** | O firewall da máquina bloqueia o ping: o preparo libera; veja **Ajuda → Firewall e ping**. |
-| **"Dispositivo em outra sub-rede"** | Veja [Redes diferentes](#redes-diferentes-vlan). |
+| **"Nunca respondeu" / ping bloqueado** | O firewall da máquina bloqueia o ICMP e ela parece desligada: o preparo cria a regra `UniWake-ICMPv4-In`; uma GPO pode bloquear — o UniWake também testa portas TCP (135, 445, 3389). |
+| **"Dispositivo em outra sub-rede" / VLAN** | O broadcast não atravessa roteadores: veja [Redes diferentes](#redes-diferentes-vlan). |
+| **Modo equipe: PC "offline" / "Sem conexão"** | O outro PC está desligado, o UniWake não roda nele, ou a porta **47102** está bloqueada. Em outra sub-rede, informe um endereço fixo. |
+| **Modo equipe: "as chaves não conferem"** | O PC ficou desligado durante duas trocas de chave (remoções): saia da equipe e pareie de novo. |
 | **O serviço não inicia** | Veja o motivo no **Visualizador de Eventos → Aplicativo**, origem **UniWake** (por exemplo, porta 47100 em uso). |
 | **Atualização revertida** | O painel mostra o motivo; os detalhes ficam em `C:\ProgramData\UniWake\logs`. |
 
-A página **Ajuda** (no menu) explica as causas mais comuns em detalhe, e **Logs**
-(administradores) mostra o log do serviço.
+O menu **Ajuda** explica as causas mais comuns em detalhe, e **Logs** (administradores) mostra o
+log do serviço.
 
 ### Redes diferentes (VLAN)
 
-O Magic Packet é um broadcast e **não atravessa roteadores sozinho**. Opções: ligar o computador do
-UniWake também na rede dessas máquinas, ou informar o **"Broadcast dirigido"** da sala (ex.:
+O Magic Packet é um broadcast e **não atravessa roteadores sozinho**. Opções: ligar o PC da TI
+também na rede dessas máquinas, ou informar o **"Broadcast dirigido"** da sala (ex.:
 `10.0.9.255`) em **Salas** e pedir à equipe de rede para permitir broadcast dirigido no roteador.
+
+## 🗺️ Roadmap
+
+| Versão | Conteúdo | Situação |
+|---|---|---|
+| 1.0 | Ligar pela rede, painel, agendamentos, preparo e cadastro, usuários, backups, atualização automática | ✅ versão candidata publicada (1.0.0-rc.2) |
+| 1.1 | Descobrir na rede | ✅ pronta (sai com a próxima versão) |
+| 1.2 | **Modo equipe** (sincronização entre PCs da TI) | ✅ pronta (em validação) |
+| 1.3 | UniWake Agent: **desligar e reiniciar** pela rede ou por agendamento, aviso na tela com contagem regressiva | 🕒 planejado |
+| 1.4 | **Backup, restauração e migração** em arquivo `.uniwake` (exportar/importar, com senha) | 🕒 planejado |
+| — | Agente por VLAN, notificações (e-mail/Telegram), ferramentas de BIOS dos fabricantes, permissões por sala | 💡 ideias |
+
+## 🐞 Relatar problemas e sugerir funções
+
+- No painel: menu **Ajuda → Relatar problema** ou **Sugerir função** (abre o GitHub com a versão já
+  preenchida).
+- Ou direto em [Issues](https://github.com/BryanWalace/UniWake/issues/new/choose): formulários de
+  **problema**, **sugestão** e **dúvida**.
+- **Não publique** IPs, MACs, nomes de computadores, senhas ou tokens reais da instituição.
+- **Vulnerabilidades** vão pelo relato privado do GitHub: veja o [SECURITY.md](SECURITY.md).
+- Quer contribuir com código? Veja o [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## 🗑️ Desinstalar
 
 Em **Configurações do Windows → Aplicativos**, desinstale o UniWake. O serviço, as regras de
 firewall e o atalho são removidos. Os dados em `C:\ProgramData\UniWake` são **mantidos**, a menos
-que você escolha removê-los (a desinstalação silenciosa sempre mantém os dados).
+que você escolha removê-los (a desinstalação silenciosa sempre mantém os dados). Se o PC estava
+numa equipe, remova-o antes em **Modo equipe** de outro PC.
 
 ## ❓ Perguntas frequentes
 
@@ -286,9 +448,18 @@ aleatório.
 </details>
 
 <details>
-<summary><b>Preciso deixar alguém logado no computador do UniWake?</b></summary>
+<summary><b>Preciso deixar alguém logado no PC da TI?</b></summary>
 
 Não. É um serviço do Windows: começa sozinho quando o computador liga.
+
+</details>
+
+<details>
+<summary><b>Com dois PCs na equipe, o laboratório pode ser ligado duas vezes?</b></summary>
+
+Não no uso normal: os PCs ligados escolhem um só executor para cada agendamento. Se um PC não
+enxergar o outro (por exemplo, firewall bloqueando a porta 47102), os dois podem executar — o que
+liga as máquinas duas vezes, mas nunca deixa de ligar.
 
 </details>
 
@@ -314,40 +485,48 @@ publicado com a versão antes de instalar. As atualizações automáticas sempre
 <summary><b>Rodar, testar e gerar o instalador</b></summary>
 
 Requisitos: **Node 24** (versão exata em `.nvmrc`) e npm. Código, especificações e commits em
-inglês; a interface e este README em português.
+inglês; a interface e este README em português. O fluxo de branches, os testes e os rótulos estão no
+[CONTRIBUTING.md](CONTRIBUTING.md) (trabalho na branch `dev`).
 
 ```bash
 npm ci
 npm run dev          # hub em modo demonstração (.dev-data) + painel com recarga automática
 npm run verify       # lint, formatação, tipos, testes com cobertura, desempenho, rastreabilidade
-npm run e2e          # Playwright (Chromium) contra um hub de demonstração
+npm run e2e          # Playwright (Chromium) contra hubs de demonstração (inclui dois PCs em equipe)
 npm run e2e:edge     # o mesmo no Microsoft Edge (Windows)
 npm run test:ps      # PSScriptAnalyzer + Pester (Windows)
 npm run stage        # monta build/stage (bundle, painel, node.exe e WinSW conferidos)
 ```
 
 - O modo demonstração (`--demo`) simula a rede e **nunca envia pacotes reais**; os testes também
-  não usam a rede real. Ele se recusa a abrir uma pasta de dados de um UniWake de verdade.
+  não usam a rede real (o Modo equipe dos testes fica em `127.0.0.1`). Ele se recusa a abrir uma
+  pasta de dados de um UniWake de verdade.
 - Depois de uma restauração de backup, o serviço sai com o código 75 para ser reiniciado pelo
   Windows. Em `npm run dev` ninguém reinicia: rode o comando de novo.
 - O instalador (Inno Setup) é gerado e testado no CI (`scripts/ci/`): instalação, atualização por
-  cima, desinstalação e atualização de ponta a ponta com volta automática.
-- Versões são publicadas ao criar uma tag `v*` (`.github/workflows/release.yml`).
+  cima, desinstalação, regras de firewall e atualização de ponta a ponta com volta automática.
+- Versões são publicadas pelo mantenedor ao criar uma tag `v*` na `main`
+  (`.github/workflows/release.yml`).
 
 | Documento | Conteúdo |
 |---|---|
 | [`specs/spec.md`](specs/spec.md) | Requisitos e critérios de aceitação |
 | [`specs/plan.md`](specs/plan.md) | Arquitetura e plano técnico |
 | [`specs/decisions.md`](specs/decisions.md) | Decisões (ADRs) |
-| [`specs/validation.md`](specs/validation.md) | Validação da versão |
+| [`specs/validation.md`](specs/validation.md) | Validação das versões |
 | [`specs/handoff/NEXT.md`](specs/handoff/NEXT.md) | Estado atual e próximos passos |
 
 </details>
+
+## 📄 Licença
+
+Ainda não há uma licença publicada: o projeto está marcado como `UNLICENSED` (todos os direitos
+reservados ao mantenedor). Para usar, copiar ou redistribuir o código, peça autorização ao mantenedor.
 
 ---
 
 <div align="center">
 
-Feito para a equipe de TI da faculdade · [Reportar um problema](https://github.com/BryanWalace/UniWake/issues)
+Feito para a equipe de TI da faculdade · [Relatar um problema](https://github.com/BryanWalace/UniWake/issues/new/choose)
 
 </div>

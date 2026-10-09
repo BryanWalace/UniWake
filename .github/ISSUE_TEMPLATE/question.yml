@@ -1,0 +1,37 @@
+name: Dúvida de uso
+description: Como fazer algo no UniWake.
+title: '[Dúvida] '
+labels: ['question']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Antes de perguntar, veja o menu **Ajuda** do painel e o [README](https://github.com/BryanWalace/UniWake#readme):
+        a maioria dos problemas de “não liga pela rede” está lá (BIOS, Inicialização Rápida, VLAN, firewall).
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacidade
+      options:
+        - label: Não incluí IPs, endereços MAC, nomes de computadores, senhas ou tokens reais da minha instituição.
+          required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Sua dúvida
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: O que você já tentou
+      description: Páginas de ajuda lidas, configurações alteradas, mensagens que apareceram.
+
+  - type: input
+    id: version
+    attributes:
+      label: Versão do UniWake
+      placeholder: '1.2.0'
