@@ -91,7 +91,7 @@ jobs:
         run: |
           ./scripts/ci/build-installer.ps1 -Version 0.0.1 -OutDir build/out -OutName UniWake-Setup-0.0.1
           ./scripts/ci/build-installer.ps1 -Version 0.0.2 -OutDir build/out -OutName UniWake-Setup-0.0.2
-      - name: Install, upgrade and uninstall (AC-001-01a, AC-001-02, AC-001-03)
+      - name: Install, upgrade and uninstall (AC-001-01a, AC-001-02, AC-001-03, AC-205-01)
         shell: pwsh
         run: ./scripts/ci/installer-smoke.ps1 -V1Setup build/out/UniWake-Setup-0.0.1.exe -V2Setup build/out/UniWake-Setup-0.0.2.exe
       - name: Upload installer logs

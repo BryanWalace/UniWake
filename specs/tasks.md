@@ -314,7 +314,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 |---|---|---|---|---|
 | [x] M14-T01 | Page "Modo equipe": pair (code + countdown), join (discovered list, address, code, replace confirmation), members (status, rename, address, revoke), leave, "Sincronizar agora". | FR-201, FR-202.6 | web tests (loading/empty/error) | — |
 | [x] M14-T02 | Page "Conflitos resolvidos". | FR-203 | web tests | — |
-| [ ] M14-T03 | Installer firewall rule TCP+UDP 47102 (Domain/Private) + uninstall; installer smoke checks it. | FR-205 | AC-205-01 | — |
+| [x] M14-T03 | Installer firewall rule TCP+UDP 47102 (Domain/Private) + uninstall; installer smoke checks it. | FR-205 | AC-205-01 | — |
 | [x] M14-T04 | Two-instance integration test: two hubs (own ports and data folders) pair, sync rooms/devices/schedules both ways, resolve a conflict, and run a schedule on exactly one. | FR-201..204 | AC-202-01, AC-203-01, AC-204-01 | — |
 | [ ] M14-T05 | Playwright: two hubs, pair through the UI, see a room appear on the other panel. | FR-201, FR-202 | E2E | — |
 | [x] M14-T06 | Help page "Modo equipe" (incl. Power On by RTC). | FR-206 | AC-206-01 | — |
