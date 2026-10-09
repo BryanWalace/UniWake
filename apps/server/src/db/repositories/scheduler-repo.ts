@@ -118,6 +118,15 @@ export class SqliteSchedulerRepo implements SchedulerRepo {
     }
   }
 
+  runExists(scheduleId: number, plannedAt: number): boolean {
+    return (
+      this.db.get('SELECT 1 FROM schedule_runs WHERE schedule_id = ? AND planned_at = ?', [
+        scheduleId,
+        plannedAt,
+      ]) !== undefined
+    );
+  }
+
   lastTick(): number | null {
     const v = this.getState(LAST_TICK);
     return v === null ? null : Number(v);

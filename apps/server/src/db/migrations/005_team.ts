@@ -51,4 +51,16 @@ CREATE TABLE sync_conflicts (
   winner_instance TEXT
 );
 CREATE INDEX sync_conflicts_at ON sync_conflicts(at);
+
+-- FR-201.2: the automatic backup taken before a PC adopts the team's data.
+CREATE TABLE backups_new (
+  id         INTEGER PRIMARY KEY,
+  file       TEXT    NOT NULL UNIQUE,
+  kind       TEXT    NOT NULL CHECK (kind IN ('daily', 'pre-migration', 'pre-update', 'pre-restore', 'pre-join', 'manual')),
+  created_at INTEGER NOT NULL,
+  size       INTEGER NOT NULL
+);
+INSERT INTO backups_new SELECT id, file, kind, created_at, size FROM backups;
+DROP TABLE backups;
+ALTER TABLE backups_new RENAME TO backups;
 `;

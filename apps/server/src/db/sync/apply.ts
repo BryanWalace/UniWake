@@ -6,6 +6,14 @@
  * a device that lost its room) is a new local write and propagates back.
  */
 import { isSettingKey, SETTING_DEFS } from '@uniwake/shared';
+import type {
+  ApplyOptions,
+  ApplyResult,
+  ChangeEntry,
+  ConflictKind,
+  ConflictRecord,
+  ReplicaStore,
+} from '../../application/team/replica';
 import type { Db } from '../connection';
 import { changeLog } from './change-log';
 import {
@@ -20,45 +28,6 @@ import {
   TABLE,
   TOUCH_SETS_UPDATED_AT,
 } from './entities';
-
-export interface ChangeEntry {
-  seq: number;
-  entity: EntityName;
-  entityId: string;
-  op: 'upsert' | 'delete';
-  rev: number;
-  instance: string;
-  at: number;
-  payload: Record<string, unknown> | null;
-}
-
-export type ConflictKind = 'concurrent' | 'duplicate_mac' | 'duplicate_name';
-
-export interface ConflictRecord {
-  entity: EntityName;
-  entityId: string;
-  label: string;
-  kind: ConflictKind;
-  kept: unknown;
-  discarded: unknown;
-  winnerInstance: string | null;
-}
-
-export interface ApplyOptions {
-  now: number;
-  /** The peer's cursor into our log: our versions after it were unseen by them (concurrency). */
-  peerAckedSeq?: number;
-  /** The peer the batch came from (its own earlier versions are never a conflict). */
-  peerInstance?: string;
-}
-
-export interface ApplyResult {
-  applied: number;
-  skipped: number;
-  conflicts: ConflictRecord[];
-  /** Entity kinds that changed (the hub reloads settings, refreshes panels). */
-  touched: Set<EntityName>;
-}
 
 const ORDER: readonly EntityName[] = [...BASELINE_ORDER, 'setting', 'scheduler_pause'];
 const orderOf = (e: EntityName) => {
@@ -771,3 +740,56 @@ export function replaceWithTeamState(
 }
 
 export const PAUSE_ENTITY_ID = PAUSE_ID;
+
+/** The ReplicaStore port over this database (plan §14.1). */
+export class SqliteReplicaStore implements ReplicaStore {
+  constructor(private readonly db: Db) {}
+
+  changesSince(seq: number) {
+    return changesSince(this.db, seq);
+  }
+
+  apply(entries: readonly ChangeEntry[], opts: ApplyOptions): ApplyResult {
+    return applyRemote(this.db, entries, opts);
+  }
+
+  replace(entries: readonly ChangeEntry[], now: number): ApplyResult {
+    return replaceWithTeamState(this.db, entries, now);
+  }
+
+  maxSeq(): number {
+    return this.db.get<{ s: number | null }>('SELECT MAX(seq) AS s FROM change_log')?.s ?? 0;
+  }
+
+  countSince(seq: number): number {
+    return this.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM change_log WHERE seq > ?', [seq])!
+      .n;
+  }
+
+  replicatedCounts() {
+    const n = (t: string) => this.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM ' + t)!.n;
+    return {
+      rooms: n('rooms'),
+      devices: n('devices'),
+      tags: n('tags'),
+      schedules: n('schedules'),
+      users: n('users'),
+    };
+  }
+
+  pruneTombstones(before: number, ackedUpTo: number): number {
+    return this.db.run("DELETE FROM change_log WHERE op = 'delete' AND at < ? AND seq <= ?", [
+      before,
+      ackedUpTo,
+    ]).changes;
+  }
+
+  hasRun(scheduleId: number, plannedAt: number): boolean {
+    return (
+      this.db.get('SELECT 1 FROM schedule_runs WHERE schedule_id = ? AND planned_at = ?', [
+        scheduleId,
+        plannedAt,
+      ]) !== undefined
+    );
+  }
+}

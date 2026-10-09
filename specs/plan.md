@@ -252,6 +252,8 @@ empty in v1.0).
 | GET `/api/logs` (≤ last 5 MB) · GET `/api/logs/download` | admin | FR-016 |
 | GET `/api/audit` · GET `/api/audit/export.csv` | operator | FR-006.5 |
 | GET `/api/events` (SSE) | operator | FR-004.4 |
+| GET `/api/team` · POST, DELETE `/api/team/pairing` · GET `/api/team/discovered` · POST `/api/team/join` · POST `/api/team/sync` · PATCH `/api/team/members/:instanceId` · POST `/api/team/members/:instanceId/revoke` · POST `/api/team/leave` · GET `/api/team/conflicts` | admin | FR-201..203 (v1.2) |
+| POST `/api/notices/:id/wake-missed` | operator | FR-204.2 |
 | GET `/*` except `/api/*`, `/agent/*` | public | SPA files, `index.html` fallback |
 
 ### 6.2 Agent listener — exactly three routes
@@ -264,7 +266,7 @@ empty in v1.0).
 ### 6.3 SSE events
 `device.status` `{deviceId, status, latencyMs, lastSeenAt}` · `counters` `{global, rooms[]}` ·
 `job.progress` `{jobId, state, counts}` · `job.device` `{jobId, deviceId, result}` ·
-`notice` `{id, type}` · `scheduler` `{paused, nextRun}` · `session.expired` (then the server closes
+`notice` `{id, type}` · `scheduler` `{paused, nextRun}` · `sync` (a team batch changed data; v1.2) · `session.expired` (then the server closes
 the stream) · heartbeat comment every 20 s. On (re)connect the client refetches `/api/dashboard`.
 
 ### 6.4 Sessions
@@ -290,7 +292,8 @@ prefix is not used because loopback is HTTP (browsers reject `__Host-` without `
 `PAUSE_REASON_REQUIRED`, `ENROLL_TOKEN_INVALID`, `ENROLL_TOKEN_EXPIRED`, `ENROLL_TOKEN_REVOKED`,
 `ENROLL_TOKEN_EXHAUSTED`, `ENROLL_ROOM_MISMATCH`, `PREPARE_SCRIPT_MISSING`, `UPDATE_NOT_AVAILABLE`, `UPDATE_IN_PROGRESS`,
 `UPDATE_BLOCKED_BY_SCHEDULE`, `UPDATE_DISK_SPACE`, `CHECKSUM_MISMATCH`, `DOWNLOAD_FAILED`,
-`BACKUP_NOT_FOUND`, `RESTORE_CONFIRMATION_MISMATCH`, `INTERNAL_ERROR`.
+`BACKUP_NOT_FOUND`, `RESTORE_CONFIRMATION_MISMATCH`, `TEAM_NOT_IN_TEAM`, `TEAM_ALREADY_MEMBER`, `TEAM_REPLACE_CONFIRM`, `TEAM_PAIRING_NO_CODE`, `TEAM_PAIRING_WRONG_CODE`, `TEAM_PAIRING_LOCKED`, `TEAM_PAIRING_UNREACHABLE`, `TEAM_PAIRING_FAILED`, `TEAM_MEMBER_NOT_FOUND`, `TEAM_CANNOT_REVOKE_SELF`, `MISSED_RUN_NOT_FOUND` (v1.2, §14),
+`INTERNAL_ERROR`.
 
 ## 7. Key flows
 

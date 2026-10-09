@@ -29,6 +29,9 @@ import { SqliteSchedulerRepo } from './db/repositories/scheduler-repo';
 import { CompositeProber, PingExeIcmp, powershellSpawner, PsHelperIcmp } from './adapters/icmp';
 import { OsNetworkInterfaces } from './adapters/network-interfaces';
 import { NodeProcessRunner } from './adapters/process-runner';
+import { DevSecretProtector, DpapiSecretProtector } from './adapters/secret-protector';
+import { NodeSyncNetwork } from './adapters/sync-network';
+import type { SecretProtector, SyncEndpoint } from './application/ports';
 import { RecordingPacketSender } from './adapters/recording-packet-sender';
 import { SystemClock } from './adapters/system-clock';
 import { TcpProber } from './adapters/tcp-prober';
@@ -88,6 +91,16 @@ export interface HubOptions {
   panelCertificate?: () => Promise<PanelCertificate>;
   /** Port overrides (tests); defaults to the real adapters. */
   ports?: ServicePorts;
+  /** Modo equipe (tests): bind address of the team port (default 0.0.0.0). */
+  syncBind?: string;
+  /** Modo equipe (tests): where announcements go instead of the subnets' broadcasts. */
+  teamAnnounceTargets?: () => readonly SyncEndpoint[];
+  /** Modo equipe (tests): the port other PCs listen on (default: config.syncPort). */
+  teamDefaultPort?: number;
+  /** This PC's name in the team (default: the Windows computer name). */
+  machineName?: string;
+  /** Team secrets override (tests): skips DPAPI. */
+  secrets?: SecretProtector;
 }
 
 export interface Hub {
@@ -224,6 +237,14 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
     process.platform === 'win32' ? new PingExeIcmp(runner) : null,
     settingsConcurrency,
   );
+  // ADR-037: DPAPI on Windows; elsewhere (Linux CI, development) a marked development protector.
+  const secrets =
+    opts.secrets ??
+    (process.platform === 'win32' ? new DpapiSecretProtector(runner) : new DevSecretProtector());
+  if (!opts.secrets && process.platform !== 'win32') {
+    logger.warn({}, 'team secrets use the development protector (no DPAPI on this OS)');
+  }
+  const syncNetwork = new NodeSyncNetwork({ bind: opts.syncBind ?? '0.0.0.0' });
   const services = createServices(
     db,
     clock,
@@ -237,6 +258,8 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
             dns: sim.dns,
             neighbors: sim.neighbors,
             logger,
+            syncNetwork,
+            secrets,
           }
         : {
             interfaces: new OsNetworkInterfaces(runner),
@@ -249,6 +272,8 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
                 ? new WindowsNeighborCache(runner, opts.neighborScriptPath ?? null)
                 : { read: () => Promise.resolve([]) },
             logger,
+            syncNetwork,
+            secrets,
           }),
     {
       demo: config.demo,
@@ -260,6 +285,12 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       requestRestart: () => opts.requestRestart?.(),
       prepareScript: new PrepareScriptFile(opts.prepareScriptPath ?? null),
       releaseSource: opts.releaseSource ?? null,
+      team: {
+        port: config.syncPort,
+        defaultPort: opts.teamDefaultPort ?? config.syncPort,
+        ...(opts.machineName ? { machineName: opts.machineName } : {}),
+        ...(opts.teamAnnounceTargets ? { announceTargets: opts.teamAnnounceTargets } : {}),
+      },
       oui: (() => {
         const file = new OuiFile(opts.ouiPath ?? null);
         return () => file.get();
@@ -436,7 +467,10 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       }
       services.runner.recover();
       services.testWol.recover();
+      // Before the first scheduler tick: team mode changes how missed runs are handled (FR-204.2).
+      await services.team.init();
       services.scheduler.start();
+      await services.sync.start();
       services.monitor.start();
       services.dashboard.start();
       services.retention.start();
@@ -462,6 +496,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       await services.retention.stop();
       await services.monitor.stop();
       await Promise.allSettled([panel.close(), agent.close(), panelLan?.close()]);
+      await services.sync.close();
       await sender.close();
       icmpHelper?.close();
       db.close();

@@ -75,6 +75,17 @@ import { SqliteTagsRepo } from './db/repositories/tags-repo';
 import { SqliteTestWolRepo } from './db/repositories/test-wol-repo';
 import { SqliteUpdateAutoSkip } from './db/repositories/update-skip-repo';
 import { SqliteUpdateStateStore } from './db/repositories/update-state-repo';
+import { hostname } from 'node:os';
+import { DevSecretProtector } from './adapters/secret-protector';
+import { NodeSyncNetwork } from './adapters/sync-network';
+import { MissedRunsService } from './application/team/missed-runs';
+import { PairingService } from './application/team/pairing';
+import { SyncService } from './application/team/sync-service';
+import { TeamLease } from './application/team/team-lease';
+import { TeamService } from './application/team/team-service';
+import type { SecretProtector, SyncEndpoint, SyncNetwork } from './application/ports';
+import { SqliteTeamRepo } from './db/repositories/team-repo';
+import { SqliteReplicaStore } from './db/sync/apply';
 import { changeLog, configureChangeLog } from './db/sync/change-log';
 import type { HttpServices } from './http/context';
 
@@ -88,6 +99,10 @@ export interface ServicePorts {
   logger: Logger;
   /** IPv4 neighbor (ARP) cache for discovery (FR-101); absent = discovery finds nothing. */
   neighbors?: NeighborCache;
+  /** Modo equipe sockets (FR-202); absent = loopback-only sockets (tests). */
+  syncNetwork?: SyncNetwork;
+  /** Team secrets at rest (ADR-037); absent = development protector (tests). */
+  secrets?: SecretProtector;
 }
 
 export interface ServiceOptions {
@@ -121,6 +136,13 @@ export interface ServiceOptions {
   oui?: () => OuiTable;
   /** prepare-target.ps1 as served by the agent listener (FR-007.3); absent = not installed. */
   prepareScript?: PrepareScript;
+  /** Modo equipe (FR-201..204): team port and, in tests, where announcements go. */
+  team?: {
+    port: number;
+    defaultPort: number;
+    machineName?: string;
+    announceTargets?: () => readonly SyncEndpoint[];
+  };
 }
 
 export interface Services extends HttpServices {
@@ -307,8 +329,62 @@ export function createServices(
     events,
     transaction: tx,
   });
+  // ---------------------------------------------------------------- Modo equipe (v1.2)
+  const replica = new SqliteReplicaStore(db);
+  const team = new TeamService({
+    repo: new SqliteTeamRepo(db),
+    protector: ports.secrets ?? new DevSecretProtector(),
+    clock,
+    audit,
+    logger: ports.logger.child({ module: 'team' }),
+    instanceId: () => changeLog(db).instanceId(),
+    machineName: (opts.team?.machineName ?? hostname()).slice(0, 64),
+  });
+  const teamPort = opts.team?.port ?? 0;
+  const sync = new SyncService({
+    team,
+    replica,
+    network: ports.syncNetwork ?? new NodeSyncNetwork({ bind: '127.0.0.1' }),
+    interfaces: ports.interfaces,
+    settings,
+    notices,
+    events,
+    audit,
+    clock,
+    logger: ports.logger.child({ module: 'sync' }),
+    port: teamPort,
+    defaultPort: opts.team?.defaultPort ?? 47102,
+    ...(opts.team?.announceTargets ? { announceTargets: opts.team.announceTargets } : {}),
+  });
+  const pairing = new PairingService({
+    team,
+    network: ports.syncNetwork ?? sync.network(),
+    replica,
+    clock,
+    audit,
+    logger: ports.logger.child({ module: 'pairing' }),
+    ensureListening: () => sync.ensureListening(),
+    fetchTeamState: (to, grant, inviter) => sync.fetchWithGrant(to, grant, inviter),
+    backupBeforeJoin: () => void backupsRef.current?.create('pre-join'),
+    onTeamChanged: () => {
+      void sync.start();
+      events.publish({ type: 'sync' });
+    },
+    defaultPort: opts.team?.defaultPort ?? 47102,
+  });
+  sync.attachPairing(pairing);
+  const lease = new TeamLease({
+    inTeam: () => team.inTeam(),
+    self: () => team.self().instanceId,
+    online: (now) => sync.onlineMembers(now),
+  });
+  const backupsRef: { current: BackupService | null } = { current: null };
+
   const scheduler = new Scheduler({
     repo: schedulerRepo,
+    lease,
+    teamMode: () => team.inTeam(),
+    onMissedRun: (r) => notices.missedRun(r),
     refs,
     startWake: (req, actor, opts) => wake.start(req, actor, opts),
     settings,
@@ -344,6 +420,7 @@ export function createServices(
         requestRestart: opts.requestRestart ?? (() => undefined),
       })
     : null;
+  backupsRef.current = backups;
   const health = new HealthService({
     clock,
     logger: ports.logger.child({ module: 'health' }),
@@ -493,5 +570,13 @@ export function createServices(
     updateInstaller,
     updates,
     discovery,
+    team,
+    pairing,
+    sync,
+    missedRuns: new MissedRunsService({
+      notices,
+      schedules,
+      startWake: (req, actor, o) => wake.start(req, actor, o),
+    }),
   };
 }
