@@ -429,10 +429,11 @@ sequenceDiagram
 - `npm run dev`: `concurrently` → `tsx watch apps/server/src/main.ts --demo --data-dir .dev-data`
   and Vite (proxy `/api` → 47100). `.dev-data/` is git-ignored.
 - `npm run verify`: lint, format check, typecheck, tests with coverage, `check:deps`.
-- `ci.yml` (push, PR; `permissions: contents: read`): ubuntu job (verify, E2E, `npm audit
+- Branches (ADR-030): work on `dev`; `main` and `v*` tags only on the owner's request.
+- `ci.yml` (push to `dev`/`main`, PR; `permissions: contents: read`; never publishes): ubuntu job (verify, E2E, `npm audit
   --omit=dev --audit-level=high`, secret scan) + windows job (Pester, PSScriptAnalyzer,
   probe-helper contract test, installer smoke).
-- `release.yml` (tag `v*`): gates → build bundle + installer on Windows → SHA-256 → GitHub Release
+- `release.yml` (tag `v*`): tag-on-`main` check → gates → build bundle + installer on Windows → SHA-256 → GitHub Release
   with generated notes; only the release job has `contents: write`; no `pull_request_target`;
   third-party actions pinned by SHA.
 - Dependabot: npm + github-actions weekly.

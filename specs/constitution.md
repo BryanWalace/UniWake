@@ -1,8 +1,10 @@
 # UniWake — Constitution
 
-Version: **1.1** · Date: 2026-10-04 · Owner: Architect
+Version: **1.2** · Date: 2026-10-08 · Owner: Architect
 History: v0.1 draft → reviewed in `specs/reviews/phase-0-*.md` → consolidated as v1.0 →
 v1.1 amended by ADR-011 (§2.6), ADR-012 (§6.1), ADR-016 (§4.1, §6.7) in Phase 1.
+v1.2 amended by ADR-030 (§9.1, §10) and ADR-031 (§2.3, §2.4) for the `dev` branch workflow and
+the sync-ready data model.
 
 This document holds the rules every role must follow for the life of the project. It is
 binding: code, specs and reviews are judged against it. "MUST" is mandatory, "SHOULD" needs a
@@ -229,10 +231,11 @@ specs/            SDD documents
 8. At milestone end: `specs/reviews/M<n>-review.md` with no open CRITICAL/MAJOR.
 
 ### 9.1 CI quality gates
-Every push to `main`: `npm ci` → lint + format check → typecheck → unit/integration tests with
+Every push to `dev` (and to `main`, which only receives owner-approved merges of `dev`): `npm ci` → lint + format check → typecheck → unit/integration tests with
 coverage gate → E2E (Playwright, Chromium, demo mode) → PSScriptAnalyzer + Pester (Windows
-runner) → `npm audit` → secret scan. On tag `v*`: all of the above, then build installer,
-compute SHA-256, publish the GitHub Release with generated notes.
+runner) → `npm audit` → secret scan. Pushes never build or publish a release. On tag `v*`: the release workflow first checks
+that the tagged commit is on `main`, then runs all of the above, builds the installer, computes the
+SHA-256 and publishes the GitHub Release with generated notes.
 
 ## 10. Commit convention
 - Conventional Commits: `type(scope): summary`, English, imperative, ≤ 72 chars.
@@ -241,8 +244,13 @@ compute SHA-256, publish the GitHub Release with generated notes.
   (`docs(phase-1): ...`), milestone for reviews (`docs(M3): ...`).
 - Body SHOULD include `Refs: FR-003, NFR-01` when applicable. Breaking changes use `!` and a
   `BREAKING CHANGE:` footer.
-- Trunk-based: commits go to `main` (ADR-007). Releases are SemVer tags `vMAJOR.MINOR.PATCH`;
-  release notes are generated from commits.
+- Branches (ADR-030, supersedes ADR-007): all work is committed to `dev` and pushed to `origin dev`
+  only, one commit per completed task. Agents MUST NOT commit to, merge into, rebase onto or push
+  `main`, and MUST NOT open or merge a PR into `main`.
+- Releases are SemVer tags `vMAJOR.MINOR.PATCH` on `main` only; release notes are generated from
+  commits. Tags publish releases and trigger auto-update on real PCs, so agents MUST NOT create
+  tags. `dev` is merged into `main` (and tagged) only when the owner explicitly asks, after all
+  tests pass.
 
 ## 11. Governance
 - ADRs in `specs/decisions.md`. Improvements in `specs/improvements.md` per brief §7; the

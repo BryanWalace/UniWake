@@ -66,7 +66,7 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
 - **Consequences:** One source of truth; a test checks every code has a message.
 
 ## ADR-007 — Trunk-based development, Conventional Commits, SemVer tags
-- **Date:** 2026-10-04 · **Status:** Accepted
+- **Date:** 2026-10-04 · **Status:** Superseded by ADR-030
 - **Context:** A single autonomous agent works on the repo; the owner wants a push after each
   task.
 - **Decision:** Commit directly to `main` after `npm run verify` passes locally; CI validates
@@ -317,3 +317,23 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
   into a string, so `gh` received `--prerelease--notes-file …` as one argument. Fixed in
   `release.yml`; the tag was left in place (nothing was published from it) and the first published
   candidate is `v1.0.0-rc.2`.
+
+## ADR-030 — Work on `dev`; `main` and tags belong to the owner
+- **Date:** 2026-10-08 · **Status:** Accepted · **Supersedes:** ADR-007 · **Amends:** constitution
+  §9.1, §10; plan §12
+- **Context:** Release tags publish installers that hubs on real PCs install automatically
+  (ADR-015). With trunk-based work on `main`, one bad push plus one tag reaches the college's PCs.
+  The owner now wants every change isolated on a branch until they decide to ship it.
+- **Decision:** All work is committed to `dev` (created from `main` at `7297341`) and pushed to
+  `origin dev` only, one commit per completed task. Agents never commit to, merge into, rebase onto
+  or push `main`, never open or merge PRs into `main` and never create `v*` tags. Only when the
+  owner says "pode subir a dev para a main" is `dev` merged into `main` (after all tests pass), and
+  a tag is created only if the owner asks. `ci.yml` runs on pushes to `dev` and `main` and on PRs:
+  lint, format, typecheck, unit/integration/E2E/PowerShell tests and the installer/update smoke
+  tests. None of its jobs publish anything; the installer it builds is a throwaway test build.
+  `release.yml` still triggers on `v*` tags but first fails unless the tagged commit is reachable
+  from `origin/main`, so a tag pushed on `dev` by mistake publishes nothing.
+- **Consequences:** `main` always holds owner-approved code, and auto-update only ever installs what
+  the owner merged and tagged. The handoff (`NEXT.md`) tells the owner when `dev` is ready to merge.
+  The README download links keep pointing to the last published release until the owner tags a new
+  one.

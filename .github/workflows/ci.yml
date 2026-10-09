@@ -1,8 +1,10 @@
 name: CI
 
+# ADR-030: work happens on `dev`; `main` only receives owner-approved merges. Quality gates only:
+# nothing here publishes a release (the installers built below are throwaway test builds).
 on:
   push:
-    branches: [main]
+    branches: [dev, main]
   pull_request:
   workflow_dispatch:
 

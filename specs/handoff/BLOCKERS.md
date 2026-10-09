@@ -13,4 +13,4 @@ Status: open · resolved.
 - Inno Setup, `gh` CLI and Go are not installed on the dev machine. Installer builds will run on
   GitHub's Windows runners (the workflow installs Inno Setup via Chocolatey if the image lacks
   it); the agent may install Inno Setup locally in user space if needed for testing.
-- Git push to `origin main` works with the owner's stored credentials (verified 2026-10-04).
+- Git push to `origin dev` works with the owner's stored credentials (verified 2026-10-08; `main` is off-limits, ADR-030).
