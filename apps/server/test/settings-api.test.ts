@@ -99,7 +99,7 @@ describe('settings API (FR-016)', () => {
       audit: h.services.audit,
       transaction: (fn) => h.services.db.transaction(fn),
       configFile: new JsonConfigFile(path),
-      running: { panelPort: 47100, agentPort: 47101, logLevel: 'info' },
+      running: { panelPort: 47100, agentPort: 47101, syncPort: 47102, logLevel: 'info' },
     });
     const r = admin.save(
       { 'bootstrap.panelPort': 48100, 'bootstrap.logLevel': 'debug' },

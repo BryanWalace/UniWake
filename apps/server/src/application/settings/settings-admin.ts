@@ -17,6 +17,7 @@ import type { SettingChange, SettingsService } from './settings-service';
 export interface BootstrapValues {
   panelPort: number;
   agentPort: number;
+  syncPort: number;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
 }
 
@@ -29,6 +30,7 @@ export interface ConfigFileStore {
 const FILE_FIELD: Partial<Record<SettingKey, keyof BootstrapValues>> = {
   'bootstrap.panelPort': 'panelPort',
   'bootstrap.agentPort': 'agentPort',
+  'bootstrap.syncPort': 'syncPort',
   'bootstrap.logLevel': 'logLevel',
 };
 

@@ -7,6 +7,7 @@ import type { Db } from '../connection';
 
 export const ROW_ENTITIES = [
   'user',
+  'team_member',
   'room',
   'tag',
   'device',
@@ -22,6 +23,7 @@ export const BASELINE_ORDER: readonly RowEntity[] = ROW_ENTITIES;
 
 export const TABLE: Record<RowEntity, string> = {
   user: 'users',
+  team_member: 'team_members',
   room: 'rooms',
   tag: 'tags',
   device: 'devices',
@@ -33,6 +35,7 @@ export const TABLE: Record<RowEntity, string> = {
 /** Tables that gained `updated_at` in migration 004: `touch` maintains it there (F6-03). */
 export const TOUCH_SETS_UPDATED_AT: ReadonlySet<RowEntity> = new Set([
   'user',
+  'team_member',
   'tag',
   'schedule_exception',
   'schedule_run',
@@ -78,6 +81,17 @@ const SNAPSHOT: Record<RowEntity, (db: Db, id: number) => Snap | undefined> = {
         createdAt: r.created_at,
         passwordChangedAt: r.password_changed_at,
       }
+    );
+  },
+  team_member(db, id) {
+    const r = db.get<{
+      name: string;
+      verifier: string;
+      joined_at: number;
+      revoked_at: number | null;
+    }>('SELECT name, verifier, joined_at, revoked_at FROM team_members WHERE id = ?', [id]);
+    return (
+      r && { name: r.name, verifier: r.verifier, joinedAt: r.joined_at, revokedAt: r.revoked_at }
     );
   },
   room(db, id) {

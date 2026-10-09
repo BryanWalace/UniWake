@@ -277,6 +277,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       running: {
         panelPort: config.panelPort,
         agentPort: config.agentPort,
+        syncPort: config.syncPort,
         logLevel: config.logLevel,
       },
     },

@@ -54,6 +54,23 @@ export class SettingsService {
     return values as Settings;
   }
 
+  /**
+   * Re-reads the store after values changed underneath (a sync batch, F7-01) and notifies listeners
+   * of what changed, exactly as a local update would.
+   */
+  reload(): SettingChange[] {
+    const next = this.load();
+    const changes: SettingChange[] = [];
+    for (const key of SETTING_KEYS) {
+      if (JSON.stringify(next[key]) !== JSON.stringify(this.current[key])) {
+        changes.push({ key, old: this.current[key], new: next[key] });
+      }
+    }
+    this.current = next;
+    if (changes.length > 0) for (const l of this.listeners) l(changes, this.all());
+    return changes;
+  }
+
   get<K extends SettingKey>(key: K): Settings[K] {
     return this.current[key];
   }

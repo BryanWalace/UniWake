@@ -138,33 +138,13 @@ describe('restore (FR-014)', () => {
   });
 });
 
-const UNDO_004 = [
-  'DELETE FROM schema_migrations WHERE version = 4',
-  'DROP TABLE instance',
-  'DROP TABLE change_log',
-  'DROP TABLE machine_settings',
-  'ALTER TABLE settings DROP COLUMN rev',
-  'ALTER TABLE settings DROP COLUMN updated_by_instance',
-  ...[
-    'rooms',
-    'tags',
-    'devices',
-    'schedules',
-    'schedule_exceptions',
-    'users',
-    'schedule_runs',
-  ].flatMap((t) => [
-    `DROP INDEX ${t}_uuid`,
-    `DROP INDEX ${t}_rev`,
-    `ALTER TABLE ${t} DROP COLUMN uuid`,
-    `ALTER TABLE ${t} DROP COLUMN rev`,
-    `ALTER TABLE ${t} DROP COLUMN updated_by_instance`,
-  ]),
-  ...['tags', 'schedule_exceptions', 'users', 'schedule_runs'].map(
-    (t) => `ALTER TABLE ${t} DROP COLUMN updated_at`,
-  ),
-  'ALTER TABLE schedule_runs DROP COLUMN claimed_by_instance',
-  'ALTER TABLE schedule_targets DROP COLUMN ref_uuid',
+/** Undoes the newest migration (005_team) so the next start has one pending. */
+const UNDO_LATEST = [
+  'DELETE FROM schema_migrations WHERE version = 5',
+  'DROP TABLE team',
+  'DROP TABLE team_members',
+  'DROP TABLE sync_peers',
+  'DROP TABLE sync_conflicts',
 ].join(';\n');
 
 describe('restore and pre-migration backups on a real hub', () => {
@@ -212,9 +192,7 @@ describe('restore and pre-migration backups on a real hub', () => {
   it('a migration on an existing database is preceded by a pre-migration backup', async () => {
     const dir = tempDir();
     const first = await createHub({ config: config(dir), logger: silent });
-    // Make the next start see a pending migration: forget 004 and drop what it created that would
-    // collide when it runs again (new tables; added columns are dropped with their indexes).
-    first.db.exec(UNDO_004);
+    first.db.exec(UNDO_LATEST);
     await first.stop();
     const second = await createHub({ config: config(dir), logger: silent });
     hubs.push(second);

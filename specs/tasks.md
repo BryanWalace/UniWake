@@ -281,10 +281,10 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 ## M11 — Team core: pairing, keys, membership (v1.2; FR-201; ADR-035..038)
 | ID | Task | Refs | Tests | Done when |
 |---|---|---|---|---|
-| [ ] M11-T01 | Migration 005 (`team`, `team_members` replicated, `sync_peers`, `sync_conflicts`); `team_member` entity in the change log; `bootstrap.syncPort` (47102). | FR-201.5; plan §14.2 | migration + checker | — |
-| [ ] M11-T02 | SPAKE2 (RFC 9382 structure, RFC 3526 group): group constants, hash-to-group M/N, element validation, key schedule and confirmation. | FR-201.3; ADR-036 | KATs, property tests | — |
-| [ ] M11-T03 | `SecretProtector` port: DPAPI adapter (PowerShell, stdin) + fake; Pester-free contract test on Windows CI. | FR-201.4; ADR-037 | AC-201-04 | — |
-| [ ] M11-T04 | Sync network adapters: TCP server with first-byte demux, JSON-lines framing with size limit, TLS-PSK server/client, UDP announcer/listener (configurable targets). | FR-202.1–.2; ADR-035, ADR-038 | loopback contract tests | — |
+| [x] M11-T01 | Migration 005 (`team`, `team_members` replicated, `sync_peers`, `sync_conflicts`); `team_member` entity in the change log; `bootstrap.syncPort` (47102). | FR-201.5; plan §14.2 | migration + checker | — |
+| [x] M11-T02 | SPAKE2 (RFC 9382 structure, RFC 3526 group): group constants, hash-to-group M/N, element validation, key schedule and confirmation. | FR-201.3; ADR-036 | KATs, property tests | — |
+| [x] M11-T03 | `SecretProtector` port: DPAPI adapter (PowerShell, stdin) + fake; Pester-free contract test on Windows CI. | FR-201.4; ADR-037 | AC-201-04 | — |
+| [x] M11-T04 | Sync network adapters: TCP server with first-byte demux, JSON-lines framing with size limit, TLS-PSK server/client, UDP announcer/listener (configurable targets). | FR-202.1–.2; ADR-035, ADR-038 | loopback contract tests | — |
 | [ ] M11-T05 | Pairing service: code lifecycle (6 digits, 5 min, single use, 5 attempts), inviter/joiner protocol, joiner data replacement with backup + confirmation. | FR-201.1–.3; FR-201.2 | AC-201-01, AC-201-02, AC-201-03, AC-201-06 | — |
 | [ ] M11-T06 | Team service: members (rename, manual address), revoke + key rotation + rekey on contact, leave team, self-revocation. | FR-201.5; ADR-038 | AC-201-05 | — |
 | [ ] M11-D | Debug break-it (pairing): wrong/expired/reused codes in parallel, connection dropped mid-exchange, oversized/malformed messages, pairing while already in a team. | tasks §Break-it | regressions | findings filed |
@@ -293,8 +293,8 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 ## M12 — Sync engine (FR-202, FR-203)
 | ID | Task | Refs | Tests | Done when |
 |---|---|---|---|---|
-| [ ] M12-T01 | `applyRemote`: dependency order, LWW, Lamport merge, cascades and re-logging, settings reload, idempotency, one transaction. | FR-202.3; ADR-040 | AC-202-02 | — |
-| [ ] M12-T02 | Conflict rules: concurrent-edit detection by acknowledgement, duplicate MAC / name / code / username merges, `sync_conflicts`. | FR-203 | AC-203-01, AC-203-02, AC-203-03 | — |
+| [x] M12-T01 | `applyRemote`: dependency order, LWW, Lamport merge, cascades and re-logging, settings reload, idempotency, one transaction. | FR-202.3; ADR-040 | AC-202-02 | — |
+| [x] M12-T02 | Conflict rules: concurrent-edit detection by acknowledgement, duplicate MAC / name / code / username merges, `sync_conflicts`. | FR-203 | AC-203-01, AC-203-02, AC-203-03 | — |
 | [ ] M12-T03 | Sync service: peer table from announcements and manual addresses, pull loop, poke, "Sincronizar agora", status (online, last sync, pending, error). | FR-202.1, .3, .6 | AC-202-01, AC-202-03, AC-202-04, AC-202-06, AC-202-07 | — |
 | [ ] M12-T04 | Tombstone pruning after every member acknowledged (nightly, 30 d). | FR-202.5 | AC-202-05 | — |
 | [ ] M12-T05 | Team API (`/api/team/*`) with route auth, audit of pair/revoke/rename/leave, SSE `sync` events. | FR-201, FR-202 | API + authz tests | — |

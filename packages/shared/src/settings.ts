@@ -425,6 +425,17 @@ export const SETTING_DEFS = {
     requiresRestart: true,
     storage: 'config',
   }),
+  'bootstrap.syncPort': def(port, 47102, {
+    group: 'bootstrap',
+    scope: 'machine',
+    label: 'Porta do Modo equipe',
+    help: 'TCP e UDP. Precisa ser a mesma em todos os PCs da equipe (FR-202).',
+    input: 'number',
+    min: 1,
+    max: 65535,
+    requiresRestart: true,
+    storage: 'config',
+  }),
   'bootstrap.logLevel': def(z.enum(['debug', 'info', 'warn', 'error']), 'info', {
     group: 'bootstrap',
     scope: 'machine',

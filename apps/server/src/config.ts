@@ -14,6 +14,7 @@ export const fileConfigSchema = z
   .object({
     panelPort: portSchema,
     agentPort: portSchema,
+    syncPort: portSchema,
     panelBind: bindSchema,
     agentBind: bindSchema,
     logLevel: z.enum(['debug', 'info', 'warn', 'error']),
@@ -25,6 +26,8 @@ export interface Config {
   dataDir: string;
   panelPort: number;
   agentPort: number;
+  /** Modo equipe, TCP + UDP (FR-202); 0 = ephemeral (tests). */
+  syncPort: number;
   panelBind: string;
   agentBind: string;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
@@ -39,6 +42,7 @@ export interface Config {
 export const CONFIG_DEFAULTS: Omit<Config, 'dataDir' | 'demo'> = {
   panelPort: DEFAULT_SETTINGS['bootstrap.panelPort'],
   agentPort: DEFAULT_SETTINGS['bootstrap.agentPort'],
+  syncPort: DEFAULT_SETTINGS['bootstrap.syncPort'],
   panelBind: '127.0.0.1',
   agentBind: '0.0.0.0',
   logLevel: DEFAULT_SETTINGS['bootstrap.logLevel'],
@@ -55,6 +59,7 @@ const delayRangeSchema = z
 const ENV_KEYS = {
   panelPort: 'UNIWAKE_PANEL_PORT',
   agentPort: 'UNIWAKE_AGENT_PORT',
+  syncPort: 'UNIWAKE_SYNC_PORT',
   panelBind: 'UNIWAKE_PANEL_BIND',
   agentBind: 'UNIWAKE_AGENT_BIND',
   logLevel: 'UNIWAKE_LOG_LEVEL',

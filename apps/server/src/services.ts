@@ -325,7 +325,12 @@ export function createServices(
     audit,
     transaction: tx,
     configFile: opts.configFile ?? null,
-    running: opts.running ?? { panelPort: 47100, agentPort: 47101, logLevel: 'info' },
+    running: opts.running ?? {
+      panelPort: 47100,
+      agentPort: 47101,
+      syncPort: 47102,
+      logLevel: 'info',
+    },
   });
 
   const backups = opts.backupsDir
