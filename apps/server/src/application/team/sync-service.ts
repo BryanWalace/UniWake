@@ -421,8 +421,13 @@ export class SyncService {
       ch = (await this.connect(to)).ch;
       ch.send(this.hello());
       const first = await ch.receive(HANDSHAKE_MS);
-      if (errorMsg.safeParse(first).success)
-        throw new Error(`refused: ${(first as { code: string }).code}`);
+      const refused = errorMsg.safeParse(first);
+      if (refused.success && refused.data.code === 'revoked') {
+        // FR-201.5: this PC was removed from the team; it stops syncing and keeps its data.
+        this.leaveRevoked();
+        return;
+      }
+      if (refused.success) throw new Error(`refused: ${refused.data.code}`);
       const rekey = rekeyMsg.safeParse(first);
       if (rekey.success) {
         // We were behind: the peer verified us and handed the newer key (ADR-038).
@@ -483,11 +488,14 @@ export class SyncService {
       if (r.touched.has('setting')) this.d.settings.reload();
       this.d.events.publish({ type: 'sync' });
     }
-    if (this.d.team.selfRevoked()) {
-      this.d.team.leave(SYSTEM, 'revoked');
-      this.stop();
-      this.d.notices.system('team_revoked', {});
-    }
+    if (this.d.team.selfRevoked()) this.leaveRevoked();
+  }
+
+  private leaveRevoked(): void {
+    this.d.team.leave(SYSTEM, 'revoked');
+    this.stop();
+    this.d.notices.system('team_revoked', {});
+    this.d.events.publish({ type: 'sync' });
   }
 
   /** Joiner (D7-01): the team's full state over a session opened with the granted keys. */
@@ -544,7 +552,11 @@ export class SyncService {
         id.instanceId !== hello.data.instance ||
         !this.d.team.verifyMember(hello.data.instance, hello.data.memberSecret)
       ) {
-        ch.send({ type: 'error', code: 'not_member' });
+        const revoked =
+          hello.success &&
+          id?.instanceId === hello.data.instance &&
+          this.d.team.isRevokedMember(hello.data.instance, hello.data.memberSecret);
+        ch.send({ type: 'error', code: revoked ? 'revoked' : 'not_member' });
         return;
       }
       const client = hello.data.instance;

@@ -259,9 +259,19 @@ export class TeamService {
   pskFor(identity: string): Buffer | null {
     const id = TeamService.parseIdentity(identity);
     if (!id) return null;
-    const m = this.d.repo.member(id.instanceId);
-    if ((m?.revokedAt ?? null) !== null) return null;
+    // A revoked PC still holding an old key may connect, but only to be told it was removed
+    // (`serve` answers "revoked" and nothing else): with two PCs nobody else could tell it.
     return this.psk(id.epoch);
+  }
+
+  /** A revoked member proving itself with its own secret (it is then told, and nothing more). */
+  isRevokedMember(instanceId: string, secretB64: string): boolean {
+    const m = this.d.repo.member(instanceId);
+    return (
+      m !== undefined &&
+      m.revokedAt !== null &&
+      verifierOf(Buffer.from(secretB64, 'base64')) === m.verifier
+    );
   }
 
   /** ADR-038: a member proves itself with its secret; revoked or unknown members never pass. */

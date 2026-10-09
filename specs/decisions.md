@@ -510,6 +510,9 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
 - **Consequences:** A revoked PC still holding the old key cannot pass the member check, cannot
   open a current-epoch session and never receives the new key. A member that was off longer than
   two rotations must pair again (shown in pt-BR).
+- **Addendum (2026-10-09, final review):** with only two PCs nobody else could tell the removed PC.
+  So a revoked member that proves itself with its own secret over an old-key session receives
+  exactly `error: revoked` (no data, no key) and leaves the team with a "team_revoked" notice.
 
 ## ADR-039 — Team execution lease: deterministic election with fallback
 - **Date:** 2026-10-09 · **Status:** Accepted · **Amends:** ADR-034; plan §7.2, §14

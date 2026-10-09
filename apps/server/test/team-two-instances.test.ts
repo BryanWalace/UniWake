@@ -271,11 +271,15 @@ describe('Modo equipe with two instances on one machine', () => {
         .find((m) => m.name === 'PC-C')!.revokedAt,
     ).not.toBeNull();
 
-    // AC-202-04: the revoked PC can no longer pull.
+    // AC-202-04: the revoked PC can no longer pull: it is told it was removed, leaves the team and
+    // keeps its data (even when nobody else could tell it).
     await s(c).sync.pullFrom(s(a).team.self().instanceId);
     expect(roomNames(c)).toEqual(['Lab 1']);
-    expect(s(c).team.peer(s(a).team.self().instanceId)!.lastError).toMatch(
-      /chaves|reconhece|conex/i,
-    );
+    expect(s(c).team.inTeam()).toBe(false);
+    expect(
+      s(c)
+        .notices.list()
+        .some((n) => n.type === 'team_revoked'),
+    ).toBe(true);
   }, 60_000);
 });
