@@ -268,6 +268,10 @@ export class SyncService {
         port: a.port,
         seenAt: now,
       });
+      // M12-D: spoofed announcements cannot grow the list without bound (keep the 20 newest).
+      for (const [k, v] of this.discovered) if (v.seenAt < now - 30_000) this.discovered.delete(k);
+      while (this.discovered.size > 20)
+        this.discovered.delete(this.discovered.keys().next().value!);
     }
     const teamId = this.d.team.teamId();
     if (!teamId || a.team !== teamHash(teamId)) return;

@@ -146,6 +146,8 @@ export class PairingService {
     const recent = (this.perIp.get(ip) ?? []).filter((t) => t > now - 60_000);
     recent.push(now);
     this.perIp.set(ip, recent);
+    // M11-D: forget addresses that went quiet, so the map cannot grow without bound.
+    for (const [k, v] of this.perIp) if (v.every((t) => t <= now - 60_000)) this.perIp.delete(k);
     return recent.length > PER_IP_PER_MINUTE;
   }
 

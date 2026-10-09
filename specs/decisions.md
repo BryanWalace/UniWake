@@ -543,3 +543,17 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
   local write, so it propagates; every PC computes the same result.
 - **Consequences:** Convergence without coordination. Renamed rooms and merged devices are visible
   in "Conflitos resolvidos" so staff can fix names by hand.
+
+## ADR-041 — Dev test installer as a CI artifact
+- **Date:** 2026-10-09 · **Status:** Accepted · **Amends:** ADR-030; plan §12
+- **Context:** The owner must test Modo equipe on two real PCs before anything reaches `main`, but
+  only `v*` tags on `main` publish installers (ADR-030) and agents never tag. The CI installer job
+  only builds throwaway 0.0.x installers for its smoke tests.
+- **Decision:** On pushes to `dev`, the Windows installer job also builds
+  `UniWake-Setup-<next>-dev.<run>.exe` (now `1.2.0-dev.N`, base in `DEV_VERSION_BASE`) with its
+  SHA-256 and uploads them as the Actions artifact **UniWake-Setup-dev** (14-day retention). It is
+  not a release: no tag, no GitHub Release, nothing a hub's update check can see. A hub installed
+  from it is a prerelease version: it never updates to another prerelease (AC-001-05) and updates
+  automatically once a stable release newer than it is published (e.g. `v1.2.0`).
+- **Consequences:** The owner downloads the installer from the run's page (GitHub login needed) and
+  installs it on test PCs. Bump `DEV_VERSION_BASE` when work on the next version starts.

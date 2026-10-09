@@ -287,8 +287,8 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M11-T04 | Sync network adapters: TCP server with first-byte demux, JSON-lines framing with size limit, TLS-PSK server/client, UDP announcer/listener (configurable targets). | FR-202.1–.2; ADR-035, ADR-038 | loopback contract tests | — |
 | [x] M11-T05 | Pairing service: code lifecycle (6 digits, 5 min, single use, 5 attempts), inviter/joiner protocol, joiner data replacement with backup + confirmation. | FR-201.1–.3; FR-201.2 | AC-201-01, AC-201-02, AC-201-03, AC-201-06 | — |
 | [x] M11-T06 | Team service: members (rename, manual address), revoke + key rotation + rekey on contact, leave team, self-revocation. | FR-201.5; ADR-038 | AC-201-05 | — |
-| [ ] M11-D | Debug break-it (pairing): wrong/expired/reused codes in parallel, connection dropped mid-exchange, oversized/malformed messages, pairing while already in a team. | tasks §Break-it | regressions | findings filed |
-| [ ] M11-R | Code review → `specs/reviews/M11-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+| [x] M11-D | Debug break-it (pairing): wrong/expired/reused codes in parallel, connection dropped mid-exchange, oversized/malformed messages, pairing while already in a team. | tasks §Break-it | regressions | findings filed |
+| [x] M11-R | Code review → `specs/reviews/M11-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
 
 ## M12 — Sync engine (FR-202, FR-203)
 | ID | Task | Refs | Tests | Done when |
@@ -298,8 +298,8 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M12-T03 | Sync service: peer table from announcements and manual addresses, pull loop, poke, "Sincronizar agora", status (online, last sync, pending, error). | FR-202.1, .3, .6 | AC-202-01, AC-202-03, AC-202-04, AC-202-06, AC-202-07 | — |
 | [x] M12-T04 | Tombstone pruning after every member acknowledged (nightly, 30 d). | FR-202.5 | AC-202-05 | — |
 | [x] M12-T05 | Team API (`/api/team/*`) with route auth, audit of pair/revoke/rename/leave, SSE `sync` events. | FR-201, FR-202 | API + authz tests | — |
-| [ ] M12-D | Debug break-it (sync): kill mid-batch, clock jumps, three PCs gossiping, same change from two peers, peer revoked mid-sync, huge batches. | tasks §Break-it | regressions | findings filed |
-| [ ] M12-R | Code review → `specs/reviews/M12-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+| [x] M12-D | Debug break-it (sync): kill mid-batch, clock jumps, three PCs gossiping, same change from two peers, peer revoked mid-sync, huge batches. | tasks §Break-it | regressions | findings filed |
+| [x] M12-R | Code review → `specs/reviews/M12-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
 
 ## M13 — Team scheduling (FR-204)
 | ID | Task | Refs | Tests | Done when |
@@ -307,7 +307,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M13-T01 | `TeamLease` + scheduler deferral (re-ask declined occurrences; fallback after 90 s). | FR-204.1; ADR-039 | AC-204-01, AC-204-02, AC-204-03 | — |
 | [x] M13-T02 | Missed runs at start-up in team mode → notice "Agendamento não executado" + "Ligar agora". | FR-204.2 | AC-204-04 | — |
 | [x] M13-T03 | Schedule log shows the executing PC's name. | FR-204.1 | UI test | — |
-| [ ] M13-R | Code review → `specs/reviews/M13-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+| [x] M13-R | Code review → `specs/reviews/M13-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
 
 ## M14 — Team UI, installer, two-instance tests
 | ID | Task | Refs | Tests | Done when |
@@ -318,7 +318,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M14-T04 | Two-instance integration test: two hubs (own ports and data folders) pair, sync rooms/devices/schedules both ways, resolve a conflict, and run a schedule on exactly one. | FR-201..204 | AC-202-01, AC-203-01, AC-204-01 | — |
 | [x] M14-T05 | Playwright: two hubs, pair through the UI, see a room appear on the other panel. | FR-201, FR-202 | E2E | — |
 | [x] M14-T06 | Help page "Modo equipe" (incl. Power On by RTC). | FR-206 | AC-206-01 | — |
-| [ ] M14-R | Code review → `specs/reviews/M14-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+| [x] M14-R | Code review → `specs/reviews/M14-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
 
 ## M15 — Docs and community
 | ID | Task | Refs | Tests | Done when |
@@ -330,7 +330,7 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 ## Phase 8 — Validate v1.2 (lead: Debug)
 | ID | Task | Refs | Evidence |
 |---|---|---|---|
-| [ ] V2-T01 | Walk every v1.2 AC and FR-017 AC; record evidence in `validation.md` §v1.2. | FR-017, FR-201..207 | `validation.md` |
-| [ ] V2-T02 | Owner checklist for two real PCs (pt-BR, in `NEXT.md`). | B-002 | checklist |
-| [ ] V2-T03 | Final audit (Code Reviewer) and Architect approval. | — | `specs/reviews/v1.2-final.md` |
+| [x] V2-T01 | Walk every v1.2 AC and FR-017 AC; record evidence in `validation.md` §v1.2. | FR-017, FR-201..207 | `validation.md` |
+| [x] V2-T02 | Owner checklist for two real PCs (pt-BR, in `NEXT.md`). | B-002 | checklist |
+| [x] V2-T03 | Final audit (Code Reviewer) and Architect approval. | — | `specs/reviews/v1.2-final.md` |
 

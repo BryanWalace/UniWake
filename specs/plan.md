@@ -463,7 +463,8 @@ sequenceDiagram
   and Vite (proxy `/api` → 47100). `.dev-data/` is git-ignored.
 - `npm run verify`: lint, format check, typecheck, tests with coverage, `check:deps`.
 - Branches (ADR-030): work on `dev`; `main` and `v*` tags only on the owner's request.
-- `ci.yml` (push to `dev`/`main`, PR; `permissions: contents: read`; never publishes): ubuntu job (verify, E2E, `npm audit
+- `ci.yml` (push to `dev`/`main`, PR; `permissions: contents: read`; never publishes; on `dev` pushes it
+  also uploads the test installer artifact `UniWake-Setup-dev`, ADR-041): ubuntu job (verify, E2E, `npm audit
   --omit=dev --audit-level=high`, secret scan) + windows job (Pester, PSScriptAnalyzer,
   probe-helper contract test, installer smoke).
 - `release.yml` (tag `v*`): tag-on-`main` check → gates → build bundle + installer on Windows → SHA-256 → GitHub Release

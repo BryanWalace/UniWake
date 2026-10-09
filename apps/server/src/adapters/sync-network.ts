@@ -262,7 +262,8 @@ export class NodeSyncNetwork implements SyncNetwork {
     });
     return new Promise((resolve, reject) => {
       sock.once('error', reject);
-      sock.bind({ port, exclusive: false }, () => {
+      // The same bind address as TCP: 0.0.0.0 receives LAN broadcasts; tests stay on loopback.
+      sock.bind({ port, address: this.bind, exclusive: false }, () => {
         sock.off('error', reject);
         sock.setBroadcast(true);
         resolve(sock.address().port);
