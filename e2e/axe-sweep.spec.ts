@@ -40,6 +40,9 @@ test.describe('accessibility sweep (NFR-07)', () => {
       ['/auditoria', 'Auditoria'],
       ['/saude', 'Saúde do sistema'],
       ['/logs', 'Logs do serviço'],
+      ['/equipe', 'Modo equipe'],
+      ['/equipe/conflitos', 'Conflitos resolvidos'],
+      ['/ajuda/team-mode', null],
     ] as const) {
       await page.goto(path);
       const h1 = page.getByRole('heading', { level: 1 });

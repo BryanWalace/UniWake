@@ -113,6 +113,8 @@ export async function main(argv: readonly string[], opts: MainOptions = {}): Pro
       },
       certScriptPath: resolveHelperPath(import.meta.dirname, 'new-panel-cert.ps1'),
       prepareScriptPath: resolvePrepareScriptPath(import.meta.dirname),
+      // E2E (demo mode only): keep Modo equipe on loopback, never broadcasting on the real LAN.
+      ...(config.demo ? demoTeamHooks(env) : {}),
       // Real health checks only for a real hub (never in demo mode or tests).
       ...(config.demo
         ? {}
@@ -163,4 +165,24 @@ export async function main(argv: readonly string[], opts: MainOptions = {}): Pro
 
 if (import.meta.main) {
   void main(process.argv.slice(2)).then((code) => process.exit(code));
+}
+
+/** UNIWAKE_SYNC_BIND / UNIWAKE_TEAM_ANNOUNCE (host:port,…): honoured in demo mode only. */
+function demoTeamHooks(env: NodeJS.ProcessEnv): {
+  syncBind?: string;
+  teamAnnounceTargets?: () => { host: string; port: number }[];
+} {
+  const targets = (env.UNIWAKE_TEAM_ANNOUNCE ?? '')
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((t) => {
+      const [host, port] = t.split(':');
+      return { host: host!, port: Number(port) };
+    })
+    .filter((t) => t.host !== '' && Number.isInteger(t.port) && t.port > 0);
+  return {
+    ...(env.UNIWAKE_SYNC_BIND ? { syncBind: env.UNIWAKE_SYNC_BIND } : {}),
+    ...(env.UNIWAKE_TEAM_ANNOUNCE !== undefined ? { teamAnnounceTargets: () => targets } : {}),
+  };
 }
