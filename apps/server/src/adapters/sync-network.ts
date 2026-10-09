@@ -284,7 +284,7 @@ export class NodeSyncNetwork implements SyncNetwork {
     if (!sock) {
       temp = true;
       sock = dgram.createSocket('udp4');
-      await new Promise<void>((r) => sock!.bind(0, () => r()));
+      await new Promise<void>((r) => sock!.bind({ port: 0, address: this.bind }, () => r()));
       sock.setBroadcast(true);
     }
     await Promise.all(

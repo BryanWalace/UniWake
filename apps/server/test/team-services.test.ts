@@ -80,7 +80,7 @@ function world(name: string, start = T0) {
   const net = new TappedNetwork(new NodeSyncNetwork({ bind: '127.0.0.1' }));
   const ports = { ...fakePorts(clock), syncNetwork: net };
   const s = createServices(db, clock, ports, {
-    team: { port: 0, defaultPort: 0, machineName: name },
+    team: { port: 0, defaultPort: 0, machineName: name, announceTargets: () => [] },
   });
   worlds.push(s);
   return { s, clock, db, net };
@@ -338,7 +338,7 @@ describe('team lease (FR-204, ADR-039)', () => {
       db,
       clock,
       { ...fakePorts(clock), syncNetwork: new NodeSyncNetwork({ bind: '127.0.0.1' }) },
-      { team: { port: 0, defaultPort: 0 } },
+      { team: { port: 0, defaultPort: 0, announceTargets: () => [] } },
     );
     await again.team.init();
     expect(again.scheduler.tick().ran).toBe(0);

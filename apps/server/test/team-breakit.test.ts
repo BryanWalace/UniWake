@@ -25,7 +25,7 @@ function world(name: string) {
   const clock = new FakeClock(T0);
   const ports = { ...fakePorts(clock), syncNetwork: new NodeSyncNetwork({ bind: '127.0.0.1' }) };
   const s = createServices(db, clock, ports, {
-    team: { port: 0, defaultPort: 0, machineName: name },
+    team: { port: 0, defaultPort: 0, machineName: name, announceTargets: () => [] },
   });
   worlds.push(s);
   return { s, clock, db };
@@ -115,6 +115,37 @@ describe('M12 break-it: sync', () => {
 });
 
 describe('M11 break-it: pairing', () => {
+  it('an open code is announced every 15 s, so the joiner can pick the PC from the list', async () => {
+    const listener = new NodeSyncNetwork({ bind: '127.0.0.1' });
+    const seen: unknown[] = [];
+    const udp = await listener.listenAnnouncements(0, (m) => seen.push(m));
+    const db = testDb();
+    const clock = new FakeClock(T0);
+    const s = createServices(
+      db,
+      clock,
+      { ...fakePorts(clock), syncNetwork: new NodeSyncNetwork({ bind: '127.0.0.1' }) },
+      {
+        team: {
+          port: 0,
+          defaultPort: 0,
+          machineName: 'PC-A',
+          announceTargets: () => [{ host: '127.0.0.1', port: udp }],
+        },
+      },
+    );
+    worlds.push(s);
+    await s.pairing.openCode(ACTOR);
+    const pairing = () => seen.filter((m) => (m as { pairing?: unknown }).pairing).length;
+    for (let i = 0; i < 100 && pairing() < 1; i++) await new Promise((r) => setTimeout(r, 20));
+    const first = pairing();
+    await clock.advanceAsync(15_000);
+    for (let i = 0; i < 100 && pairing() <= first; i++) await new Promise((r) => setTimeout(r, 20));
+    expect(pairing()).toBeGreaterThan(first);
+    expect(seen.at(-1)).toMatchObject({ pairing: { name: 'PC-A' } });
+    await listener.close();
+  }, 30_000);
+
   it('a PC already in a team cannot join another one', async () => {
     const a = world('PC-A');
     const b = world('PC-B');

@@ -25,4 +25,9 @@ Lens: the new LAN surface (port 47102), cryptography use, secrets at rest.
 - **R-M11-05 (INFO)** SPAKE2 costs ~60 ms of CPU on the main thread per exchange (2048-bit
   modexp); acceptable for a manual, rate-limited action.
 
+- **R-M11-06 (MAJOR, fixed before merging to main)** Found by a smoke test with two real hub
+  processes over HTTP: the first "Gerar código" created the team but did not start the sync loops,
+  so the open pairing was announced only once and the joiner's list stayed empty. Opening a code
+  now starts them; team test worlds announce only to loopback (or nowhere).
+
 No open CRITICAL/MAJOR.

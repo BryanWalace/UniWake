@@ -116,6 +116,9 @@ export class PairingService {
       busy: false,
     };
     this.d.audit.record({ actor, action: 'team.pairing_open', target: 'team' });
+    // Smoke-test finding: the first code creates the team, so start the loops now; otherwise the PC
+    // would announce its open pairing only once and the joiner's list would stay empty.
+    this.d.onTeamChanged();
     return this.view();
   }
 
