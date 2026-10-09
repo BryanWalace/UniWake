@@ -75,7 +75,7 @@ function Test-FirewallRule([string]$Name) {
 }
 
 # AC-205-01: one rule name for TCP and UDP 47102, Domain and Private profiles only (locale-proof).
-function Test-TeamFirewallRules {
+function Test-TeamFirewallRule {
   $rules = @(Get-NetFirewallRule -DisplayName 'UniWake - Modo equipe' -ErrorAction SilentlyContinue)
   if ($rules.Count -ne 2) { return $false }
   $protocols = @()
@@ -106,7 +106,7 @@ try {
   Wait-Health 60
   Confirm-Condition (Test-FirewallRule 'UniWake Painel') 'regra de firewall do painel'
   Confirm-Condition (Test-FirewallRule 'UniWake Cadastro') 'regra de firewall do cadastro'
-  Confirm-Condition (Test-TeamFirewallRules) 'regras do Modo equipe (TCP e UDP 47102, Domínio e Privada)'
+  Confirm-Condition (Test-TeamFirewallRule) 'regras do Modo equipe (TCP e UDP 47102, Domínio e Privada)'
   Confirm-Condition (Test-Path $shortcut) 'atalho no menu Iniciar'
 
   Write-Step 'Dados de exemplo'
