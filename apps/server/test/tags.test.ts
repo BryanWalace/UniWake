@@ -1,3 +1,4 @@
+import { changeLog } from '../src/db/sync/change-log';
 import { afterEach, describe, expect, it } from 'vitest';
 import { apiHarness, type ApiHarness } from './helpers/api';
 
@@ -97,6 +98,7 @@ describe('tags API (FR-008.2)', () => {
       "INSERT INTO schedule_targets (schedule_id, type, ref_id) VALUES (?, 'tag', ?)",
       [sid, tag.id],
     );
+    changeLog(h.services.db).touch('schedule', sid);
     const r = await h.inject({ method: 'DELETE', url: `/api/tags/${tag.id}`, cookie });
     expect(r.statusCode).toBe(409);
     expect(r.json()).toMatchObject({

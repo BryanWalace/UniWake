@@ -7,9 +7,11 @@ import type {
   TargetRowType,
 } from '../../application/schedules/schedules-service';
 import type { Db } from '../connection';
+import { changeLog } from '../sync/change-log';
 
 interface Row {
   id: number;
+  uuid: string | null;
   name: string;
   enabled: number;
   weekdays: number;
@@ -46,6 +48,7 @@ export class SqliteSchedulesRepo implements SchedulesRepo {
     const targets = this.targetsOf(rows.map((r) => r.id));
     return rows.map((r) => ({
       id: r.id,
+      uuid: r.uuid,
       name: r.name,
       enabled: r.enabled === 1,
       weekdays: r.weekdays,
@@ -102,6 +105,7 @@ export class SqliteSchedulesRepo implements SchedulesRepo {
       ],
     ).lastInsertRowid;
     this.writeTargets(id, s.targets);
+    changeLog(this.db).touch('schedule', id);
     return id;
   }
 
@@ -125,10 +129,22 @@ export class SqliteSchedulesRepo implements SchedulesRepo {
       ],
     );
     this.writeTargets(id, s.targets);
+    changeLog(this.db).touch('schedule', id);
   }
 
+  /** ADR-031 §5: the schedule's exceptions and runs go with it, as tombstones too. */
   delete(id: number): void {
-    this.db.run('DELETE FROM schedules WHERE id = ?', [id]);
+    this.db.transaction(() => {
+      const log = changeLog(this.db);
+      const ids = (sql: string) => this.db.all<{ id: number }>(sql, [id]).map((r) => r.id);
+      log.tombstone(
+        'schedule_exception',
+        ids('SELECT id FROM schedule_exceptions WHERE schedule_id = ?'),
+      );
+      log.tombstone('schedule_run', ids('SELECT id FROM schedule_runs WHERE schedule_id = ?'));
+      log.tombstone('schedule', id);
+      this.db.run('DELETE FROM schedules WHERE id = ?', [id]);
+    });
   }
 
   runs(q: ScheduleRunsQuery): { items: ScheduleRun[]; total: number } {
@@ -140,7 +156,10 @@ export class SqliteSchedulesRepo implements SchedulesRepo {
     )!.n;
     const items = this.db.all<ScheduleRun>(
       'SELECT r.id, r.schedule_id AS scheduleId, s.name AS scheduleName, r.planned_at AS plannedAt, ' +
-        'r.claimed_at AS handledAt, r.status, r.detail, r.job_id AS jobId ' +
+        'r.claimed_at AS handledAt, r.status, r.detail, r.job_id AS jobId, ' +
+        // FR-204.1: name the other team PC that ran it (null when it ran here).
+        'CASE WHEN r.claimed_by_instance IS NOT NULL AND r.claimed_by_instance IS NOT (SELECT instance_id FROM instance) ' +
+        'THEN (SELECT name FROM team_members m WHERE m.uuid = r.claimed_by_instance) END AS executedBy ' +
         'FROM schedule_runs r JOIN schedules s ON s.id = r.schedule_id WHERE ' +
         where +
         ' ORDER BY r.planned_at DESC, r.id DESC LIMIT ? OFFSET ?',
@@ -157,15 +176,20 @@ export class SqliteSchedulesRepo implements SchedulesRepo {
   }
 
   insertException(e: Omit<ScheduleException, 'id'>): number {
-    return this.db.run(
+    const id = this.db.run(
       'INSERT INTO schedule_exceptions (schedule_id, start_date, end_date, description) VALUES (?, ?, ?, ?)',
       [e.scheduleId, e.startDate, e.endDate, e.description],
     ).lastInsertRowid;
+    changeLog(this.db).touch('schedule_exception', id);
+    return id;
   }
 
   deleteException(id: number): ScheduleException | undefined {
     const e = this.exceptions().find((x) => x.id === id);
-    if (e) this.db.run('DELETE FROM schedule_exceptions WHERE id = ?', [id]);
+    if (e) {
+      changeLog(this.db).tombstone('schedule_exception', id);
+      this.db.run('DELETE FROM schedule_exceptions WHERE id = ?', [id]);
+    }
     return e;
   }
 }

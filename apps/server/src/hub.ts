@@ -13,6 +13,8 @@ import { PrepareScriptFile } from './adapters/prepare-script';
 import { createFileLogger } from './adapters/logger';
 import { JsonConfigFile } from './adapters/config-file';
 import { applyPendingRestore, snapshotBefore } from './db/backups';
+import { baselineChangeLog, configureChangeLog } from './db/sync/change-log';
+import { ensureInstance, rotateInstance } from './db/sync/instance';
 import type { HostChecks, TimeCheck } from './application/health/health-service';
 import { LogFileReader } from './adapters/log-reader';
 import { type PanelCertificate, PanelCertificateStore } from './adapters/panel-certificate';
@@ -27,6 +29,9 @@ import { SqliteSchedulerRepo } from './db/repositories/scheduler-repo';
 import { CompositeProber, PingExeIcmp, powershellSpawner, PsHelperIcmp } from './adapters/icmp';
 import { OsNetworkInterfaces } from './adapters/network-interfaces';
 import { NodeProcessRunner } from './adapters/process-runner';
+import { DevSecretProtector, DpapiSecretProtector } from './adapters/secret-protector';
+import { NodeSyncNetwork } from './adapters/sync-network';
+import type { SecretProtector, SyncEndpoint } from './application/ports';
 import { RecordingPacketSender } from './adapters/recording-packet-sender';
 import { SystemClock } from './adapters/system-clock';
 import { TcpProber } from './adapters/tcp-prober';
@@ -86,6 +91,16 @@ export interface HubOptions {
   panelCertificate?: () => Promise<PanelCertificate>;
   /** Port overrides (tests); defaults to the real adapters. */
   ports?: ServicePorts;
+  /** Modo equipe (tests): bind address of the team port (default 0.0.0.0). */
+  syncBind?: string;
+  /** Modo equipe (tests): where announcements go instead of the subnets' broadcasts. */
+  teamAnnounceTargets?: () => readonly SyncEndpoint[];
+  /** Modo equipe (tests): the port other PCs listen on (default: config.syncPort). */
+  teamDefaultPort?: number;
+  /** This PC's name in the team (default: the Windows computer name). */
+  machineName?: string;
+  /** Team secrets override (tests): skips DPAPI. */
+  secrets?: SecretProtector;
 }
 
 export interface Hub {
@@ -187,6 +202,14 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
     );
   }
 
+  // ADR-031/033: this installation's identity (a restored copy gets a new one, D6-03) and the
+  // change-log baseline for rows written before migration 004.
+  configureChangeLog(db, () => clock.now());
+  if (restored && !restored.failed) rotateInstance(db, clock.now());
+  const instance = ensureInstance(db, clock.now());
+  const baselined = baselineChangeLog(db);
+  logger.info({ instanceId: instance.instanceId, baselined }, 'instance ready');
+
   // Demo mode never constructs the real sender (AC-015-01): no packet can leave the machine, and
   // interfaces, probes and DNS are simulated too (FR-015, R-M3-03).
   const demoDevices = new SqliteDevicesRepo(db);
@@ -214,6 +237,14 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
     process.platform === 'win32' ? new PingExeIcmp(runner) : null,
     settingsConcurrency,
   );
+  // ADR-037: DPAPI on Windows; elsewhere (Linux CI, development) a marked development protector.
+  const secrets =
+    opts.secrets ??
+    (process.platform === 'win32' ? new DpapiSecretProtector(runner) : new DevSecretProtector());
+  if (!opts.secrets && process.platform !== 'win32') {
+    logger.warn({}, 'team secrets use the development protector (no DPAPI on this OS)');
+  }
+  const syncNetwork = new NodeSyncNetwork({ bind: opts.syncBind ?? '0.0.0.0' });
   const services = createServices(
     db,
     clock,
@@ -227,6 +258,8 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
             dns: sim.dns,
             neighbors: sim.neighbors,
             logger,
+            syncNetwork,
+            secrets,
           }
         : {
             interfaces: new OsNetworkInterfaces(runner),
@@ -239,6 +272,8 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
                 ? new WindowsNeighborCache(runner, opts.neighborScriptPath ?? null)
                 : { read: () => Promise.resolve([]) },
             logger,
+            syncNetwork,
+            secrets,
           }),
     {
       demo: config.demo,
@@ -250,6 +285,12 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       requestRestart: () => opts.requestRestart?.(),
       prepareScript: new PrepareScriptFile(opts.prepareScriptPath ?? null),
       releaseSource: opts.releaseSource ?? null,
+      team: {
+        port: config.syncPort,
+        defaultPort: opts.teamDefaultPort ?? config.syncPort,
+        ...(opts.machineName ? { machineName: opts.machineName } : {}),
+        ...(opts.teamAnnounceTargets ? { announceTargets: opts.teamAnnounceTargets } : {}),
+      },
       oui: (() => {
         const file = new OuiFile(opts.ouiPath ?? null);
         return () => file.get();
@@ -267,6 +308,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       running: {
         panelPort: config.panelPort,
         agentPort: config.agentPort,
+        syncPort: config.syncPort,
         logLevel: config.logLevel,
       },
     },
@@ -425,7 +467,10 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       }
       services.runner.recover();
       services.testWol.recover();
+      // Before the first scheduler tick: team mode changes how missed runs are handled (FR-204.2).
+      await services.team.init();
       services.scheduler.start();
+      await services.sync.start();
       services.monitor.start();
       services.dashboard.start();
       services.retention.start();
@@ -451,6 +496,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       await services.retention.stop();
       await services.monitor.stop();
       await Promise.allSettled([panel.close(), agent.close(), panelLan?.close()]);
+      await services.sync.close();
       await sender.close();
       icmpHelper?.close();
       db.close();

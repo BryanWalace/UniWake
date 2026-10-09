@@ -2,6 +2,7 @@ import type { FastifyInstance, InjectOptions, LightMyRequestResponse } from 'fas
 import type { Role } from '@uniwake/shared';
 import { hashPassword } from '../../src/application/auth/passwords';
 import { SqliteUsersRepo } from '../../src/db/repositories/auth-repos';
+import { verifyChangeLog } from '../../src/db/sync/change-log';
 import { buildApp } from '../../src/http/app';
 import { registerPanelRoutes } from '../../src/http/panel';
 import { LOOPBACK_HOSTS } from '../../src/http/security';
@@ -83,7 +84,10 @@ export async function apiHarness(
     },
     async close() {
       await app.close();
+      // R6-01: any route that wrote a replicated row without logging it fails its test here.
+      const problems = db.raw.isOpen ? verifyChangeLog(db) : [];
       db.close();
+      if (problems.length > 0) throw new Error(`change log out of sync:\n${problems.join('\n')}`);
     },
   };
   return h;

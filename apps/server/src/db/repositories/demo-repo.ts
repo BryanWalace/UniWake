@@ -1,5 +1,6 @@
 import type { DemoRepo } from '../../application/demo/demo-seed';
 import type { Db } from '../connection';
+import { changeLog } from '../sync/change-log';
 
 export class SqliteDemoRepo implements DemoRepo {
   constructor(private readonly db: Db) {}
@@ -29,5 +30,8 @@ export class SqliteDemoRepo implements DemoRepo {
   backdateInventory(at: number): void {
     this.db.run('UPDATE devices SET created_at = ?, updated_at = ?', [at, at]);
     this.db.run('UPDATE rooms SET created_at = ?, updated_at = ?', [at, at]);
+    const ids = (t: string) => this.db.all<{ id: number }>(`SELECT id FROM ${t}`).map((r) => r.id);
+    changeLog(this.db).touchAll('room', ids('rooms'));
+    changeLog(this.db).touchAll('device', ids('devices'));
   }
 }

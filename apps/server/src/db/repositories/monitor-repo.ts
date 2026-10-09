@@ -6,6 +6,7 @@ import type {
   StatusUpdate,
 } from '../../application/monitor/monitor-service';
 import type { Db } from '../connection';
+import { changeLog } from '../sync/change-log';
 
 interface Row {
   id: number;
@@ -89,6 +90,7 @@ export class SqliteMonitorRepo implements MonitorRepo {
 
   updateIp(deviceId: number, ip: string, now: number): void {
     this.db.run('UPDATE devices SET ip = ?, updated_at = ? WHERE id = ?', [ip, now, deviceId]);
+    changeLog(this.db).touch('device', deviceId);
   }
 
   resetAllUnknown(): { deviceId: number; from: DeviceStatus; lastProbeAt: number | null }[] {

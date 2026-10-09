@@ -42,6 +42,8 @@ export interface HealthWarning {
 export interface HealthDetails {
   status: HealthStatus;
   version: string;
+  /** This installation's identity (ADR-033); the page shows its first 8 characters. */
+  instanceId: string;
   startedAt: number;
   uptimeMs: number;
   dbSizeBytes: number | null;
@@ -62,6 +64,7 @@ export interface HealthDeps {
   clock: Clock;
   logger: Logger;
   version: string;
+  instanceId: () => string;
   startedAt: number;
   dbOk: () => boolean;
   dbSizeBytes: () => number | null;
@@ -235,6 +238,7 @@ export class HealthService {
     return {
       status: !dbOk ? 'down' : schedulerStalled || monitorStalled ? 'degraded' : 'ok',
       version: this.d.version,
+      instanceId: this.d.instanceId(),
       startedAt: this.d.startedAt,
       uptimeMs: now - this.d.startedAt,
       dbSizeBytes: this.d.dbSizeBytes(),

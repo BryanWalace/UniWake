@@ -6,6 +6,7 @@ import type {
   UsersRepo,
 } from '../../application/auth/auth-service';
 import type { Db } from '../connection';
+import { changeLog } from '../sync/change-log';
 
 interface UserRow {
   id: number;
@@ -51,11 +52,13 @@ export class SqliteUsersRepo implements UsersRepo {
   }
 
   create(u: { username: string; passwordHash: string; role: Role; now: number }): number {
-    return this.db.run(
+    const id = this.db.run(
       `INSERT INTO users (username, password_hash, role, created_at, password_changed_at)
        VALUES (?, ?, ?, ?, ?)`,
       [u.username.toLowerCase(), u.passwordHash, u.role, u.now, u.now],
     ).lastInsertRowid;
+    changeLog(this.db).touch('user', id);
+    return id;
   }
 
   list(): UserRecord[] {
@@ -64,6 +67,7 @@ export class SqliteUsersRepo implements UsersRepo {
 
   setRoleEnabled(id: number, role: Role, enabled: boolean): void {
     this.db.run('UPDATE users SET role = ?, enabled = ? WHERE id = ?', [role, enabled ? 1 : 0, id]);
+    changeLog(this.db).touch('user', id);
   }
 
   enabledAdmins(exceptId?: number): number {
@@ -86,6 +90,7 @@ export class SqliteUsersRepo implements UsersRepo {
       // Parameter upgrade (rehash): the password itself did not change.
       this.db.run('UPDATE users SET password_hash = ? WHERE id = ?', [hash, id]);
     }
+    changeLog(this.db).touch('user', id);
   }
 
   recordLoginFailure(id: number, now: number, windowStart: number): void {

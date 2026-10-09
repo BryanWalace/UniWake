@@ -1,8 +1,10 @@
 # UniWake — Constitution
 
-Version: **1.1** · Date: 2026-10-04 · Owner: Architect
+Version: **1.2** · Date: 2026-10-08 · Owner: Architect
 History: v0.1 draft → reviewed in `specs/reviews/phase-0-*.md` → consolidated as v1.0 →
 v1.1 amended by ADR-011 (§2.6), ADR-012 (§6.1), ADR-016 (§4.1, §6.7) in Phase 1.
+v1.2 amended by ADR-030 (§9.1, §10) and ADR-031 (§2.3, §2.4) for the `dev` branch workflow and
+the sync-ready data model.
 
 This document holds the rules every role must follow for the life of the project. It is
 binding: code, specs and reviews are judged against it. "MUST" is mandatory, "SHOULD" needs a
@@ -60,12 +62,21 @@ written reason to skip. Changes require an ADR that names the section changed (�
 - Timestamps stored as UTC epoch milliseconds. Timezone conversion only in scheduler evaluation
   and UI display, using IANA zone names (ADR-008).
 - MAC addresses stored normalized `AA:BB:CC:DD:EE:FF`; unique.
+- **Sync-ready (ADR-031, ADR-033).** Every table is either a *replicated entity* or
+  *machine-local*, and a new table MUST be classified in plan §5. Replicated rows carry a stable
+  `uuid`, `rev`, `updated_at` and `updated_by_instance`; every write to them goes through a
+  repository that updates the change log (`ChangeLog.touch` / `tombstone`) in the same
+  transaction. References between replicated entities are exchanged as UUIDs, never local ids.
+  Each installation has a persistent `instance_id`.
 
 ### 2.4 Configuration
 - Bootstrap config (data dir, ports, bind addresses, log level) precedence:
   code defaults < `config.json` in the data dir < environment variables.
 - Everything else is a setting stored in the DB, validated by a Zod schema, editable in the UI
   (NFR-03). Absent value = code default.
+- Every setting declares `scope`: `shared` (team policy, replicated) or `machine` (this PC's
+  interfaces, addresses, ports, paths, update and backup schedule), stored in `machine_settings`
+  and never synced or exported (ADR-032).
 
 ### 2.5 Dry-run and demo
 - Dry-run replaces `PacketSender` with a recording fake; a banner is visible on every page while
@@ -229,10 +240,11 @@ specs/            SDD documents
 8. At milestone end: `specs/reviews/M<n>-review.md` with no open CRITICAL/MAJOR.
 
 ### 9.1 CI quality gates
-Every push to `main`: `npm ci` → lint + format check → typecheck → unit/integration tests with
+Every push to `dev` (and to `main`, which only receives owner-approved merges of `dev`): `npm ci` → lint + format check → typecheck → unit/integration tests with
 coverage gate → E2E (Playwright, Chromium, demo mode) → PSScriptAnalyzer + Pester (Windows
-runner) → `npm audit` → secret scan. On tag `v*`: all of the above, then build installer,
-compute SHA-256, publish the GitHub Release with generated notes.
+runner) → `npm audit` → secret scan. Pushes never build or publish a release. On tag `v*`: the release workflow first checks
+that the tagged commit is on `main`, then runs all of the above, builds the installer, computes the
+SHA-256 and publishes the GitHub Release with generated notes.
 
 ## 10. Commit convention
 - Conventional Commits: `type(scope): summary`, English, imperative, ≤ 72 chars.
@@ -241,8 +253,13 @@ compute SHA-256, publish the GitHub Release with generated notes.
   (`docs(phase-1): ...`), milestone for reviews (`docs(M3): ...`).
 - Body SHOULD include `Refs: FR-003, NFR-01` when applicable. Breaking changes use `!` and a
   `BREAKING CHANGE:` footer.
-- Trunk-based: commits go to `main` (ADR-007). Releases are SemVer tags `vMAJOR.MINOR.PATCH`;
-  release notes are generated from commits.
+- Branches (ADR-030, supersedes ADR-007): all work is committed to `dev` and pushed to `origin dev`
+  only, one commit per completed task. Agents MUST NOT commit to, merge into, rebase onto or push
+  `main`, and MUST NOT open or merge a PR into `main`.
+- Releases are SemVer tags `vMAJOR.MINOR.PATCH` on `main` only; release notes are generated from
+  commits. Tags publish releases and trigger auto-update on real PCs, so agents MUST NOT create
+  tags. `dev` is merged into `main` (and tagged) only when the owner explicitly asks, after all
+  tests pass.
 
 ## 11. Governance
 - ADRs in `specs/decisions.md`. Improvements in `specs/improvements.md` per brief §7; the

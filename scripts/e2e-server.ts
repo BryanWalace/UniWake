@@ -12,6 +12,10 @@ rmSync(dataDir, { recursive: true, force: true });
 process.env.UNIWAKE_PANEL_PORT ??= '47190';
 process.env.UNIWAKE_AGENT_PORT ??= '47191';
 process.env.UNIWAKE_AGENT_BIND ??= '127.0.0.1';
+// Modo equipe on loopback only (e2e/team.spec.ts starts the second hub on 47194-47196).
+process.env.UNIWAKE_SYNC_PORT ??= '47192';
+process.env.UNIWAKE_SYNC_BIND ??= '127.0.0.1';
+process.env.UNIWAKE_TEAM_ANNOUNCE ??= '127.0.0.1:47196';
 process.env.UNIWAKE_WEB_DIR ??= join(process.cwd(), 'apps', 'web', 'dist');
 process.env.UNIWAKE_LOG_LEVEL ??= 'warn';
 // Specs build their own inventory; simulated machines boot within seconds instead of minutes.

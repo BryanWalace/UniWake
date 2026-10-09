@@ -66,7 +66,7 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
 - **Consequences:** One source of truth; a test checks every code has a message.
 
 ## ADR-007 — Trunk-based development, Conventional Commits, SemVer tags
-- **Date:** 2026-10-04 · **Status:** Accepted
+- **Date:** 2026-10-04 · **Status:** Superseded by ADR-030
 - **Context:** A single autonomous agent works on the repo; the owner wants a push after each
   task.
 - **Decision:** Commit directly to `main` after `npm run verify` passes locally; CI validates
@@ -317,3 +317,246 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
   into a string, so `gh` received `--prerelease--notes-file …` as one argument. Fixed in
   `release.yml`; the tag was left in place (nothing was published from it) and the first published
   candidate is `v1.0.0-rc.2`.
+
+## ADR-030 — Work on `dev`; `main` and tags belong to the owner
+- **Date:** 2026-10-08 · **Status:** Accepted · **Supersedes:** ADR-007 · **Amends:** constitution
+  §9.1, §10; plan §12
+- **Context:** Release tags publish installers that hubs on real PCs install automatically
+  (ADR-015). With trunk-based work on `main`, one bad push plus one tag reaches the college's PCs.
+  The owner now wants every change isolated on a branch until they decide to ship it.
+- **Decision:** All work is committed to `dev` (created from `main` at `7297341`) and pushed to
+  `origin dev` only, one commit per completed task. Agents never commit to, merge into, rebase onto
+  or push `main`, never open or merge PRs into `main` and never create `v*` tags. Only when the
+  owner says "pode subir a dev para a main" is `dev` merged into `main` (after all tests pass), and
+  a tag is created only if the owner asks. `ci.yml` runs on pushes to `dev` and `main` and on PRs:
+  lint, format, typecheck, unit/integration/E2E/PowerShell tests and the installer/update smoke
+  tests. None of its jobs publish anything; the installer it builds is a throwaway test build.
+  `release.yml` still triggers on `v*` tags but first fails unless the tagged commit is reachable
+  from `origin/main`, so a tag pushed on `dev` by mistake publishes nothing.
+- **Consequences:** `main` always holds owner-approved code, and auto-update only ever installs what
+  the owner merged and tagged. The handoff (`NEXT.md`) tells the owner when `dev` is ready to merge.
+  The README download links keep pointing to the last published release until the owner tags a new
+  one.
+
+## ADR-031 — Sync-ready data layer: UUIDs, Lamport revisions, one change-log row per entity
+- **Date:** 2026-10-08 · **Status:** Accepted · **Amends:** constitution §2.3; spec NFR-10; plan §5
+- **Context:** `.agents/07-roadmap-features.md` §A: there is no 24/7 server. Each of the two IT
+  staff runs UniWake on their own PC, and v1.2 syncs them over the LAN. The design must be ready
+  for that from v1.0: stable UUIDs, `updated_at`, `updated_by_instance`, tombstones, and every write
+  appending to a local change log through a repository. v1.0 was built with local integer keys and
+  hard deletes; ~730 tests and every API route use those integer ids.
+- **Decision:**
+  1. **Two kinds of tables.** *Replicated entities* (the team's shared data) and *machine-local*
+     tables (observations and state of this PC). Replicated: `room`, `tag`, `device` (incl. its tag
+     set), `schedule` (incl. its targets), `schedule_exception`, `schedule_run`, `user`, `setting`
+     (shared scope only, ADR-032) and the scheduler pause (`scheduler_pause`, singleton `global`).
+     Everything else is machine-local and never synced or exported: `instance`, `machine_settings`,
+     `system_state` (except the pause), `sessions`, `device_state`, `device_events`, `daily_uptime`,
+     `wake_jobs`, `wake_job_devices`, `packet_log`, `test_wol_runs`, `enrollment_tokens`, `notices`,
+     `backups`, `audit_log`, and the users' lock-out counters.
+  2. **Identity.** The integer `id` stays as a *local* surrogate key (FKs, URLs, API). Each
+     replicated row also gets `uuid` (unique), its global identity, assigned once and never changed;
+     references between entities travel as UUIDs. Settings use their key as identity (two PCs
+     changing `wake.repeat` change the same thing); the pause uses `global`; a schedule run uses a
+     name-based UUID (v5) of `schedule uuid + planned instant`, so the same occurrence has the same
+     identity on every PC and two records of it merge instead of duplicating.
+  3. **Versions.** Each replicated row carries `rev` (a Lamport clock value), `updated_at` and
+     `updated_by_instance`. The clock lives in the `instance` row and is incremented on every
+     replicated write; v1.2 merges it with remote revisions on receipt. Conflicts will be resolved by
+     `(rev, instance_id)`: deterministic last-writer-wins.
+  4. **Change log = latest state per entity.** `change_log(seq AUTOINCREMENT, entity, entity_id,
+     op, rev, instance_id, at, payload)` with one row per entity: a write deletes the entity's
+     previous row and appends a new one with a full JSON snapshot (references as UUIDs; local ids,
+     lock-out counters and machine data excluded). Because snapshots are full state, superseded
+     rows carry no information, so this *is* the compaction; a peer asking "changes since N" gets
+     the latest version of everything that changed after N.
+  5. **Tombstones.** A delete replaces the entity's log row with `op = 'delete'` (no payload). The
+     live tables keep hard deletes, so no read query, unique constraint or FK cascade changes, and
+     a deleted name can be reused. Dependents removed by a cascade are tombstoned too (a schedule's
+     exceptions and runs); devices whose room or tags change because of a delete are re-logged.
+     Tombstones are pruned only in v1.2, after every peer acknowledged them. Retention pruning of
+     old schedule runs drops their log rows without tombstones (each PC applies its own retention).
+  6. **Enforcement.** Repositories call `ChangeLog.touch(entity, id)` after a write and
+     `ChangeLog.tombstone(entity, id)` before a delete, inside the write's transaction. `touch`
+     assigns the UUID when missing, bumps the clock and writes the snapshot. A checker
+     (`verifyChangeLog`) proves for any database that every replicated row has a log row with the
+     same `rev` and the same snapshot, and that no tombstone has a live row; every API test harness
+     runs it on close, so a write path that skips the log fails the suite.
+  7. **Migration.** Migration 004 adds the columns and tables; at start-up a baseline logs every
+     existing row that has no revision yet, so a v1.0 database upgraded later syncs completely.
+  8. **Schedule targets keep the target's UUID** (`schedule_targets.ref_uuid`), and deleting a
+     room, tag or device clears the local `ref_id` of targets that pointed to it. This also fixes a
+     latent v1.0 bug: SQLite may reuse the highest rowid, so a schedule whose room was deleted could
+     silently target a room created afterwards with the same id.
+- **Alternatives rejected:** UUID primary keys everywhere (rewrites every FK, route, client type and
+  most tests for no functional gain: peers never see local ids); `deleted_at` soft-delete columns
+  (every read query, uniqueness rule and cascade would have to change; a tombstone in the log is
+  what sync needs); SQLite triggers writing the log (cannot build snapshots with UUID references
+  and aggregate children cleanly; the repository rule plus the checker is explicit and tested);
+  an append-only log of every change (grows with every IP change and pause forever while carrying
+  no extra information for state-based last-writer-wins).
+- **Consequences:** v1.0 behaves exactly as before for the operator; writes cost one extra snapshot
+  query. v1.2 only adds transport, apply (with the same repositories, keeping remote `rev` and
+  instance) and tombstone pruning. Unique names (two PCs creating "Lab 1" independently) are a v1.2
+  conflict rule, not a schema change.
+
+## ADR-032 — Machine-specific settings in their own table
+- **Date:** 2026-10-08 · **Status:** Accepted · **Amends:** constitution §2.4; plan §5
+- **Context:** Roadmap §A: network interface, port, bind address and paths are properties of one
+  PC and must never be synced or exported.
+- **Decision:** Every setting declares `scope: 'shared' | 'machine'` in the shared registry (a
+  required field, so a new key cannot be added unclassified). Machine-scope keys live in the new
+  `machine_settings` table, which no change log, sync or export ever reads; migration 004 moves
+  existing values there. Machine scope: `wake.interfaces`, `wake.dryRun`, `panel.lanEnabled`,
+  `panel.lanAddress`, `enrollment.hubAddress`, `update.*` (each PC updates itself, in its own
+  window), `backup.*` (each PC backs up its own disk) and the `bootstrap.*` keys (already in
+  `config.json`). Everything else (wake policy, monitoring, scheduler, security, retention) is
+  shared team policy. The settings page marks machine-scope settings "Somente neste PC".
+- **Consequences:** The settings API and form are unchanged; only storage differs. v1.4's export
+  and v1.2's sync can treat `settings` as team data without filtering.
+
+## ADR-033 — Persistent instance identity
+- **Date:** 2026-10-08 · **Status:** Accepted · **Amends:** plan §5, §9; spec FR-012, FR-014
+- **Context:** Each installation needs a stable `instance_id` (roadmap §A) to attribute writes,
+  order conflicts and, in v1.2, track what each peer has seen.
+- **Decision:** A single-row `instance` table holds `instance_id` (random UUID, created on first
+  start), `created_at` and the Lamport clock. It is machine-local. Restoring a backup file (FR-014)
+  gives the installation a **new** `instance_id` and keeps the clock at least at the highest
+  revision in the restored data: the restored change log restarts from older sequence numbers, and
+  peers that tracked the old identity must not mistake it for the same history. The health page
+  shows the identifier (first 8 characters) to make support and v1.2 pairing easier to follow.
+- **Consequences:** A database copied to another PC by hand would share the identity; v1.4's
+  import never copies `instance`, and the copy gets its own identity.
+
+## ADR-034 — Scheduler asks an execution lease before handling an occurrence
+- **Date:** 2026-10-08 · **Status:** Accepted · **Amends:** plan §7.2
+- **Context:** Roadmap §A/§B: with several instances online, one executor is elected per run
+  (lease); alone, an instance executes. v1.0 has one instance, but the scheduler must not need a
+  redesign for v1.2.
+- **Decision:** The scheduler depends on an `ExecutionLease` port: `shouldHandle({ schedule uuid,
+  planned instant, now })` → boolean, asked before an occurrence is claimed, whether it would be
+  executed or only logged (`perdido`, `pulado`). v1.0 wires `SoloLease` (always true). v1.2's lease
+  keeps its state up to date in the background (peer announcements) so the call stays synchronous
+  and the tick stays simple. The claim-then-execute row stays the local guard; the run's
+  deterministic UUID (ADR-031) makes two instances' records of one occurrence the same entity, and
+  each run records `claimed_by_instance`.
+- **Consequences:** An instance that declines leaves no record; the executor's run arrives by sync.
+  Offering missed wakes at start-up (roadmap §B) builds on the same port in v1.2.
+
+## ADR-035 — Team mode: peer-to-peer pull sync, replicated membership, one port
+- **Date:** 2026-10-09 · **Status:** Accepted · **Amends:** spec FR-201..205; plan §14
+- **Context:** Roadmap §B. No PC is always on; two staff, different shifts; sometimes a third PC.
+  The data layer is already sync-ready (ADR-031).
+- **Decision:**
+  - **Peer-to-peer, pull only.** Each PC pulls "changes since N" from every online peer and keeps a
+    cursor per peer; a "poke" asks a peer to pull now. Because a PC's change log also holds what it
+    received (with the original revision and instance), changes gossip through any PC that is on.
+  - **Membership is a replicated entity** (`team_member`: instance id as UUID, name, verifier of the
+    member secret, joined/revoked times), so every PC can check every other PC and a rename or
+    revocation spreads like any change. Keys are not replicated (ADR-038).
+  - **Who keeps data.** The PC that shows the code keeps its data; the joining PC replaces its
+    replicated data with the team's (after a backup and a typed confirmation). Merging two
+    independently built inventories at pairing time would turn every room name and MAC into a
+    conflict; the UI says which PC to pair from.
+  - **One port, 47102.** UDP for announcements; TCP for both pairing and sync, told apart by the first
+    byte (TLS records start with 0x16, pairing JSON with `{`). One firewall rule.
+- **Consequences:** No coordinator to install or keep on. A PC that was off catches up from whichever
+  PC is on. Cost: each PC opens one inbound port on Domain/Private networks.
+
+## ADR-036 — Pairing with SPAKE2 over the RFC 3526 group, no new dependency
+- **Date:** 2026-10-09 · **Status:** Accepted · **Amends:** plan §4, §14
+- **Context:** Roadmap §B requires a PAKE (SPAKE2/CPace) or an equivalent proven scheme so the
+  6-digit code authenticates the key exchange without travelling. `node:crypto` has no elliptic-curve
+  point arithmetic; the audited JS curve libraries would be a new runtime dependency (P6).
+- **Decision:** SPAKE2 as specified by RFC 9382 (transcript, key schedule, key confirmation with
+  HMAC), instantiated in the prime-order subgroup of the RFC 3526 2048-bit MODP group (safe prime,
+  generator 4) with `BigInt` exponentiation. `M` and `N` are hashed into the group (squares of
+  SHA-512-expanded integers: nobody knows their discrete logs). Received elements are validated
+  (range and subgroup membership). `w` = hash of the code and the session's nonces, reduced mod q.
+  Pairing traffic is JSON over TCP; after confirmation the inviter's payload is encrypted with
+  AES-256-GCM under a key derived from the SPAKE2 output.
+- **Alternatives:** CPace or SPAKE2 on ristretto255 via a curve library (smaller messages, new
+  dependency); SRP-6a (augmented, needs a stored verifier: no benefit for a one-time code).
+- **Consequences:** ~260-byte messages and tens of milliseconds of CPU per pairing; an attacker on the
+  wire gets no offline guess; an online guesser has 5 tries in 10⁶. Known-answer tests pin the group
+  constants; property tests check both sides agree on the right code and disagree on any other.
+
+## ADR-037 — Team secrets protected with DPAPI (LocalMachine)
+- **Date:** 2026-10-09 · **Status:** Accepted · **Amends:** plan §9, §14
+- **Context:** The team key must be stored encrypted on each PC (roadmap §B). The service runs as
+  LocalSystem.
+- **Decision:** A `SecretProtector` port. The Windows adapter calls
+  `ProtectedData.Protect/Unprotect` (scope LocalMachine, fixed entropy) through PowerShell with the
+  bytes on stdin, never on the command line. Blobs live in the machine-local `team` table; the
+  plaintext exists only in memory. Tests and non-Windows development use a fake protector that marks
+  its output, so a test can prove nothing plain reaches the database.
+- **Consequences:** A copied database (or backup) cannot be used to join the team on another PC: the
+  blobs only open on the PC that made them. Restoring a backup on the same PC keeps team mode working
+  (the restored identity is new, ADR-033, and re-announced as the same member name).
+
+## ADR-038 — Sync transport: TLS 1.3 PSK per key epoch, member secrets, re-keying
+- **Date:** 2026-10-09 · **Status:** Accepted · **Amends:** plan §14
+- **Context:** Mutual authentication and encryption derived from the team key (roadmap §B); revoking
+  a PC rotates the key for the others, including PCs that are off at the time.
+- **Decision:** `node:tls` with TLS 1.3 PSK (spiked on Node 24.15 / OpenSSL 3.5; (EC)DHE key
+  exchange, so recorded traffic stays secret even if the key leaks later). PSK = HKDF(team key,
+  "uniwake sync psk"), identity `uniwake/1/<instance id>/<epoch>`. Each PC keeps the current and the
+  previous epoch's key. After the handshake both sides send `hello` with their member secret; the
+  other side checks it against the member's replicated verifier and refuses revoked or unknown
+  members. A connection on the previous epoch may only carry the new key: when one side has a
+  newer epoch, it hands the key to the other (which proved it is a non-revoked member) and closes.
+  Revocation = mark the member revoked (replicated) + new random key at epoch + 1, pushed to every
+  online member; concurrent rotations converge on the higher (epoch, key hash).
+- **Consequences:** A revoked PC still holding the old key cannot pass the member check, cannot
+  open a current-epoch session and never receives the new key. A member that was off longer than
+  two rotations must pair again (shown in pt-BR).
+- **Addendum (2026-10-09, final review):** with only two PCs nobody else could tell the removed PC.
+  So a revoked member that proves itself with its own secret over an old-key session receives
+  exactly `error: revoked` (no data, no key) and leaves the team with a "team_revoked" notice.
+
+## ADR-039 — Team execution lease: deterministic election with fallback
+- **Date:** 2026-10-09 · **Status:** Accepted · **Amends:** ADR-034; plan §7.2, §14
+- **Context:** Online peers elect one executor per run; alone → execute (roadmap §B). The lease port
+  (ADR-034) is synchronous.
+- **Decision:** `TeamLease.shouldHandle` elects, for each occurrence, the smallest instance id among
+  this PC and the non-revoked members seen (announcement or sync) in the last 60 s. The scheduler
+  keeps declined occurrences in memory and asks again on each tick: when the run record arrives by
+  sync the claim fails (same schedule and planned time) and the occurrence is dropped; 90 s after
+  the planned time without a record, the lease answers yes for the next candidate (fallback, logged
+  `atrasado`). The deterministic run UUID makes any double record one entity. In team mode, start-up
+  does not replay missed runs: after the first sync round, a run inside the grace window with no
+  record becomes a notice "Agendamento não executado" with "Ligar agora".
+- **Alternatives:** Message-based leases with grants and expiry (more traffic and failure modes for
+  two or three PCs); executing everywhere and deduplicating packets (wakes twice, logs twice).
+- **Consequences:** No extra messages. A split view (A sees B, B does not see A) can at worst run a
+  schedule twice, never zero times. The fallback costs 90 s only when the elected PC is on but stuck.
+
+## ADR-040 — Conflict rules: last writer wins, deterministic duplicate merges
+- **Date:** 2026-10-09 · **Status:** Accepted · **Amends:** spec FR-203; plan §14
+- **Context:** Deterministic last-writer-wins with a "conflitos resolvidos" log (roadmap §B). Two
+  PCs editing apart can also create duplicates the schema forbids (MAC, room name/code, tag name,
+  username).
+- **Decision:** Versions compare by (rev, instance id). An incoming version that loses is ignored;
+  one that wins replaces the row and its log entry, keeping the remote revision. A conflict is
+  recorded when the overwritten (or ignored) version differs and the sender had not acknowledged
+  it (its cursor into our log is older than that version's sequence): the edits were concurrent.
+  Unique-key clashes between different UUIDs are resolved by UUID order on every PC: same MAC → the
+  larger UUID is deleted (tombstone); same room/tag name or room code → the larger UUID is renamed
+  with " (2)"/"-2" (next free suffix); same username → "-2". A rename made while applying is a new
+  local write, so it propagates; every PC computes the same result.
+- **Consequences:** Convergence without coordination. Renamed rooms and merged devices are visible
+  in "Conflitos resolvidos" so staff can fix names by hand.
+
+## ADR-041 — Dev test installer as a CI artifact
+- **Date:** 2026-10-09 · **Status:** Accepted · **Amends:** ADR-030; plan §12
+- **Context:** The owner must test Modo equipe on two real PCs before anything reaches `main`, but
+  only `v*` tags on `main` publish installers (ADR-030) and agents never tag. The CI installer job
+  only builds throwaway 0.0.x installers for its smoke tests.
+- **Decision:** On pushes to `dev`, the Windows installer job also builds
+  `UniWake-Setup-<next>-dev.<run>.exe` (now `1.2.0-dev.N`, base in `DEV_VERSION_BASE`) with its
+  SHA-256 and uploads them as the Actions artifact **UniWake-Setup-dev** (14-day retention). It is
+  not a release: no tag, no GitHub Release, nothing a hub's update check can see. A hub installed
+  from it is a prerelease version: it never updates to another prerelease (AC-001-05) and updates
+  automatically once a stable release newer than it is published (e.g. `v1.2.0`).
+- **Consequences:** The owner downloads the installer from the run's page (GitHub login needed) and
+  installs it on test PCs. Bump `DEV_VERSION_BASE` when work on the next version starts.

@@ -16,6 +16,7 @@ export const t = {
     users: 'Usuários',
     logs: 'Logs',
     help: 'Ajuda',
+    team: 'Modo equipe',
   },
   user: {
     logout: 'Sair',

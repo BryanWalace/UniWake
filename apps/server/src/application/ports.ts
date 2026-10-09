@@ -154,3 +154,53 @@ export interface LogSource {
   /** The current log file for download, or null when there is none yet. */
   open(): NodeJS.ReadableStream | null;
 }
+
+// ---------------------------------------------------------------- Team mode (v1.2, plan §14)
+/** ADR-037: encrypts team secrets at rest (DPAPI LocalMachine on Windows). */
+export interface SecretProtector {
+  protect(plain: Buffer): Promise<Buffer>;
+  unprotect(blob: Buffer): Promise<Buffer>;
+}
+
+/** A JSON-lines channel (pairing over TCP, sync over TLS-PSK). Messages are validated by callers. */
+export interface MessageChannel {
+  readonly remoteAddress: string;
+  send(msg: unknown): void;
+  /** The next message; rejects on timeout, close, malformed JSON or an oversized line. */
+  receive(timeoutMs: number): Promise<unknown>;
+  close(): void;
+}
+
+export interface SyncListenHandlers {
+  /** A plain TCP connection whose first byte is `{`. */
+  onPairing(ch: MessageChannel): void;
+  /** The PSK for a TLS identity, or null to refuse the handshake. */
+  pskFor(identity: string): Buffer | null;
+  /** An established TLS-PSK session. */
+  onSync(ch: MessageChannel, identity: string): void;
+}
+
+export interface SyncEndpoint {
+  host: string;
+  port: number;
+}
+
+/** Sockets for team mode (ADR-035, ADR-038). The application never touches node:net/tls/dgram. */
+export interface SyncNetwork {
+  /** TCP listener (pairing + sync on one port); port 0 = ephemeral. Returns the bound port. */
+  listen(port: number, handlers: SyncListenHandlers): Promise<number>;
+  connectPairing(to: SyncEndpoint, timeoutMs: number): Promise<MessageChannel>;
+  connectSync(
+    to: SyncEndpoint,
+    identity: string,
+    psk: Buffer,
+    timeoutMs: number,
+  ): Promise<MessageChannel>;
+  /** UDP discovery socket; port 0 = ephemeral. Returns the bound port. */
+  listenAnnouncements(
+    port: number,
+    onMessage: (msg: unknown, from: string) => void,
+  ): Promise<number>;
+  announce(msg: unknown, targets: readonly SyncEndpoint[]): Promise<void>;
+  close(): Promise<void>;
+}

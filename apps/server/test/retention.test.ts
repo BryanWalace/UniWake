@@ -1,3 +1,4 @@
+import { baselineChangeLog, verifyChangeLog } from '../src/db/sync/change-log';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   RETENTION_CHUNK,
@@ -14,7 +15,11 @@ import { fakePorts } from './helpers/ports';
 const DAY = 86_400_000;
 const dbs: Db[] = [];
 afterEach(() => {
-  for (const db of dbs.splice(0)) db.close();
+  for (const db of dbs.splice(0)) {
+    // R6-01: whatever the test wrote through services is in the change log.
+    expect(verifyChangeLog(db)).toEqual([]);
+    db.close();
+  }
 });
 
 function world(opts: { busy?: () => boolean } = {}) {
@@ -114,6 +119,8 @@ function seed(db: Db) {
   notice(old(2), old(1));
   notice(old(1), null);
   notice(old(181), null);
+  // Raw-SQL fixture, like data from before migration 004: logged so retention's forget is checked.
+  baselineChangeLog(db);
 }
 
 describe('retention cleanup (spec §9)', () => {

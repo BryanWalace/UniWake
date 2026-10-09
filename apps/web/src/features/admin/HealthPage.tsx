@@ -9,6 +9,7 @@ import { UpdateCard } from './UpdateCard';
 interface HealthDetails {
   status: 'ok' | 'degraded' | 'down';
   version: string;
+  instanceId?: string;
   startedAt: number;
   uptimeMs: number;
   dbSizeBytes: number | null;
@@ -76,6 +77,8 @@ export function HealthPage() {
   const h = health.data;
   const items: [string, string][] = [
     ['Versão', h.version],
+    // ADR-033: identifies this installation (support, Modo equipe).
+    ['Identificador desta instalação', h.instanceId ? h.instanceId.slice(0, 8) : '—'],
     ['Em execução há', humanDuration(h.uptimeMs)],
     [
       'Banco de dados',

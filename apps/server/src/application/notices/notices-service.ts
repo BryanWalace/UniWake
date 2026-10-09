@@ -102,6 +102,30 @@ export class NoticesService {
     this.d.events.publish({ type: 'notice', id, noticeType: 'ack' });
   }
 
+  /** FR-204.2: a run missed while this PC was off, offered with "Ligar agora" (one per run). */
+  missedRun(r: { scheduleId: number; scheduleName: string; plannedAt: number }): void {
+    const exists = this.d.repo
+      .open(50)
+      .some(
+        (n) =>
+          n.type === 'missed_run' &&
+          (n.data as { scheduleId?: number; plannedAt?: number }).scheduleId === r.scheduleId &&
+          (n.data as { plannedAt?: number }).plannedAt === r.plannedAt,
+      );
+    if (exists) return;
+    const id = this.d.repo.insert('missed_run', r, this.d.clock.now());
+    this.d.events.publish({ type: 'notice', id, noticeType: 'missed_run' });
+  }
+
+  /** The open missed-run notice with that id (for "Ligar agora"). */
+  missedRunNotice(
+    id: number,
+  ): { scheduleId: number; scheduleName: string; plannedAt: number } | undefined {
+    const n = this.d.repo.get(id);
+    if (!n || n.type !== 'missed_run' || n.acknowledgedAt !== null) return undefined;
+    return n.data as unknown as { scheduleId: number; scheduleName: string; plannedAt: number };
+  }
+
   /** A system notice such as "LAN access could not start"; one open notice per type. */
   system(type: string, data: Record<string, unknown>): void {
     const open = this.d.repo.open(50).find((n) => n.type === type);

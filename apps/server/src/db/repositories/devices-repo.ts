@@ -10,6 +10,7 @@ import type {
   DeviceWrite,
 } from '../../application/devices/devices-service';
 import type { Db } from '../connection';
+import { changeLog } from '../sync/change-log';
 
 interface Row {
   id: number;
@@ -174,6 +175,7 @@ export class SqliteDevicesRepo implements DevicesRepo {
       [d.name, d.mac, d.ip, d.hostname, d.roomId, d.notes, d.enabled ? 1 : 0, now, now],
     ).lastInsertRowid;
     this.db.run('INSERT INTO device_state (device_id) VALUES (?)', [id]);
+    changeLog(this.db).touch('device', id);
     return id;
   }
 
@@ -183,6 +185,7 @@ export class SqliteDevicesRepo implements DevicesRepo {
          updated_at = ? WHERE id = ?`,
       [d.name, d.mac, d.ip, d.hostname, d.roomId, d.notes, d.enabled ? 1 : 0, now, id],
     );
+    changeLog(this.db).touch('device', id);
   }
 
   setTags(id: number, tagIdsToSet: readonly number[]): void {
@@ -190,10 +193,11 @@ export class SqliteDevicesRepo implements DevicesRepo {
     for (const t of new Set(tagIdsToSet)) {
       this.db.run('INSERT INTO device_tags (device_id, tag_id) VALUES (?, ?)', [id, t]);
     }
+    changeLog(this.db).touch('device', id);
   }
 
   delete(id: number): void {
-    this.db.run('DELETE FROM devices WHERE id = ?', [id]);
+    this.bulkDelete([id]);
   }
 
   list(filter: DeviceFilter, limit: number, offset: number): { items: Device[]; total: number } {
@@ -230,6 +234,7 @@ export class SqliteDevicesRepo implements DevicesRepo {
       ]);
       return [];
     });
+    changeLog(this.db).touchAll('device', ids);
   }
 
   bulkAddTags(ids: readonly number[], tagIdsToAdd: readonly number[]): void {
@@ -238,6 +243,7 @@ export class SqliteDevicesRepo implements DevicesRepo {
         this.db.run('INSERT OR IGNORE INTO device_tags (device_id, tag_id) VALUES (?, ?)', [id, t]);
       }
     }
+    changeLog(this.db).touchAll('device', ids);
   }
 
   bulkRemoveTags(ids: readonly number[], tagIdsToRemove: readonly number[]): void {
@@ -250,6 +256,7 @@ export class SqliteDevicesRepo implements DevicesRepo {
         return [];
       });
     }
+    changeLog(this.db).touchAll('device', ids);
   }
 
   bulkSetEnabled(ids: readonly number[], enabled: boolean, now: number): void {
@@ -261,12 +268,21 @@ export class SqliteDevicesRepo implements DevicesRepo {
       ]);
       return [];
     });
+    changeLog(this.db).touchAll('device', ids);
   }
 
+  /** ADR-031 §5/§8: tombstones; schedule targets lose the local id but keep the UUID. */
   bulkDelete(ids: readonly number[]): void {
-    this.chunked(ids, (chunk, ph) => {
-      this.db.run(`DELETE FROM devices WHERE id IN (${ph})`, chunk);
-      return [];
+    this.db.transaction(() => {
+      changeLog(this.db).tombstone('device', ids);
+      this.chunked(ids, (chunk, ph) => {
+        this.db.run(
+          `UPDATE schedule_targets SET ref_id = NULL WHERE type = 'device' AND ref_id IN (${ph})`,
+          chunk,
+        );
+        this.db.run(`DELETE FROM devices WHERE id IN (${ph})`, chunk);
+        return [];
+      });
     });
   }
 

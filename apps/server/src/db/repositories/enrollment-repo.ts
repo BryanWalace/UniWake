@@ -5,6 +5,7 @@ import type {
   EnrollmentTokenView,
 } from '../../application/enrollment/enrollment-service';
 import type { Db } from '../connection';
+import { changeLog } from '../sync/change-log';
 
 interface Row {
   id: number;
@@ -121,6 +122,7 @@ export class SqliteEnrollmentRepo implements EnrollmentRepo {
       ],
     ).lastInsertRowid;
     this.db.run('INSERT INTO device_state (device_id) VALUES (?)', [id]);
+    changeLog(this.db).touch('device', id);
     return id;
   }
 
@@ -147,6 +149,7 @@ export class SqliteEnrollmentRepo implements EnrollmentRepo {
         id,
       ],
     );
+    changeLog(this.db).touch('device', id);
   }
 
   addDeviceEvent(

@@ -10,6 +10,7 @@ export const HELP_TOPICS = [
   'nic-power',
   'firewall-icmp',
   'vlan-broadcast',
+  'team-mode',
 ] as const;
 export type HelpTopic = (typeof HELP_TOPICS)[number];
 
@@ -182,6 +183,56 @@ export const ERROR_DEFS = {
   RESTORE_CONFIRMATION_MISMATCH: {
     status: 422,
     message: 'Confirmação incorreta: digite a data do backup exatamente como mostrada.',
+  },
+  // Modo equipe (FR-201..204)
+  TEAM_NOT_IN_TEAM: {
+    status: 409,
+    message: 'Este PC não está em uma equipe. Use "Parear com outro PC" ou "Entrar em uma equipe".',
+  },
+  TEAM_ALREADY_MEMBER: {
+    status: 409,
+    message: 'Este PC já está em uma equipe. Para entrar em outra, use "Sair da equipe" primeiro.',
+  },
+  TEAM_REPLACE_CONFIRM: {
+    status: 422,
+    message:
+      'Este PC tem cadastros que serão substituídos pelos da equipe. Digite SUBSTITUIR para confirmar (um backup é feito antes).',
+  },
+  TEAM_PAIRING_NO_CODE: {
+    status: 409,
+    message:
+      'O outro PC não está com um código de pareamento aberto. Clique em "Parear com outro PC" nele e tente de novo.',
+  },
+  TEAM_PAIRING_WRONG_CODE: {
+    status: 422,
+    message:
+      'Código incorreto. Confira os 6 dígitos mostrados no outro PC ({attemptsLeft} tentativas restantes).',
+  },
+  TEAM_PAIRING_LOCKED: {
+    status: 409,
+    message: 'Tentativas esgotadas: o código foi cancelado. Gere um novo código no outro PC.',
+  },
+  TEAM_PAIRING_UNREACHABLE: {
+    status: 502,
+    message:
+      'Não foi possível conectar ao outro PC ({address}). Verifique se o UniWake está aberto nele, o endereço e o firewall (porta 47102).',
+    help: 'team-mode',
+  },
+  TEAM_PAIRING_FAILED: {
+    status: 502,
+    message: 'O pareamento foi interrompido. Gere um novo código no outro PC e tente de novo.',
+  },
+  TEAM_MEMBER_NOT_FOUND: {
+    status: 404,
+    message: 'PC da equipe não encontrado. Atualize a página.',
+  },
+  TEAM_CANNOT_REVOKE_SELF: {
+    status: 422,
+    message: 'Para tirar este PC da equipe, use "Sair da equipe".',
+  },
+  MISSED_RUN_NOT_FOUND: {
+    status: 404,
+    message: 'Esse aviso já foi resolvido ou o agendamento foi removido.',
   },
   INTERNAL_ERROR: {
     status: 500,

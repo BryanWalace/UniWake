@@ -171,4 +171,6 @@ export interface ScheduleRun {
   /** e.g. "atrasado (8 min)", the holiday name, "alvo vazio". */
   detail: string | null;
   jobId: number | null;
+  /** Modo equipe (FR-204.1): the other PC that ran it; absent/null when it was this PC. */
+  executedBy?: string | null;
 }

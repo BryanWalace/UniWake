@@ -16,7 +16,9 @@ export type HubEvent =
     }
   | { type: 'counters' }
   | { type: 'notice'; id: number; noticeType: string }
-  | { type: 'scheduler'; paused: boolean };
+  | { type: 'scheduler'; paused: boolean }
+  /** A sync batch changed replicated data (FR-202): panels refetch everything. */
+  | { type: 'sync' };
 
 export type HubListener = (e: HubEvent) => void;
 

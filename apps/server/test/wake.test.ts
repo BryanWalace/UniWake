@@ -1,3 +1,4 @@
+import { changeLog } from '../src/db/sync/change-log';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { WakeJob, WakeJobDevice } from '@uniwake/shared';
 import { createServices } from '../src/services';
@@ -129,6 +130,7 @@ describe('wake engine end to end (FR-003)', () => {
       w.A[0]!.id,
     ]);
     w.h.services.db.run('UPDATE devices SET ip = NULL WHERE id = ?', [w.A[1]!.id]);
+    changeLog(w.h.services.db).touch('device', w.A[1]!.id);
     const { jobId } = (await wake(w, roomTarget([w.roomA]))).json<{ jobId: number }>();
     await drive(w.h);
     const { devices } = await job(w, jobId);

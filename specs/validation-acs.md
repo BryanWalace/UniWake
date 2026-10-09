@@ -5,15 +5,15 @@ and CI workflow steps. "pass (automated)" means the listed tests or CI steps exi
 verify` / CI ran them green on the commit this file was generated from; up to three pieces of
 evidence are shown per criterion.
 
-**116** automated criteria with evidence · **1** manual (owner checklist, V-T05) ·
+**149** automated criteria with evidence · **1** manual (owner checklist, V-T05) ·
 **0** without evidence.
 
 | AC | Task | Status | Evidence |
 |---|---|---|---|
-| AC-001-01a | M8-T09 | pass (automated) | `test/check-trace.test.ts` › AC-001-01a installs the service<br>`test/check-trace.test.ts` › AC-001-01a smoke<br>CI `.github/workflows/ci.yml` step “Install, upgrade and uninstall (AC-001-01a, AC-001-02, AC-001-03)” |
+| AC-001-01a | M8-T09 | pass (automated) | `test/check-trace.test.ts` › AC-001-01a installs the service<br>`test/check-trace.test.ts` › AC-001-01a smoke<br>CI `.github/workflows/ci.yml` step “Install, upgrade and uninstall (AC-001-01a, AC-001-02, AC-001-03, AC-205-01)” |
 | AC-001-01b | V-T05 | manual (owner) | — |
-| AC-001-02 | M8-T09 | pass (automated) | CI `.github/workflows/ci.yml` step “Install, upgrade and uninstall (AC-001-01a, AC-001-02, AC-001-03)” |
-| AC-001-03 | M8-T09 | pass (automated) | CI `.github/workflows/ci.yml` step “Install, upgrade and uninstall (AC-001-01a, AC-001-02, AC-001-03)” |
+| AC-001-02 | M8-T09 | pass (automated) | CI `.github/workflows/ci.yml` step “Install, upgrade and uninstall (AC-001-01a, AC-001-02, AC-001-03, AC-205-01)” |
+| AC-001-03 | M8-T09 | pass (automated) | CI `.github/workflows/ci.yml` step “Install, upgrade and uninstall (AC-001-01a, AC-001-02, AC-001-03, AC-205-01)” |
 | AC-001-04 | M8-T05 | pass (automated) | `apps/server/test/update-check.test.ts` › AC-001-04: running 1.0.0 with v1.1.0 published, a newer version is offered with its notes<br>`apps/web/test/update-panel.test.tsx` › AC-001-04: shows "Nova versão 1.1.0 disponível" and the release notes |
 | AC-001-05 | M8-T05 | pass (automated) | `apps/server/test/update-check.test.ts` › AC-001-05: prereleases, drafts, non-SemVer tags and versions not newer are never offered |
 | AC-001-06 | M8-T05 | pass (automated) | `apps/server/test/update-check.test.ts` › AC-001-06: an unreachable or rate-limited GitHub keeps the last good result and says so<br>`apps/web/test/update-panel.test.tsx` › AC-001-06: a failed check says so with the last successful check |
@@ -83,6 +83,7 @@ evidence are shown per criterion.
 | AC-005-09 | M5-T05 | pass (automated) | `apps/server/test/scheduler.test.ts` › AC-005-09: a pause without a reason is rejected with PAUSE_REASON_REQUIRED<br>`apps/web/test/schedules-extras.test.tsx` › AC-005-09 in the UI: pausing without a reason shows the message under the field |
 | AC-005-10 | M5-T06 | pass (automated) | `apps/server/test/scheduler.test.ts` › AC-005-10: every status scenario leaves a log row, with its job id when a job exists |
 | AC-005-11 | M5-T02 | pass (automated) | `apps/server/test/scheduler.test.ts` › AC-005-11: after its room is deleted, the next run logs "falhou (alvo vazio)"<br>`apps/server/test/schedules.test.ts` › AC-005-11: a schedule on a room that gets deleted shows "alvo vazio" |
+| AC-005-12 | M10-T03 | pass (automated) | `apps/server/test/sync-ready.test.ts` › AC-005-12: a schedule on a deleted room never targets a room created with the same id |
 | AC-006-01 | M1-T16 | pass (automated) | `apps/server/test/auth.test.ts` › AC-006-01 setup from a non-loopback address is refused with 403 |
 | AC-006-02 | M1-T16 | pass (automated) | `apps/server/test/auth.test.ts` › AC-006-02 two concurrent setups create exactly one admin |
 | AC-006-03 | M6-T03 | pass (automated) | `apps/server/test/route-authz.test.ts` › AC-006-03: every panel route declares exactly the level of the FR-006.2 permission matrix |
@@ -124,6 +125,38 @@ evidence are shown per criterion.
 | AC-015-01 | M4-T09 | pass (automated) | `apps/server/test/demo.test.ts` › demo hub (AC-015-01)<br>`apps/server/test/demo.test.ts` › AC-015-01: a demo start on an empty data dir seeds data and never constructs the real sender<br>`apps/server/test/hub.test.ts` › demo mode safety (AC-015-01) |
 | AC-016-01 | M6-T05 | pass (automated) | `apps/web/test/admin-pages.test.tsx` › AC-016-01: every setting in the shared registry has a labelled control<br>`packages/shared/test/settings-form.test.ts` › AC-016-01: every key carries what the generated form needs, consistent with its schema |
 | AC-016-02 | M6-T05 | pass (automated) | `apps/server/test/logs.test.ts` › admins read and download the log; operators get 403 (AC-016-02)<br>`apps/server/test/settings-api.test.ts` › AC-016-02: operators get 403 on settings reads and writes |
+| AC-017-01 | M10-T02, M10-T06 | pass (automated) | `apps/server/test/sync-ready.test.ts` › AC-017-01: one UUID per installation, the same on every start, shown on the health page |
+| AC-017-02 | M10-T03 | pass (automated) | `apps/server/test/sync-ready.test.ts` › AC-017-02: every replicated write leaves exactly one log row matching the row, refs as UUIDs |
+| AC-017-03 | M10-T03 | pass (automated) | `apps/server/test/sync-ready.test.ts` › AC-017-03: deletes leave tombstones; devices are re-logged without the room or tag |
+| AC-017-04 | M10-T01 | pass (automated) | `apps/server/test/sync-ready.test.ts` › AC-017-04: keeps every room, device, tag, schedule and setting and makes them syncable |
+| AC-017-05 | M10-T04 | pass (automated) | `apps/server/test/sync-ready.test.ts` › AC-017-05: machine settings go to machine_settings and are never logged; shared ones are |
+| AC-017-06 | M10-T05 | pass (automated) | `apps/server/test/sync-ready.test.ts` › AC-017-06: a declining lease leaves no run and no job; the solo lease runs and records who claimed |
+| AC-017-07 | M10-T02 | pass (automated) | `apps/server/test/sync-ready.test.ts` › AC-017-07: the same schedule and instant give the same UUID anywhere; another instant does not |
+| AC-017-08 | M10-T06 | pass (automated) | `apps/server/test/backups.test.ts` › the next start swaps the database for the backup and audits the restore (AC-017-08: new identity)<br>`apps/server/test/sync-ready.test.ts` › AC-017-08: a restore gives a new identity and keeps the clock at the highest revision |
+| AC-017-09 | M10-T04 | pass (automated) | `apps/server/test/sync-ready.test.ts` › AC-017-09: every setting declares a scope; network, panel, update and backup keys are machine<br>`apps/web/test/admin-pages.test.tsx` › AC-017-09: machine-specific settings, and only those, are marked "Somente neste PC" |
 | AC-101-01 | M9-T04 | pass (automated) | `apps/server/test/discovery.test.ts` › AC-101-01: more than a /22 needs confirmation<br>`apps/web/test/discovery-page.test.tsx` › AC-101-01: a network larger than /22 asks for confirmation before sweeping |
 | AC-101-02 | M9-T01 | pass (automated) | `apps/server/test/neighbors.test.ts` › AC-101-02: arp -a from pt-BR and en-US Windows parse identically |
 | AC-101-03 | M9-T03 | pass (automated) | `apps/server/test/discovery.test.ts` › AC-101-03: a registered MAC is "já cadastrado" and is never added twice<br>`apps/web/test/discovery-page.test.tsx` › AC-101-03: registered machines are "já cadastrado" and cannot be selected; others are added to a room<br>`e2e/discovery.spec.ts` › AC-101-03 end to end: discover machines, add one to a room, then it is "já cadastrado" |
+| AC-201-01 | M11-T05 | pass (automated) | `apps/server/test/team-services.test.ts` › AC-201-01: 6 digits, 5 minutes, single use, a new code cancels the old, 5 misses lock it<br>`apps/web/test/team-pages.test.tsx` › AC-201-01: generating a code shows it with the countdown, attempts and this PC’s address |
+| AC-201-02 | M11-T05 | pass (automated) | `apps/server/test/team-services.test.ts` › AC-201-02: the code never appears on the wire; a wrong code stores nothing anywhere |
+| AC-201-03 | M11-T05 | pass (automated) | `apps/server/test/team-two-instances.test.ts` › AC-201-03, AC-201-06, AC-202-01, AC-203-01, AC-204-01: pair, sync both ways, resolve a conflict, one executor |
+| AC-201-04 | M11-T03 | pass (automated) | `apps/server/test/secret-protector.test.ts` › AC-201-04: real DPAPI (LocalMachine) round-trips on Windows and the blob hides the key<br>`apps/server/test/team-services.test.ts` › AC-201-04: keys and member secrets are stored only as protected blobs |
+| AC-201-05 | M11-T06 | pass (automated) | `apps/server/test/team-two-instances.test.ts` › AC-201-05: revoking a PC rotates the key; a PC that was off gets it later; the revoked one is shut out |
+| AC-201-06 | M11-T05 | pass (automated) | `apps/server/test/team-two-instances.test.ts` › AC-201-03, AC-201-06, AC-202-01, AC-203-01, AC-204-01: pair, sync both ways, resolve a conflict, one executor<br>`apps/web/test/team-pages.test.tsx` › AC-201-06: joining a PC with data asks for SUBSTITUIR, then sends it |
+| AC-202-01 | M12-T03, M14-T04 | pass (automated) | `apps/server/test/sync-apply.test.ts` › AC-202-01: rooms, tags, devices and schedules from each PC end identical on both<br>`apps/server/test/team-two-instances.test.ts` › AC-201-03, AC-201-06, AC-202-01, AC-203-01, AC-204-01: pair, sync both ways, resolve a conflict, one executor |
+| AC-202-02 | M12-T01 | pass (automated) | `apps/server/test/sync-apply.test.ts` › AC-202-02: applying a batch twice changes nothing; a failure mid-batch applies nothing |
+| AC-202-03 | M12-T03 | pass (automated) | `apps/server/test/team-services.test.ts` › AC-202-03: an announcement carries only the listed fields and a hash of the team id |
+| AC-202-04 | M12-T03 | pass (automated) | `apps/server/test/sync-network.test.ts` › AC-202-04: a wrong key or an unknown identity never gets a session |
+| AC-202-05 | M12-T04 | pass (automated) | `apps/server/test/sync-apply.test.ts` › AC-202-05: a delete travels as a tombstone and is never resurrected by an older version<br>`apps/server/test/team-services.test.ts` › AC-202-05: a tombstone is pruned only after every member acknowledged it and 30 days passed |
+| AC-202-06 | M12-T03 | pass (automated) | `apps/server/test/sync-apply.test.ts` › AC-202-06: machine settings never apply; shared settings do |
+| AC-202-07 | M12-T03 | pass (automated) | `apps/server/test/team-services.test.ts` › AC-202-07: pending changes while a PC is off; "Sincronizar agora" brings them to zero<br>`apps/web/test/team-pages.test.tsx` › AC-202-07: members show status, last error and pending; "Sincronizar agora" and revocation |
+| AC-203-01 | M12-T02, M14-T04 | pass (automated) | `apps/server/test/sync-apply.test.ts` › AC-203-01: concurrent renames converge on the higher version and the loser is listed<br>`apps/server/test/team-two-instances.test.ts` › AC-201-03, AC-201-06, AC-202-01, AC-203-01, AC-204-01: pair, sync both ways, resolve a conflict, one executor |
+| AC-203-02 | M12-T02 | pass (automated) | `apps/server/test/sync-apply.test.ts` › AC-203-02: the same MAC registered on both PCs ends as one machine on both |
+| AC-203-03 | M12-T02 | pass (automated) | `apps/server/test/sync-apply.test.ts` › AC-203-03: two rooms named "Lab 1" end as "Lab 1" and "Lab 1 (2)", the same way round |
+| AC-204-01 | M13-T01, M14-T04 | pass (automated) | `apps/server/test/team-two-instances.test.ts` › AC-201-03, AC-201-06, AC-202-01, AC-203-01, AC-204-01: pair, sync both ways, resolve a conflict, one executor |
+| AC-204-02 | M13-T01 | pass (automated) | `apps/server/test/team-two-instances.test.ts` › AC-204-02: with the elected PC off, the other runs the schedule on time |
+| AC-204-03 | M13-T01 | pass (automated) | `apps/server/test/team-services.test.ts` › AC-204-03: the first candidate runs; the next takes over 90 s later<br>`apps/server/test/team-services.test.ts` › AC-204-03: when the elected PC is on but does not run, the other runs once within 90 s |
+| AC-204-04 | M13-T02 | pass (automated) | `apps/server/test/team-services.test.ts` › AC-204-04: a team PC that starts after a missed run offers it instead of waking by itself<br>`apps/web/test/team-pages.test.tsx` › AC-204-04: the dashboard offers "Ligar agora" for a run missed while this PC was off |
+| AC-205-01 | M14-T03 | pass (automated) | CI `.github/workflows/ci.yml` step “Install, upgrade and uninstall (AC-001-01a, AC-001-02, AC-001-03, AC-205-01)” |
+| AC-206-01 | M14-T06 | pass (automated) | `apps/web/test/team-pages.test.tsx` › AC-206-01: "Modo equipe" opens the team help page with the Power On by RTC tip |
+| AC-207-01 | M15-T01 | pass (automated) | `apps/web/test/team-pages.test.tsx` › AC-207-01: issue links open the right GitHub forms with the version pre-filled |

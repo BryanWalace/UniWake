@@ -130,6 +130,7 @@ describe('health (FR-012)', () => {
       clock,
       logger: new MemoryLogger(),
       version: '1.2.3',
+      instanceId: () => '0f3c9a7e-0000-4000-8000-000000000000',
       startedAt: T0,
       dbOk: () => true,
       dbSizeBytes: () => 1024,
@@ -164,6 +165,7 @@ describe('health (FR-012)', () => {
     expect(d.status).toBe('ok'); // warnings, not outages
     expect(d).toMatchObject({
       version: '1.2.3',
+      instanceId: '0f3c9a7e-0000-4000-8000-000000000000',
       dbSizeBytes: 1024,
       scheduler: { nextRun: { scheduleName: 'Manhã' } },
     });
@@ -174,6 +176,7 @@ describe('health (FR-012)', () => {
       clock: new FakeClock(T0),
       logger: new MemoryLogger(),
       version: 'x',
+      instanceId: () => '0f3c9a7e-0000-4000-8000-000000000000',
       startedAt: T0,
       dbOk: () => false,
       dbSizeBytes: () => null,

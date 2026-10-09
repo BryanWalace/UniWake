@@ -1,13 +1,19 @@
 name: CI
 
+# ADR-030: work happens on `dev`; `main` only receives owner-approved merges. Quality gates only:
+# nothing here publishes a release (the installers built below are throwaway test builds).
 on:
   push:
-    branches: [main]
+    branches: [dev, main]
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
+
+env:
+  # Version of the dev test installer (ADR-041): <next release>-dev.<run number>.
+  DEV_VERSION_BASE: 1.2.0
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -89,9 +95,29 @@ jobs:
         run: |
           ./scripts/ci/build-installer.ps1 -Version 0.0.1 -OutDir build/out -OutName UniWake-Setup-0.0.1
           ./scripts/ci/build-installer.ps1 -Version 0.0.2 -OutDir build/out -OutName UniWake-Setup-0.0.2
-      - name: Install, upgrade and uninstall (AC-001-01a, AC-001-02, AC-001-03)
+      - name: Install, upgrade and uninstall (AC-001-01a, AC-001-02, AC-001-03, AC-205-01)
         shell: pwsh
         run: ./scripts/ci/installer-smoke.ps1 -V1Setup build/out/UniWake-Setup-0.0.1.exe -V2Setup build/out/UniWake-Setup-0.0.2.exe
+      # ADR-041: a test installer for the owner's hardware checks (Actions artifact, 14 days). Never a
+      # release: nothing is tagged or published, and installs of it update only to a newer stable tag.
+      - name: Build the dev test installer
+        if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+        shell: pwsh
+        run: |
+          $v = "$env:DEV_VERSION_BASE-dev.$env:GITHUB_RUN_NUMBER"
+          ./scripts/ci/build-installer.ps1 -Version $v -OutDir build/dev -OutName "UniWake-Setup-$v"
+          $hash = (Get-FileHash -Algorithm SHA256 "build/dev/UniWake-Setup-$v.exe").Hash.ToLower()
+          Set-Content -Path "build/dev/UniWake-Setup-$v.exe.sha256" -Value "$hash  UniWake-Setup-$v.exe" -NoNewline -Encoding ascii
+      - name: Upload the dev test installer
+        if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+        uses: actions/upload-artifact@v7
+        with:
+          name: UniWake-Setup-dev
+          path: |
+            build/dev/*.exe
+            build/dev/*.sha256
+          retention-days: 14
+          if-no-files-found: error
       - name: Upload installer logs
         if: failure()
         uses: actions/upload-artifact@v7

@@ -91,6 +91,7 @@ describe('route-table authorization (IMP-014, constitution §5)', () => {
       '/api/backups',
       '/api/update/check',
       '/api/update/install',
+      '/api/team', // Modo equipe (FR-201.5): pairing, revocation and leaving are admin actions
     ];
     const PUBLIC = new Set([
       'GET /api/health',

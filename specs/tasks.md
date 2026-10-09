@@ -253,6 +253,19 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M9-R | Code review → `specs/reviews/M9-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
 | [x] M9-A | Architect conformance → `specs/reviews/M9-architect.md`. | phase 4 | — | Phase 5 may start |
 
+## M10 — Sync-ready data layer (roadmap §A; ADR-031..034; FR-017)
+| ID | Task | Refs | Tests | Done when |
+|---|---|---|---|---|
+| [x] M10-T01 | Migration 004: `instance`, `change_log`, `machine_settings` (moves machine-scope values), uuid/rev/updated_by_instance/updated_at columns, `ref_uuid`, `claimed_by_instance`. | FR-017; ADR-031..033 | AC-017-04 | migrates a populated schema-3 copy without loss |
+| [x] M10-T02 | `db/sync`: instance (lazy create, rotate), Lamport clock, entity snapshot builders, `ChangeLog.touch/tombstone/forget`, baseline, `verifyChangeLog`; domain `uuid-v5`. | FR-017.2–.3 | AC-017-01, AC-017-07 | — |
+| [x] M10-T03 | Repositories log every replicated write (rooms, tags, devices incl. bulk/CSV/enrollment/monitor IP, schedules, exceptions, runs, users, settings, pause); deletes tombstone and re-log affected devices; targets keep `ref_uuid` and lose `ref_id` on delete. API harness runs `verifyChangeLog` on close. | FR-017.3; AC-005-12 | AC-017-02, AC-017-03, AC-005-12 | whole suite green with the checker |
+| [x] M10-T04 | Settings scope (`shared`/`machine`) in the registry; machine keys in `machine_settings`; "Somente neste PC" mark in the settings page. | FR-017.4; ADR-032 | AC-017-05, AC-017-09 | — |
+| [x] M10-T05 | Scheduler `ExecutionLease` port + `SoloLease`; runs record `claimed_by_instance`. | FR-017.5; ADR-034 | AC-017-06 | — |
+| [x] M10-T06 | Hub start-up: ensure instance, baseline; restore rotates the instance; health shows the identifier. | FR-012; FR-014; ADR-033 | AC-017-01, AC-017-08 | — |
+| [x] M10-D | Debug break-it pass (sync-ready data): migration on a populated copy, crash between write and log (same transaction), bulk operations at 500 devices, demo seed, restore. | tasks §Break-it | regressions | findings filed |
+| [x] M10-R | Code review → `specs/reviews/M10-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+| [x] M10-A | Architect conformance → `specs/reviews/M10-architect.md`. | — | — | v1.2 may start |
+
 ## Phase 5 — Validate (lead: Debug)
 | ID | Task | Refs | Evidence |
 |---|---|---|---|
@@ -264,3 +277,60 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] V-T06 | Footprint measurement (RAM/CPU idle). | NFR-08 | numbers in `validation.md` |
 | [x] V-T07 | Code Reviewer final audit → `specs/reviews/final-audit.md`. | — | go/no-go |
 | [x] V-T08 | Architect approval + release notes + tag `v1.0.0-rc.2` (ADR-029 and addendum; `v1.0.0` after the owner checklist). | FR-001.4 | Release |
+
+## M11 — Team core: pairing, keys, membership (v1.2; FR-201; ADR-035..038)
+| ID | Task | Refs | Tests | Done when |
+|---|---|---|---|---|
+| [x] M11-T01 | Migration 005 (`team`, `team_members` replicated, `sync_peers`, `sync_conflicts`); `team_member` entity in the change log; `bootstrap.syncPort` (47102). | FR-201.5; plan §14.2 | migration + checker | — |
+| [x] M11-T02 | SPAKE2 (RFC 9382 structure, RFC 3526 group): group constants, hash-to-group M/N, element validation, key schedule and confirmation. | FR-201.3; ADR-036 | KATs, property tests | — |
+| [x] M11-T03 | `SecretProtector` port: DPAPI adapter (PowerShell, stdin) + fake; Pester-free contract test on Windows CI. | FR-201.4; ADR-037 | AC-201-04 | — |
+| [x] M11-T04 | Sync network adapters: TCP server with first-byte demux, JSON-lines framing with size limit, TLS-PSK server/client, UDP announcer/listener (configurable targets). | FR-202.1–.2; ADR-035, ADR-038 | loopback contract tests | — |
+| [x] M11-T05 | Pairing service: code lifecycle (6 digits, 5 min, single use, 5 attempts), inviter/joiner protocol, joiner data replacement with backup + confirmation. | FR-201.1–.3; FR-201.2 | AC-201-01, AC-201-02, AC-201-03, AC-201-06 | — |
+| [x] M11-T06 | Team service: members (rename, manual address), revoke + key rotation + rekey on contact, leave team, self-revocation. | FR-201.5; ADR-038 | AC-201-05 | — |
+| [x] M11-D | Debug break-it (pairing): wrong/expired/reused codes in parallel, connection dropped mid-exchange, oversized/malformed messages, pairing while already in a team. | tasks §Break-it | regressions | findings filed |
+| [x] M11-R | Code review → `specs/reviews/M11-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+
+## M12 — Sync engine (FR-202, FR-203)
+| ID | Task | Refs | Tests | Done when |
+|---|---|---|---|---|
+| [x] M12-T01 | `applyRemote`: dependency order, LWW, Lamport merge, cascades and re-logging, settings reload, idempotency, one transaction. | FR-202.3; ADR-040 | AC-202-02 | — |
+| [x] M12-T02 | Conflict rules: concurrent-edit detection by acknowledgement, duplicate MAC / name / code / username merges, `sync_conflicts`. | FR-203 | AC-203-01, AC-203-02, AC-203-03 | — |
+| [x] M12-T03 | Sync service: peer table from announcements and manual addresses, pull loop, poke, "Sincronizar agora", status (online, last sync, pending, error). | FR-202.1, .3, .6 | AC-202-01, AC-202-03, AC-202-04, AC-202-06, AC-202-07 | — |
+| [x] M12-T04 | Tombstone pruning after every member acknowledged (nightly, 30 d). | FR-202.5 | AC-202-05 | — |
+| [x] M12-T05 | Team API (`/api/team/*`) with route auth, audit of pair/revoke/rename/leave, SSE `sync` events. | FR-201, FR-202 | API + authz tests | — |
+| [x] M12-D | Debug break-it (sync): kill mid-batch, clock jumps, three PCs gossiping, same change from two peers, peer revoked mid-sync, huge batches. | tasks §Break-it | regressions | findings filed |
+| [x] M12-R | Code review → `specs/reviews/M12-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+
+## M13 — Team scheduling (FR-204)
+| ID | Task | Refs | Tests | Done when |
+|---|---|---|---|---|
+| [x] M13-T01 | `TeamLease` + scheduler deferral (re-ask declined occurrences; fallback after 90 s). | FR-204.1; ADR-039 | AC-204-01, AC-204-02, AC-204-03 | — |
+| [x] M13-T02 | Missed runs at start-up in team mode → notice "Agendamento não executado" + "Ligar agora". | FR-204.2 | AC-204-04 | — |
+| [x] M13-T03 | Schedule log shows the executing PC's name. | FR-204.1 | UI test | — |
+| [x] M13-R | Code review → `specs/reviews/M13-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+
+## M14 — Team UI, installer, two-instance tests
+| ID | Task | Refs | Tests | Done when |
+|---|---|---|---|---|
+| [x] M14-T01 | Page "Modo equipe": pair (code + countdown), join (discovered list, address, code, replace confirmation), members (status, rename, address, revoke), leave, "Sincronizar agora". | FR-201, FR-202.6 | web tests (loading/empty/error) | — |
+| [x] M14-T02 | Page "Conflitos resolvidos". | FR-203 | web tests | — |
+| [x] M14-T03 | Installer firewall rule TCP+UDP 47102 (Domain/Private) + uninstall; installer smoke checks it. | FR-205 | AC-205-01 | — |
+| [x] M14-T04 | Two-instance integration test: two hubs (own ports and data folders) pair, sync rooms/devices/schedules both ways, resolve a conflict, and run a schedule on exactly one. | FR-201..204 | AC-202-01, AC-203-01, AC-204-01 | — |
+| [x] M14-T05 | Playwright: two hubs, pair through the UI, see a room appear on the other panel. | FR-201, FR-202 | E2E | — |
+| [x] M14-T06 | Help page "Modo equipe" (incl. Power On by RTC). | FR-206 | AC-206-01 | — |
+| [x] M14-R | Code review → `specs/reviews/M14-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+
+## M15 — Docs and community
+| ID | Task | Refs | Tests | Done when |
+|---|---|---|---|---|
+| [x] M15-T01 | "Ajuda" menu: "Relatar problema" / "Sugerir função" with version pre-filled. | FR-207 | AC-207-01 | — |
+| [x] M15-T02 | Issue forms (bug, feature, question, config), SECURITY.md, CONTRIBUTING.md (labels). | owner item 5 | yaml lint test | — |
+| [x] M15-T03 | README (pt-BR) rewritten to the current product, planned items marked "planejado". | owner item 4 | — | reviewed against code |
+
+## Phase 8 — Validate v1.2 (lead: Debug)
+| ID | Task | Refs | Evidence |
+|---|---|---|---|
+| [x] V2-T01 | Walk every v1.2 AC and FR-017 AC; record evidence in `validation.md` §v1.2. | FR-017, FR-201..207 | `validation.md` |
+| [x] V2-T02 | Owner checklist for two real PCs (pt-BR, in `NEXT.md`). | B-002 | checklist |
+| [x] V2-T03 | Final audit (Code Reviewer) and Architect approval. | — | `specs/reviews/v1.2-final.md` |
+

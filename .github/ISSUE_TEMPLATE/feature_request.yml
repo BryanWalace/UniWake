@@ -1,0 +1,46 @@
+name: Sugerir função
+description: Uma ideia para o UniWake ajudar mais a equipe de TI.
+title: '[Sugestão] '
+labels: ['enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Conte o problema do dia a dia antes da solução: isso ajuda a encontrar o melhor jeito de resolver.
+        Veja antes o [roadmap no README](https://github.com/BryanWalace/UniWake#roadmap): talvez já esteja planejado.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Qual problema isso resolve?
+      placeholder: 'Toda sexta eu preciso desligar 3 laboratórios à mão e ...'
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Solução proposta
+      description: Como você imagina que funcionaria no UniWake.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativas consideradas
+      description: Outras formas de resolver, ou o que você faz hoje para contornar.
+
+  - type: textarea
+    id: who
+    attributes:
+      label: Quem se beneficia?
+      description: 'Ex.: técnicos de TI, professores, coordenação; quantas salas ou máquinas.'
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Versão do UniWake que você usa
+      placeholder: '1.2.0'

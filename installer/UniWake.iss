@@ -15,6 +15,7 @@
 #endif
 #define PanelPort "47100"
 #define AgentPort "47101"
+#define SyncPort "47102"
 
 [Setup]
 AppId={{8F6A2C1E-5B7D-4E3A-9C2F-1D4B6A8E0F37}
@@ -65,6 +66,7 @@ Filename: "{app}\UniWakeService.exe"; Parameters: "stop"; Flags: runhidden waitu
 Filename: "{app}\UniWakeService.exe"; Parameters: "uninstall"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveService"
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""UniWake Painel"""; Flags: runhidden waituntilterminated; RunOnceId: "FirewallPanel"
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""UniWake Cadastro"""; Flags: runhidden waituntilterminated; RunOnceId: "FirewallAgent"
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""UniWake - Modo equipe"""; Flags: runhidden waituntilterminated; RunOnceId: "FirewallTeam"
 
 [Code]
 var
@@ -134,6 +136,18 @@ begin
   Run(Netsh, 'advfirewall firewall add rule name="' + Name + '" dir=in action=allow protocol=TCP localport=' + Port + ' profile=domain,private');
 end;
 
+{ FR-205: Modo equipe uses TCP and UDP on the same port; one rule name, two protocols. }
+procedure AddTeamFirewallRules();
+var
+  Netsh, Name: String;
+begin
+  Netsh := ExpandConstant('{sys}\netsh.exe');
+  Name := 'UniWake - Modo equipe';
+  Run(Netsh, 'advfirewall firewall delete rule name="' + Name + '"');
+  Run(Netsh, 'advfirewall firewall add rule name="' + Name + '" dir=in action=allow protocol=TCP localport={#SyncPort} profile=domain,private');
+  Run(Netsh, 'advfirewall firewall add rule name="' + Name + '" dir=in action=allow protocol=UDP localport={#SyncPort} profile=domain,private');
+end;
+
 { Keeps the installed version and the one it replaced (rollback, ADR-022); removes the rest. }
 procedure PruneVersions();
 var
@@ -164,6 +178,7 @@ begin
   WriteServiceXml();
   AddFirewallRule('UniWake Painel', '{#PanelPort}');
   AddFirewallRule('UniWake Cadastro', '{#AgentPort}');
+  AddTeamFirewallRules();
   { WinSW 2.12 has no "refresh": an existing service re-reads the new XML when it starts. }
   if not ServiceExists() then
     Run(ExpandConstant('{app}\UniWakeService.exe'), 'install');

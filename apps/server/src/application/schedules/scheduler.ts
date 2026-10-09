@@ -14,6 +14,7 @@ import {
   decideRuns,
   exceptionFor,
   occurrencesBetween,
+  ON_TIME_MS,
   type RunStatus,
 } from '../../domain/schedule';
 import type { Actor, AuditService } from '../audit/audit-service';
@@ -64,12 +65,36 @@ export interface SchedulerRepo {
   ): { scheduleId: number; scheduleName: string; plannedAt: number } | undefined;
   lastTick(): number | null;
   setLastTick(at: number): void;
+  /** A record for this occurrence exists (here, or synced from another PC). */
+  runExists(scheduleId: number, plannedAt: number): boolean;
   pause(): PauseState | null;
   setPause(p: PauseState | null): void;
 }
 
+/**
+ * ADR-034: decides whether this installation handles (executes or logs) a due occurrence. With
+ * several installations online, v1.2's lease elects one; it keeps its own state current in the
+ * background so this question is answered synchronously inside the tick.
+ */
+export interface ExecutionLease {
+  shouldHandle(o: {
+    scheduleId: number;
+    scheduleUuid: string | null;
+    plannedAt: number;
+    now: number;
+  }): boolean;
+}
+
+/** A single installation always handles its runs (v1.0). */
+export const SOLO_LEASE: ExecutionLease = { shouldHandle: () => true };
+
 export interface SchedulerDeps {
   repo: SchedulerRepo;
+  /** Defaults to {@link SOLO_LEASE}. */
+  lease?: ExecutionLease;
+  /** FR-204.2: in team mode, runs missed while this PC was off are offered, not replayed. */
+  teamMode?: () => boolean;
+  onMissedRun?: (r: { scheduleId: number; scheduleName: string; plannedAt: number }) => void;
   refs: TargetRefs;
   startWake: (req: WakeRequestParams, actor: Actor, opts: StartOptions) => StartResult;
   settings: SettingsService;
@@ -110,12 +135,22 @@ function failureDetail(e: unknown): string {
   return 'erro inesperado';
 }
 
+/** FR-204.2: missed runs become notices after the first sync round. */
+export const MISSED_RUN_DELAY_MS = 60_000;
+
 export class Scheduler {
   private timer: TimerHandle | null = null;
   private ticking = false;
   private stopped = true;
+  /** When this process started handling schedules (missed vs. live occurrences, FR-204.2). */
+  private readonly startedAt: number;
+  /** Occurrences another PC was elected for (ADR-039): asked again each tick. */
+  private readonly deferred = new Map<string, { s: ScheduleRecord; at: number }>();
+  private missed: { s: ScheduleRecord; at: number }[] = [];
 
-  constructor(private readonly d: SchedulerDeps) {}
+  constructor(private readonly d: SchedulerDeps) {
+    this.startedAt = d.clock.now();
+  }
 
   /** One evaluation of everything due since the last tick. */
   tick(): TickReport {
@@ -148,7 +183,26 @@ export class Scheduler {
           pausedAt: (at) =>
             pause !== null && at >= pause.since && (pause.resumeAt === null || at < pause.resumeAt),
         });
+        const lease = this.d.lease ?? SOLO_LEASE;
+        const team = this.d.teamMode?.() ?? false;
         for (const decision of decisions) {
+          const at = decision.occurrence.at;
+          if (team && at < this.startedAt) {
+            // Planned while this PC was off: another PC may have run it (FR-204.2).
+            if (decision.action === 'run') this.missed.push({ s, at });
+            continue;
+          }
+          const handle = lease.shouldHandle({
+            scheduleId: s.id,
+            scheduleUuid: s.uuid ?? null,
+            plannedAt: at,
+            now,
+          });
+          // Another installation was elected; ask again next tick (ADR-039).
+          if (!handle) {
+            if (decision.action === 'run') this.deferred.set(`${s.id}@${at}`, { s, at });
+            continue;
+          }
           if (decision.action === 'log') {
             const id = this.d.repo.claim(
               s.id,
@@ -170,8 +224,49 @@ export class Scheduler {
         }
       }
     }
+    report.ran += this.retryDeferred(now, graceMs);
+    this.flushMissed(now, graceMs);
     this.d.repo.setLastTick(Math.max(now, last ?? now));
     return report;
+  }
+
+  /**
+   * ADR-039: a deferred occurrence is dropped once its record arrived (the elected PC ran it) or its
+   * grace window passed; it runs here when the lease now says so (fallback).
+   */
+  private retryDeferred(now: number, graceMs: number): number {
+    let ran = 0;
+    const lease = this.d.lease ?? SOLO_LEASE;
+    for (const [key, { s, at }] of this.deferred) {
+      if (now - at > graceMs || this.d.repo.runExists(s.id, at)) {
+        this.deferred.delete(key);
+        continue;
+      }
+      if (
+        !lease.shouldHandle({ scheduleId: s.id, scheduleUuid: s.uuid ?? null, plannedAt: at, now })
+      ) {
+        continue;
+      }
+      this.deferred.delete(key);
+      const delayMs = now - at;
+      if (
+        this.execute(s, at, delayMs <= ON_TIME_MS ? 'executado' : 'atrasado', delayMs, graceMs, now)
+      ) {
+        ran++;
+      }
+    }
+    return ran;
+  }
+
+  /** FR-204.2: after the first sync round, missed runs nobody recorded become "Ligar agora". */
+  private flushMissed(now: number, graceMs: number): void {
+    if (this.missed.length === 0 || now < this.startedAt + MISSED_RUN_DELAY_MS) return;
+    const missed = this.missed;
+    this.missed = [];
+    for (const { s, at } of missed) {
+      if (this.startedAt - at > graceMs || this.d.repo.runExists(s.id, at)) continue;
+      this.d.onMissedRun?.({ scheduleId: s.id, scheduleName: s.name, plannedAt: at });
+    }
   }
 
   private execute(

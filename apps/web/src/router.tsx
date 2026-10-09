@@ -16,6 +16,8 @@ import { RoomPage } from './features/rooms/RoomPage';
 import { HistoryPage, JobPage } from './features/wake/HistoryPage';
 import { RoomsPage } from './features/rooms/RoomsPage';
 import { SchedulesPage } from './features/schedules/SchedulesPage';
+import { ConflictsPage } from './features/team/ConflictsPage';
+import { TeamPage } from './features/team/TeamPage';
 import { LoginPage } from './routes/LoginPage';
 import { NotFound } from './routes/NotFound';
 import { SetupPage } from './routes/SetupPage';
@@ -44,6 +46,8 @@ export const routes: RouteObject[] = [
       { path: 'auditoria', element: <AuditPage /> },
       { path: 'logs', element: <LogsPage /> },
       { path: 'saude', element: <HealthPage /> },
+      { path: 'equipe', element: <TeamPage /> },
+      { path: 'equipe/conflitos', element: <ConflictsPage /> },
       { path: 'ajuda', element: <HelpIndexPage /> },
       { path: 'ajuda/:topico', element: <HelpPage /> },
       { path: '*', element: <NotFound /> },

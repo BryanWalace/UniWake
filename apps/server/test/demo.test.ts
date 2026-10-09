@@ -1,3 +1,4 @@
+import { verifyChangeLog } from '../src/db/sync/change-log';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -284,6 +285,7 @@ describe('demo hub (AC-015-01)', () => {
     expect(udpConstructed.count).toBe(0);
     const s = hub.services;
     expect(s.dashboard.dashboard().counters.total).toBe(60);
+    expect(verifyChangeLog(hub.db)).toEqual([]); // M10-D: the seed and its backdating are logged
 
     // R-M3-03: a demo wake works without any real interface and is recorded, not sent.
     const room = s.dashboard.dashboard().rooms[0]!;

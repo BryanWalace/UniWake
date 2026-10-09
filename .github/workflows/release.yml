@@ -1,6 +1,6 @@
 name: Release
 
-# FR-001.4, AC-001-12: a v* tag runs every quality gate, builds the installer with the tag's
+# FR-001.4, AC-001-12: a v* tag on main (ADR-030) runs every quality gate, builds the installer with the tag's
 # version and publishes it with its SHA-256 and generated notes. Release builds always update from
 # GitHub (no --test-update-api, ADR-025).
 on:
@@ -11,8 +11,25 @@ permissions:
   contents: read
 
 jobs:
+  on-main:
+    name: Tag is on main (ADR-030)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Refuse tags whose commit is not on main
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag ${GITHUB_REF_NAME} points to a commit that is not on main; releases are only published from main (ADR-030)."
+            exit 1
+          fi
+
   verify:
     name: Verify (ubuntu)
+    needs: [on-main]
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -36,6 +53,7 @@ jobs:
 
   windows:
     name: Tests (windows)
+    needs: [on-main]
     runs-on: windows-latest
     timeout-minutes: 20
     steps:

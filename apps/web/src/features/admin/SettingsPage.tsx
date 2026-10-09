@@ -165,6 +165,8 @@ function GroupForm({ group, values }: { group: SettingsGroup; values: Settings }
   );
 }
 
+export const MACHINE_NOTE = 'Somente neste PC: não é copiado para outras instalações.';
+
 function SettingControl({
   settingKey,
   value,
@@ -177,7 +179,12 @@ function SettingControl({
   onChange: (v: string | boolean) => void;
 }) {
   const { meta } = SETTING_DEFS[settingKey];
-  const hint = [meta.help, meta.requiresRestart ? 'Requer reiniciar o serviço.' : null]
+  // ADR-032: machine settings belong to this PC and are never copied to another installation.
+  const hint = [
+    meta.scope === 'machine' ? MACHINE_NOTE : null,
+    meta.help,
+    meta.requiresRestart ? 'Requer reiniciar o serviço.' : null,
+  ]
     .filter(Boolean)
     .join(' ');
   if (meta.input === 'boolean') {

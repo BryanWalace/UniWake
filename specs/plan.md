@@ -1,7 +1,9 @@
 # UniWake — Technical Plan
 
-Version: **1.0** · Date: 2026-10-04 · Owner: Architect
-History: v0.1 draft → reviewed in `specs/reviews/phase-2-*.md` → consolidated as v1.0.
+Version: **1.2** · Date: 2026-10-09 · Owner: Architect
+History: v0.1 draft → reviewed in `specs/reviews/phase-2-*.md` → consolidated as v1.0 → v1.1
+(Phase 6: §5.2 sync-ready data, §7.2 lease, ADR-030..034) → v1.2 (Phase 7: §14 team mode,
+ADR-035..040).
 Inputs: `specs/constitution.md` v1.1, `specs/spec.md` v1.0, ADR-001..026.
 
 ---
@@ -173,6 +175,32 @@ Times: epoch ms UTC `INTEGER`; booleans `INTEGER 0/1`; JSON as `TEXT`. Migration
 | `notices` | id PK, type, created_at, data JSON, acknowledged_at, acknowledged_by | |
 | `test_wol_runs` | id PK, device_id FK CASCADE, state, requested_by, started_at, offline_at, sent_at, finished_at, job_id FK→wake_jobs SET NULL, detail | idx (device_id, started_at), job_id (FR-007.4) |
 | `backups` | id PK, file, kind (`daily`,`pre-migration`,`pre-update`,`pre-restore`,`manual`), created_at, size | |
+| `instance` | id PK (=1), instance_id UUID, created_at, clock (Lamport) | migration 004; ADR-033 |
+| `change_log` | seq PK AUTOINCREMENT, entity, entity_id, op (`upsert`,`delete`), rev, instance_id, at, payload JSON NULL, **UNIQUE(entity, entity_id)** | latest state per entity; ADR-031 |
+| `machine_settings` | key PK, value JSON, updated_at, updated_by | never synced/exported; ADR-032 |
+
+### 5.2 Sync-ready data (ADR-031..034, migration 004)
+Replicated tables gain `uuid` (unique index), `rev` (default 0 = not yet logged),
+`updated_by_instance` and, where missing, `updated_at`; `schedule_runs` also gains
+`claimed_by_instance`, and `schedule_targets` gains `ref_uuid`. Classification (every new table
+MUST be added here):
+
+| Entity (log name) | Table(s) | Identity | Snapshot (references by UUID) |
+|---|---|---|---|
+| `room` | rooms | uuid | name, code, block, floor, color, notes, directedBroadcast, batchSize, batchDelayMs, createdAt |
+| `tag` | tags | uuid | name, color |
+| `device` | devices + device_tags | uuid | name, mac, ip, hostname, room, notes, enabled, manufacturer, model, serial, os, otherMacs, preparedAt, prepareResults, enrolledAt, createdAt, tags[] |
+| `schedule` | schedules + schedule_targets | uuid | name, enabled, weekdays, timeLocal, timezone, onlyOffline, batchSize, batchDelayMs, confirmedCount, createdBy, createdAt, targets[{type, ref}] |
+| `schedule_exception` | schedule_exceptions | uuid | schedule, startDate, endDate, description |
+| `schedule_run` | schedule_runs | uuid v5(schedule uuid, planned_at) | schedule, plannedAt, claimedAt, status, detail, claimedBy |
+| `user` | users | uuid | username, passwordHash, role, enabled, createdAt, passwordChangedAt |
+| `setting` | settings (shared scope) | key | value, updatedBy |
+| `scheduler_pause` | system_state `scheduler.pause` | `global` | pause (or null) |
+
+Machine-local: every other table, plus users' `failed_logins`/`last_failed_at` and
+`system_state` keys other than the pause. Code: `apps/server/src/db/sync/` (`entities.ts`
+snapshot builders, `change-log.ts` touch/tombstone/baseline/verify, `instance.ts`, `uuid.ts` name-based run UUIDs). Writes keep their existing SQL; `touch` fills `uuid`, `rev`,
+`updated_by_instance` (and `updated_at` on tables whose repositories did not set it).
 
 ### 5.1 Database performance rules (synchronous driver)
 - No query on a request or tick path may exceed 50 ms at 500 devices / 180 days of history;
@@ -224,6 +252,8 @@ empty in v1.0).
 | GET `/api/logs` (≤ last 5 MB) · GET `/api/logs/download` | admin | FR-016 |
 | GET `/api/audit` · GET `/api/audit/export.csv` | operator | FR-006.5 |
 | GET `/api/events` (SSE) | operator | FR-004.4 |
+| GET `/api/team` · POST, DELETE `/api/team/pairing` · GET `/api/team/discovered` · POST `/api/team/join` · POST `/api/team/sync` · PATCH `/api/team/members/:instanceId` · POST `/api/team/members/:instanceId/revoke` · POST `/api/team/leave` · GET `/api/team/conflicts` | admin | FR-201..203 (v1.2) |
+| POST `/api/notices/:id/wake-missed` | operator | FR-204.2 |
 | GET `/*` except `/api/*`, `/agent/*` | public | SPA files, `index.html` fallback |
 
 ### 6.2 Agent listener — exactly three routes
@@ -236,7 +266,7 @@ empty in v1.0).
 ### 6.3 SSE events
 `device.status` `{deviceId, status, latencyMs, lastSeenAt}` · `counters` `{global, rooms[]}` ·
 `job.progress` `{jobId, state, counts}` · `job.device` `{jobId, deviceId, result}` ·
-`notice` `{id, type}` · `scheduler` `{paused, nextRun}` · `session.expired` (then the server closes
+`notice` `{id, type}` · `scheduler` `{paused, nextRun}` · `sync` (a team batch changed data; v1.2) · `session.expired` (then the server closes
 the stream) · heartbeat comment every 20 s. On (re)connect the client refetches `/api/dashboard`.
 
 ### 6.4 Sessions
@@ -262,7 +292,8 @@ prefix is not used because loopback is HTTP (browsers reject `__Host-` without `
 `PAUSE_REASON_REQUIRED`, `ENROLL_TOKEN_INVALID`, `ENROLL_TOKEN_EXPIRED`, `ENROLL_TOKEN_REVOKED`,
 `ENROLL_TOKEN_EXHAUSTED`, `ENROLL_ROOM_MISMATCH`, `PREPARE_SCRIPT_MISSING`, `UPDATE_NOT_AVAILABLE`, `UPDATE_IN_PROGRESS`,
 `UPDATE_BLOCKED_BY_SCHEDULE`, `UPDATE_DISK_SPACE`, `CHECKSUM_MISMATCH`, `DOWNLOAD_FAILED`,
-`BACKUP_NOT_FOUND`, `RESTORE_CONFIRMATION_MISMATCH`, `INTERNAL_ERROR`.
+`BACKUP_NOT_FOUND`, `RESTORE_CONFIRMATION_MISMATCH`, `TEAM_NOT_IN_TEAM`, `TEAM_ALREADY_MEMBER`, `TEAM_REPLACE_CONFIRM`, `TEAM_PAIRING_NO_CODE`, `TEAM_PAIRING_WRONG_CODE`, `TEAM_PAIRING_LOCKED`, `TEAM_PAIRING_UNREACHABLE`, `TEAM_PAIRING_FAILED`, `TEAM_MEMBER_NOT_FOUND`, `TEAM_CANNOT_REVOKE_SELF`, `MISSED_RUN_NOT_FOUND` (v1.2, §14),
+`INTERNAL_ERROR`.
 
 ## 7. Key flows
 
@@ -299,6 +330,8 @@ is logged as an `error` row and the others continue; a device is `falha no envio
 attempt for it failed.
 
 ### 7.2 Scheduler tick (every 15 s)
+0. Every occurrence below is first offered to the `ExecutionLease` (ADR-034): if it declines,
+   the occurrence is skipped without a record (v1.0: `SoloLease`, always yes).
 1. If paused and auto-resume time passed → resume (audit).
 2. For each enabled schedule, compute occurrences in `(lastTick − grace, now]` (domain, Luxon +
    own non-existent-time rule).
@@ -429,10 +462,12 @@ sequenceDiagram
 - `npm run dev`: `concurrently` → `tsx watch apps/server/src/main.ts --demo --data-dir .dev-data`
   and Vite (proxy `/api` → 47100). `.dev-data/` is git-ignored.
 - `npm run verify`: lint, format check, typecheck, tests with coverage, `check:deps`.
-- `ci.yml` (push, PR; `permissions: contents: read`): ubuntu job (verify, E2E, `npm audit
+- Branches (ADR-030): work on `dev`; `main` and `v*` tags only on the owner's request.
+- `ci.yml` (push to `dev`/`main`, PR; `permissions: contents: read`; never publishes; on `dev` pushes it
+  also uploads the test installer artifact `UniWake-Setup-dev`, ADR-041): ubuntu job (verify, E2E, `npm audit
   --omit=dev --audit-level=high`, secret scan) + windows job (Pester, PSScriptAnalyzer,
   probe-helper contract test, installer smoke).
-- `release.yml` (tag `v*`): gates → build bundle + installer on Windows → SHA-256 → GitHub Release
+- `release.yml` (tag `v*`): tag-on-`main` check → gates → build bundle + installer on Windows → SHA-256 → GitHub Release
   with generated notes; only the release job has `contents: write`; no `pull_request_target`;
   third-party actions pinned by SHA.
 - Dependabot: npm + github-actions weekly.
@@ -456,3 +491,67 @@ sequenceDiagram
 | RK-14 | WinSW kills the updater with the service | High (if unmitigated) | Critical | Task Scheduler launch + watchdog (ADR-023). |
 | RK-15 | Synchronous DB blocks the event loop | Medium | Medium | §5.1 rules + benchmark tests. |
 | RK-16 | Toolchain churn (TS 7, ESLint 10 plugins) | Medium | Low | Pins in ADR-024; Dependabot PRs reviewed. |
+| RK-17 | Team PCs disagree on who is online (split view) | Low | Medium | ADR-039: worst case a schedule runs twice, never zero times; deterministic run UUID merges the records. |
+| RK-18 | Firewall/Group Policy blocks 47102 between staff PCs | Medium | Medium | Installer rule; status page shows "offline" with the last error; README/help explain. |
+
+## 14. Team mode (v1.2; ADR-035..040)
+
+### 14.1 Modules
+```
+apps/server/src/
+  application/team/  spake2.ts (RFC 9382 over RFC 3526 group 14, pure), pairing.ts (code
+                     lifecycle + inviter/joiner state machines), team-service.ts (members, keys,
+                     revoke, rename, leave, rekey), sync-service.ts (peer table, pull loop, poke,
+                     status, tombstone pruning), team-lease.ts (ExecutionLease, ADR-039),
+                     missed-runs.ts, protocol.ts (Zod schemas of every message)
+  adapters/          sync-server.ts (TCP 47102, first-byte demux → pairing JSON lines | TLS-PSK),
+                     sync-client.ts, udp-announcer.ts (send + listen 47102/udp),
+                     dpapi-protector.ts (PowerShell ProtectedData, stdin), json-lines.ts
+  db/sync/apply.ts   applies remote entries (dependency order, LWW, duplicate rules, cascades,
+                     conflict records) through the same snapshot definitions
+  db/repositories/team-repo.ts   team, sync_peers, sync_conflicts
+```
+Ports added to `application/ports.ts`: `SecretProtector`, `SyncNetwork` (listen/connect/announce),
+so the application layer never imports `node:net|tls|dgram`. Tests use the real adapters on
+127.0.0.1 with distinct ports (two hubs on one machine) and a fake protector.
+
+### 14.2 Data (migration 005)
+| Table | Kind | Columns |
+|---|---|---|
+| `team` | machine-local, singleton | team_id, epoch, key_blob, prev_epoch, prev_key_blob, member_secret_blob, joined_at |
+| `team_members` | replicated `team_member` (uuid = instance id) | id, uuid, name, verifier (SHA-256 of the member secret, hex), joined_at, revoked_at, rev, updated_by_instance, updated_at |
+| `sync_peers` | machine-local | instance_id PK, address, manual_address, last_seen_at, last_sync_at, last_error, pulled_seq (our cursor into their log), acked_seq (their cursor into ours) |
+| `sync_conflicts` | machine-local | id, at, entity, entity_id, label, kind (`concurrent`,`duplicate_mac`,`duplicate_name`), kept JSON, discarded JSON, winner_instance |
+
+### 14.3 Protocol (JSON lines, max 8 MB per line)
+Pairing (plain TCP, first byte `{`):
+`pair.hello {v, instance, name, nonce}` → `pair.start {nonce, pA}` → joiner `pair.finish {pB, cB}`
+→ inviter `pair.confirm {cA, box}` (box = AES-256-GCM of `{teamId, epoch, key, memberSecret,
+inviter}`) → joiner `pair.done {member}` (joiner's name, encrypted). Errors: `pair.error {code}`.
+Sync (TLS-PSK): client `hello {v, instance, epoch, memberSecret, seq}` → server `hello` (same
+fields) → `rekey {epoch, key}` if one side is newer, then close; else client `pull {since}` →
+`changes {entries, seq}`; `poke {}`; `bye`.
+
+### 14.4 Flows
+- **Join (D7-01):** the joiner pulls the full team state (since 0) into memory, then, in one
+  transaction, backs up (before), deletes its replicated rows and log, and applies the state.
+- **Pull:** connect (current epoch; on handshake failure, previous) → hellos → `pull {since:
+  pulled_seq}` → `applyRemote(entries)` in one transaction → `pulled_seq = seq`, `last_sync_at` →
+  the server records `acked_seq = since` for that peer.
+- **Loop:** every 30 s for each online peer (seen ≤ 60 s or manual address); debounced poke 2 s
+  after a local change; "Sincronizar agora" = pull all + poke all.
+- **Discovery:** announce every 15 s to each interface's subnet broadcast (tests: configured
+  loopback targets); listener updates `sync_peers.address/last_seen_at` for the same team hash.
+- **Apply:** order user, team_member, room, tag, device, schedule, schedule_exception,
+  schedule_run, setting, scheduler_pause; LWW by (rev, instance); duplicates per ADR-040; for room/tag
+  tombstones the devices that referenced them are re-logged if their snapshot changed; schedule
+  tombstones tombstone local exceptions/runs; settings service reloads; events `sync` pushed to SSE.
+- **Lamport:** clock = max(clock, max incoming rev) before any local write in the batch.
+- **Tombstone pruning (nightly):** delete `op='delete'` rows older than 30 d whose seq ≤ every
+  non-revoked member's `acked_seq`.
+- **Lease:** ADR-039; online set from `sync_peers.last_seen_at`.
+
+### 14.5 Limits
+Pairing: code 6 digits, 5 min, 5 attempts, one open code; pairing connection 30 s total. Sync:
+handshake 10 s, request 30 s, 64 MB per message; a pull returns every change since the cursor (one
+entry per entity: a team with 5 000 devices is a few MB), so references never span two batches.

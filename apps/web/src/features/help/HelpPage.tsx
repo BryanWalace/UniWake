@@ -169,6 +169,92 @@ export const HELP: Record<HelpTopic, { title: string; summary: string; body: Rea
       </>
     ),
   },
+  'team-mode': {
+    title: 'Modo equipe: dois ou mais PCs da TI com o mesmo cadastro',
+    summary:
+      'Pareie os PCs da equipe; eles sincronizam pela rede local e só um executa cada agendamento.',
+    body: (
+      <>
+        <p>
+          Não existe servidor ligado o tempo todo: cada pessoa da TI usa o UniWake no próprio PC. No
+          Modo equipe esses PCs mantêm o mesmo cadastro (salas, máquinas, etiquetas, agendamentos,
+          exceções, usuários e configurações gerais) e trocam as alterações sempre que estão ligados
+          ao mesmo tempo.
+        </p>
+        <h2 className="text-lg font-bold">Como parear</h2>
+        <Steps>
+          <li>
+            No PC que já tem o cadastro, abra{' '}
+            <Link to="/equipe" className="text-blue-800 underline">
+              Modo equipe
+            </Link>{' '}
+            e clique em “Gerar código de pareamento”. Aparece um código de 6 dígitos, válido por 5
+            minutos.
+          </li>
+          <li>
+            No outro PC, abra Modo equipe › “Entrar em uma equipe”, escolha o PC na lista (ou digite
+            o endereço dele) e digite o código.
+          </li>
+          <li>
+            Se o PC que entra já tinha cadastro, ele é substituído pelo da equipe (um backup é feito
+            antes) e é preciso digitar SUBSTITUIR para confirmar. Depois, use os usuários e senhas
+            da equipe.
+          </li>
+        </Steps>
+        <p>
+          O código nunca passa pela rede: ele só serve para os dois PCs provarem um ao outro que
+          viram o mesmo número. Errou 5 vezes, o código é cancelado.
+        </p>
+        <h2 className="text-lg font-bold">O que é sincronizado</h2>
+        <Bullets>
+          <li>
+            Sim: salas, máquinas, etiquetas, agendamentos, exceções, pausa, usuários, configurações
+            gerais.
+          </li>
+          <li>
+            Não: configurações marcadas “Somente neste PC” (placas de rede, endereço do painel,
+            atualização, backup, portas), histórico, ligações, logs, auditoria, backups.
+          </li>
+          <li>
+            Se o mesmo item for alterado em dois PCs antes de sincronizarem, vale a alteração mais
+            recente; o caso aparece em “Conflitos resolvidos”.
+          </li>
+        </Bullets>
+        <h2 className="text-lg font-bold">Agendamentos</h2>
+        <p>
+          Entre os PCs ligados, um só executa cada agendamento; se ele não executar em 90 segundos,
+          outro executa. Um PC que liga depois do horário não executa sozinho o que perdeu: ele
+          mostra “Agendamento não executado” com o botão “Ligar agora”, caso nenhum outro PC tenha
+          executado.
+        </p>
+        <p>
+          Para a ligação da manhã funcionar sem ninguém por perto, deixe pelo menos um PC da equipe
+          ligado nesse horário ou configure na BIOS dele “Power On by RTC” (ligar em horário
+          programado) alguns minutos antes do primeiro agendamento.
+        </p>
+        <h2 className="text-lg font-bold">Rede e firewall</h2>
+        <Bullets>
+          <li>
+            Os PCs conversam pela porta 47102 (TCP e UDP). O instalador libera essa porta no
+            Firewall do Windows para redes de Domínio e Privadas.
+          </li>
+          <li>
+            PCs na mesma rede se encontram sozinhos. Se um PC estiver em outra sub-rede, edite-o em
+            Modo equipe e informe um “Endereço fixo” (nome do computador ou IP).
+          </li>
+          <li>
+            “Sem conexão” na lista: o outro PC está desligado, o UniWake não está rodando nele ou a
+            porta 47102 está bloqueada (antivírus ou política do domínio).
+          </li>
+        </Bullets>
+        <h2 className="text-lg font-bold">Remover um PC</h2>
+        <p>
+          “Remover da equipe” troca a chave da equipe. Os PCs que estavam desligados recebem a chave
+          nova quando ligarem; o PC removido não sincroniza mais.
+        </p>
+      </>
+    ),
+  },
 };
 
 export function HelpIndexPage() {
@@ -176,7 +262,7 @@ export function HelpIndexPage() {
     <section className="space-y-4">
       <PageHeader title="Ajuda" />
       <p className="text-sm text-slate-700">
-        Por que um computador não liga pela rede, e como resolver.
+        Por que um computador não liga pela rede, como resolver, e como usar o Modo equipe.
       </p>
       <ul className="space-y-3">
         {HELP_TOPICS.map((topic) => (

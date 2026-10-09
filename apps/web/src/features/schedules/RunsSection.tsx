@@ -64,6 +64,9 @@ export function RunsSection() {
                         <Link to={`/historico/jobs/${r.jobId}`} className="text-blue-800 underline">
                           #{r.jobId}
                         </Link>
+                      ) : r.executedBy ? (
+                        // FR-204.1: the job lives on the PC that ran it.
+                        <span>no PC {r.executedBy}</span>
                       ) : (
                         '—'
                       )}

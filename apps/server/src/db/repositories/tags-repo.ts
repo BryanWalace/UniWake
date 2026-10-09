@@ -1,6 +1,7 @@
 import type { Tag } from '@uniwake/shared';
 import type { TagsRepo } from '../../application/tags/tags-service';
 import type { Db } from '../connection';
+import { changeLog } from '../sync/change-log';
 
 interface Row {
   id: number;
@@ -41,16 +42,33 @@ export class SqliteTagsRepo implements TagsRepo {
   }
 
   insert(name: string, color: string): number {
-    return this.db.run('INSERT INTO tags (name, color) VALUES (?, ?)', [name, color])
-      .lastInsertRowid;
+    const id = this.db.run('INSERT INTO tags (name, color) VALUES (?, ?)', [
+      name,
+      color,
+    ]).lastInsertRowid;
+    changeLog(this.db).touch('tag', id);
+    return id;
   }
 
   update(id: number, name: string, color: string): void {
     this.db.run('UPDATE tags SET name = ?, color = ? WHERE id = ?', [name, color, id]);
+    changeLog(this.db).touch('tag', id);
   }
 
+  /** ADR-031 §5/§8: tombstone, targets lose the local id, devices are re-logged without the tag. */
   delete(id: number): void {
-    this.db.run('DELETE FROM tags WHERE id = ?', [id]);
+    this.db.transaction(() => {
+      const log = changeLog(this.db);
+      const devices = this.db
+        .all<{ id: number }>('SELECT device_id AS id FROM device_tags WHERE tag_id = ?', [id])
+        .map((d) => d.id);
+      log.tombstone('tag', id);
+      this.db.run("UPDATE schedule_targets SET ref_id = NULL WHERE type = 'tag' AND ref_id = ?", [
+        id,
+      ]);
+      this.db.run('DELETE FROM tags WHERE id = ?', [id]);
+      log.touchAll('device', devices);
+    });
   }
 
   schedulesReferencing(id: number): { id: number; name: string }[] {

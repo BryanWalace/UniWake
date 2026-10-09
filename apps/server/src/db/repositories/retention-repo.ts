@@ -1,5 +1,6 @@
 import type { PurgeRule, RetentionRepo } from '../../application/maintenance/retention-service';
 import type { Db } from '../connection';
+import { changeLog } from '../sync/change-log';
 
 const LAST_RUN_KEY = 'retention.lastRun';
 const FINAL_JOB_STATES = "('concluido', 'interrompido', 'falhou')";
@@ -35,7 +36,18 @@ export class SqliteRetentionRepo implements RetentionRepo {
       case 'daily_uptime':
         return chunk(db, 'daily_uptime', 'day < ?', [rule.beforeDay], limit, 'device_id, day');
       case 'schedule_runs':
-        return chunk(db, 'schedule_runs', 'planned_at < ?', [rule.before], limit);
+        // D6-06: local retention; other installations prune with their own rule (no tombstones).
+        return db.transaction(() => {
+          const old = db.all<{ uuid: string | null }>(
+            'SELECT uuid FROM schedule_runs WHERE planned_at < ? LIMIT ?',
+            [rule.before, limit],
+          );
+          changeLog(db).forget(
+            'schedule_run',
+            old.flatMap((r) => (r.uuid ? [r.uuid] : [])),
+          );
+          return chunk(db, 'schedule_runs', 'planned_at < ?', [rule.before], limit);
+        });
       case 'wake_jobs':
         // Only finished jobs; their per-device rows go with them (ON DELETE CASCADE).
         return db.transaction(() =>

@@ -1,3 +1,4 @@
+import { changeLog } from '../src/db/sync/change-log';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { DeviceDiagnostics } from '@uniwake/shared';
 import { type VerifiedResult, wakeStats } from '../src/domain/wake-stats';
@@ -140,6 +141,7 @@ describe('GET /api/devices/:id/diagnostics (FR-010)', () => {
       `UPDATE devices SET other_macs = ?, prepared_at = ?, prepare_results = ? WHERE id = ?`,
       ['["00:AB:00:00:00:41"]', T0, '{"Fast Startup":"OK"}', pc.id],
     );
+    changeLog(h.services.db).touch('device', pc.id);
     h.services.db.run(
       `INSERT INTO test_wol_runs (device_id, state, started_at, finished_at) VALUES (?, 'sucesso', ?, ?)`,
       [pc.id, T0, T0 + 2 * MIN],

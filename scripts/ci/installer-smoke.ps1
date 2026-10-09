@@ -74,6 +74,21 @@ function Test-FirewallRule([string]$Name) {
   return $LASTEXITCODE -eq 0
 }
 
+# AC-205-01: one rule name for TCP and UDP 47102, Domain and Private profiles only (locale-proof).
+function Test-TeamFirewallRule {
+  $rules = @(Get-NetFirewallRule -DisplayName 'UniWake - Modo equipe' -ErrorAction SilentlyContinue)
+  if ($rules.Count -ne 2) { return $false }
+  $protocols = @()
+  foreach ($r in $rules) {
+    $port = $r | Get-NetFirewallPortFilter
+    if ($port.LocalPort -ne '47102') { return $false }
+    if ($r.Direction -ne 'Inbound' -or $r.Action -ne 'Allow') { return $false }
+    if ([string]$r.Profile -ne 'Domain, Private') { return $false }
+    $protocols += [string]$port.Protocol
+  }
+  return (($protocols | Sort-Object) -join ',') -eq 'TCP,UDP'
+}
+
 . (Join-Path $PSScriptRoot 'Report-Failure.ps1')
 try {
   # ------------------------------------------------------------------ AC-001-01a
@@ -91,6 +106,7 @@ try {
   Wait-Health 60
   Confirm-Condition (Test-FirewallRule 'UniWake Painel') 'regra de firewall do painel'
   Confirm-Condition (Test-FirewallRule 'UniWake Cadastro') 'regra de firewall do cadastro'
+  Confirm-Condition (Test-TeamFirewallRule) 'regras do Modo equipe (TCP e UDP 47102, Domínio e Privada)'
   Confirm-Condition (Test-Path $shortcut) 'atalho no menu Iniciar'
 
   Write-Step 'Dados de exemplo'
@@ -124,6 +140,7 @@ try {
   Confirm-Condition ($null -eq (Get-Service -Name UniWake -ErrorAction SilentlyContinue)) 'serviço removido'
   Confirm-Condition (-not (Test-FirewallRule 'UniWake Painel')) 'regra do painel removida'
   Confirm-Condition (-not (Test-FirewallRule 'UniWake Cadastro')) 'regra do cadastro removida'
+  Confirm-Condition (-not (Test-FirewallRule 'UniWake - Modo equipe')) 'regras do Modo equipe removidas'
   Confirm-Condition (-not (Test-Path $shortcut)) 'atalho removido'
   Confirm-Condition (Test-Path $db) 'dados mantidos em %ProgramData%\UniWake'
   Write-Step 'Instalador: tudo certo'

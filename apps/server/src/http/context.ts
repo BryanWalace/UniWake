@@ -2,6 +2,10 @@
  * Services the HTTP layer may call (plan §3: http → application only). Built by the composition
  * root and passed to route modules.
  */
+import type { MissedRunsService } from '../application/team/missed-runs';
+import type { PairingService } from '../application/team/pairing';
+import type { SyncService } from '../application/team/sync-service';
+import type { TeamService } from '../application/team/team-service';
 import type { AuditService } from '../application/audit/audit-service';
 import type { AuthService } from '../application/auth/auth-service';
 import type { UsersService } from '../application/auth/users-service';
@@ -54,6 +58,11 @@ export interface HttpServices {
   update: UpdateService;
   updates: UpdateCoordinator;
   discovery: DiscoveryService;
+  /** Modo equipe (FR-201..204). */
+  team: TeamService;
+  pairing: PairingService;
+  sync: SyncService;
+  missedRuns: MissedRunsService;
   /** null when the hub has no backups directory (API tests). */
   backups: BackupService | null;
   /** Hub only: the log viewer source (FR-016). */

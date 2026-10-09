@@ -1,0 +1,106 @@
+name: Relatar problema
+description: Algo não funciona como deveria no UniWake.
+title: '[Problema] '
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Obrigado por relatar! Quanto mais detalhes, mais rápido conseguimos reproduzir.
+
+        **Vulnerabilidade de segurança?** Não abra uma issue pública: siga o [SECURITY.md](https://github.com/BryanWalace/UniWake/blob/main/SECURITY.md).
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacidade
+      description: 'Esta issue é pública. Troque dados reais por exemplos (ex.: 10.0.0.10, 00:11:22:33:44:55, LAB-PC01).'
+      options:
+        - label: Não incluí IPs, endereços MAC, nomes de computadores, senhas, códigos de cadastro ou tokens reais da minha instituição (nem nos logs nem nas capturas de tela).
+          required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Versão do UniWake
+      description: Aparece em Saúde do sistema (o link “Relatar problema” do painel já preenche).
+      placeholder: '1.2.0'
+    validations:
+      required: true
+
+  - type: input
+    id: windows
+    attributes:
+      label: Versão do Windows
+      description: Tecla Windows + R, digite `winver` e Enter.
+      placeholder: 'Windows 11 Pro 24H2'
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: Tipo de instalação
+      options:
+        - Um PC (instalação simples)
+        - Modo equipe (dois ou mais PCs sincronizados)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área
+      options:
+        - Ligar pela rede (Wake-on-LAN)
+        - Agendamentos
+        - Modo equipe (sincronização)
+        - Monitoramento (online/offline)
+        - Preparar máquinas (prepare-target.ps1)
+        - Descobrir na rede
+        - Instalação ou atualização automática
+        - Painel (telas, login, usuários)
+        - Outra
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Passos para reproduzir
+      placeholder: |
+        1. Abri Salas › Lab 1
+        2. Cliquei em “Ligar sala”
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: O que você esperava
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: O que aconteceu
+      description: Inclua a mensagem de erro exatamente como apareceu.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        No painel, como administrador: menu **Logs** › filtre pelo horário do problema › copie as linhas (ou **Baixar**).
+        Os arquivos ficam em `C:\ProgramData\UniWake\logs`. Revise e troque IPs, MACs e nomes reais antes de colar.
+      render: text
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Capturas de tela
+      description: Arraste imagens aqui (sem dados reais da instituição).

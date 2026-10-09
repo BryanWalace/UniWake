@@ -1,3 +1,4 @@
+import { changeLog } from '../src/db/sync/change-log';
 import { afterEach, describe, expect, it } from 'vitest';
 import { baseRoomCode, ROOM_CODE_RE, suggestRoomCode } from '../src/domain/room-code';
 import { apiHarness, type ApiHarness } from './helpers/api';
@@ -160,6 +161,7 @@ describe('rooms API (FR-008.1)', () => {
       "INSERT INTO schedule_targets (schedule_id, type, ref_id) VALUES (?, 'room', ?)",
       [sid, room.id],
     );
+    changeLog(h.services.db).touch('schedule', sid);
     const r = await h.inject({ method: 'DELETE', url: `/api/rooms/${room.id}`, cookie });
     expect(r.statusCode).toBe(409);
     expect(r.json()).toMatchObject({
