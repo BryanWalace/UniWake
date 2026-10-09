@@ -1,10 +1,19 @@
 # NEXT — handoff
 
-Atualizado: 2026-10-09 · Branch: **`dev`** (ADR-030: nada na `main`, nenhuma tag)
+Atualizado: 2026-10-09 · Branch de trabalho: **`dev`** (ADR-030) · **`main` = `52bdd85`** (merge da `dev` autorizado
+pelo dono; **sem tag**, nenhuma release nova publicada)
 
-## 🛑 PARADA — v1.2 "Modo equipe" pronto em `dev`, aguardando seu teste em PCs reais
+## ✅ Merge feito (2026-10-09)
+Antes do merge: `npm run verify` (807 testes), 23 E2E, PSScriptAnalyzer + 28 Pester, CI verde na `dev`
+(`11a9bc4`) e um teste de fumaça com **dois processos reais** do hub conversando por HTTP (16/16; ele
+achou e eu corrigi o anúncio do código aberto, R-M11-06). Download do README na `main`: aponta para a
+**v1.0.0-rc.2**, a única release publicada (HTTP 200). `releases/latest` dá 404 enquanto só houver
+pré-lançamentos; troque os botões para `releases/latest/download/UniWake-Setup.exe` quando sair uma
+release estável.
 
-Feito nesta etapa (tudo na `dev`, CI verde, **sem merge na `main`**):
+## v1.2 "Modo equipe" — na `main`, aguardando seu teste em PCs reais e a decisão da tag
+
+Feito nesta etapa (desenvolvido na `dev`, CI verde, agora também na `main`):
 
 - **Dados prontos para sincronizar (roadmap §A, M10):** migração 004 que adapta as tabelas existentes
   **sem perder nada** (testada numa cópia de um banco populado pelo v1.0), UUID estável, `rev`,
@@ -32,9 +41,9 @@ Não comecei a v1.3 (desligamento) nem a v1.4 (backup/migração), como você pe
 2. **Rótulos**: em **Issues → Labels**, confira que existem `bug`, `enhancement`, `question` e
    `good first issue` (o GitHub cria por padrão) e **crie** `sync`, `wol`, `scheduler` e `installer`
    (descrições sugeridas no `CONTRIBUTING.md`).
-3. **Formulários de issue e SECURITY.md só aparecem depois que a `dev` for para a `main`**: o GitHub
-   lê `.github/ISSUE_TEMPLATE/` da branch padrão. Até lá, os links "Relatar problema"/"Sugerir
-   função" do painel abrem o formulário em branco.
+3. **Formulários de issue e SECURITY.md já estão na `main`** (a branch padrão, de onde o GitHub lê
+   `.github/ISSUE_TEMPLATE/`): confira em **Issues → New issue** que aparecem "Relatar problema",
+   "Sugerir função" e "Dúvida de uso", e que não há opção de issue em branco.
 4. **(Recomendado) Proteger a `main`:** **Settings → Branches → Add branch ruleset/rule** para
    `main`: exigir pull request e o CI verde antes do merge, bloquear force-push.
 5. **Licença:** o projeto está como `UNLICENSED` (todos os direitos reservados) e o README diz isso.
@@ -146,10 +155,10 @@ Troque IPs/nomes reais se for postar em algum lugar público.
 
 ---
 
-## 4. Quando estiver tudo certo
+## 4. Próximo passo: a release (só se você pedir)
 
-Diga **"pode subir a dev para a main"**. Eu rodo o `verify` completo, faço o merge da `dev` na `main`
-e o push. **Tag só se você pedir** (ela publica a release e dispara a atualização automática nos PCs).
+A `dev` já está na `main`. **Tag só se você pedir** (ela publica a release e dispara a atualização
+automática nos PCs).
 
 Decisão sua antes da tag: publicar direto a **v1.2.0** (inclui tudo da 1.0 e 1.1) — recomendo — ou
 fechar antes a v1.0.0 a partir do `main` atual. Depois da release, eu atualizo os botões de download
@@ -176,8 +185,8 @@ WoL real por modelo de PC, reinício sem ninguém logado, VLANs, HTTPS na rede) 
 
 ### Next steps (only after the owner replies)
 1. Fix whatever the two-PC checklist finds (tests first).
-2. On "pode subir a dev para a main": `npm run verify`, `npm run e2e`, `npm run test:ps`, then
-   `git switch main && git merge --no-ff dev && git push origin main`, back to `dev`. Tag only if asked.
+2. Done 2026-10-09: `main` = `52bdd85` (merge of `dev`). Next merges the same way, only on the
+   owner's explicit request. Tag only if asked.
 3. After a release: README download buttons → `releases/latest/download/UniWake-Setup.exe`.
 4. Then v1.3 (roadmap §C: agent + shutdown, starting with the ADR comparing WMI/WinRM/Task
    Scheduler/agent) → v1.4 (§D), each through the full SDD loop.
