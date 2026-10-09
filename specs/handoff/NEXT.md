@@ -1,7 +1,7 @@
 # NEXT — handoff
 
-Atualizado: 2026-10-09 · Branch de trabalho: **`dev`** (ADR-030) · **`main` = `52bdd85`** (merge da `dev` autorizado
-pelo dono; **sem tag**, nenhuma release nova publicada)
+Atualizado: 2026-10-09 · Branch de trabalho: **`dev`** (ADR-030) · **`main` = `9d7cc31`** · **release v1.2.0 publicada**
+(estável, pedida pelo dono; `releases/latest` = v1.2.0, download e SHA-256 conferidos)
 
 ## ✅ Merge feito (2026-10-09)
 Antes do merge: `npm run verify` (807 testes), 23 E2E, PSScriptAnalyzer + 28 Pester, CI verde na `dev`
@@ -53,24 +53,20 @@ Não comecei a v1.3 (desligamento) nem a v1.4 (backup/migração), como você pe
 
 ---
 
-## 2. Baixar o instalador de teste (versão 1.2.0-dev)
+## 2. Baixar o instalador (v1.2.0, publicada)
 
-Não existe release com o Modo equipe (releases só saem de tags na `main`). O CI da `dev` gera um
-**instalador de teste** (ADR-041):
+A **v1.2.0** está publicada em <https://github.com/BryanWalace/UniWake/releases/tag/v1.2.0>. O botão do
+README (<https://github.com/BryanWalace/UniWake/releases/latest/download/UniWake-Setup.exe>) baixa
+sempre a versão estável mais recente. Confira o arquivo com
+`Get-FileHash .\UniWake-Setup.exe -Algorithm SHA256` contra o `UniWake-Setup.exe.sha256` da release.
 
-1. Abra <https://github.com/BryanWalace/UniWake/actions/workflows/ci.yml?query=branch%3Adev> (logado no
-   GitHub).
-2. Clique no run **mais recente e verde** da `dev`.
-3. Em **Artifacts**, baixe **UniWake-Setup-dev** (um `.zip` com `UniWake-Setup-1.2.0-dev.<N>.exe` e o
-   `.sha256`). O artefato fica disponível por 14 dias.
-4. Confira o arquivo: `Get-FileHash .\UniWake-Setup-1.2.0-dev.<N>.exe -Algorithm SHA256` deve bater
-   com o `.sha256`.
-
-> ⚠️ É uma versão de teste: não é publicada, não aparece para a atualização automática de ninguém e,
-> quando a 1.2.0 estável sair, quem instalou a de teste é atualizado sozinho. Instalar por cima de
-> uma instalação existente (1.0.0-rc.2) **migra o banco** (há backup automático antes, em
-> `C:\ProgramData\UniWake\backups`). Se possível, teste primeiro em dois PCs que não sejam o de
-> produção, ou copie essa pasta de backups antes.
+> ⚠️ PCs que já têm o UniWake (1.0.0-rc.2) e a atualização automática ligada (padrão) instalam a
+> 1.2.0 sozinhos na janela de manutenção (03:00–05:00), com backup do banco antes e volta automática
+> se a versão nova não responder. O cadastro é migrado sem perdas. Para atualizar já, use
+> **Saúde do sistema → Atualizar agora** (administrador) ou rode o instalador por cima.
+>
+> Instaladores de teste da `dev` (artefato do CI, ADR-041) agora são `1.3.0-dev.<N>`: só para testar
+> trabalho ainda não publicado.
 
 ---
 
@@ -85,14 +81,14 @@ Não existe release com o Modo equipe (releases só saem de tags na `main`). O C
 - Para o teste de agendamento: uma **sala de teste** com 1 ou 2 máquinas já preparadas (o teste envia
   Magic Packets de verdade para elas).
 
-**Passo 1 — Instalar nos dois PCs.** Rode `UniWake-Setup-1.2.0-dev.<N>.exe` como administrador no
+**Passo 1 — Instalar nos dois PCs.** Rode `UniWake-Setup.exe` (v1.2.0) como administrador no
 PC-A e no PC-B. Depois confira em cada um: Firewall do Windows → Configurações avançadas → Regras de
 Entrada → **"UniWake - Modo equipe"** aparece **duas vezes** (TCP e UDP, porta 47102, perfis Domínio
 e Privado).
 
 **Passo 2 — Preparar o PC-A.** Abra o UniWake no PC-A (atalho no menu Iniciar), crie o
 administrador (se for instalação nova) e cadastre uma sala, duas máquinas e um agendamento. Em
-**Saúde do sistema**, confira a versão `1.2.0-dev.<N>` e anote os 8 caracteres do **Identificador
+**Saúde do sistema**, confira a versão `1.2.0` e anote os 8 caracteres do **Identificador
 desta instalação**.
 
 **Passo 3 — Primeiro acesso no PC-B.** Abra o UniWake no PC-B e crie um administrador qualquer: ele
@@ -155,7 +151,12 @@ Troque IPs/nomes reais se for postar em algum lugar público.
 
 ---
 
-## 4. Próximo passo: a release (só se você pedir)
+## 4. Release
+
+**v1.2.0 publicada em 2026-10-09** (tag na `main` `9d7cc31`, notas em `specs/releases/v1.2.0.md`). Os
+botões do README já usam `releases/latest/download/UniWake-Setup.exe`.
+
+### Histórico da decisão
 
 A `dev` já está na `main`. **Tag só se você pedir** (ela publica a release e dispara a atualização
 automática nos PCs).
