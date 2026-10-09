@@ -7,7 +7,7 @@
 Wake-on-LAN por sala, etiqueta ou máquina · Painel em tempo real · Agendamentos com feriados ·
 Cadastro automático das máquinas · Descoberta na rede · Modo equipe · Atualização automática
 
-[![Baixar para Windows](https://img.shields.io/badge/Baixar%20para%20Windows-v1.0.0--rc.2-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/BryanWalace/UniWake/releases/download/v1.0.0-rc.2/UniWake-Setup.exe)
+[![Baixar para Windows](https://img.shields.io/badge/Baixar%20para%20Windows-vers%C3%A3o%20mais%20recente-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/BryanWalace/UniWake/releases/latest/download/UniWake-Setup.exe)
 
 [![Versão](https://img.shields.io/github/v/release/BryanWalace/UniWake?include_prereleases&label=vers%C3%A3o&style=flat-square)](https://github.com/BryanWalace/UniWake/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/BryanWalace/UniWake/ci.yml?branch=main&label=testes&style=flat-square)](https://github.com/BryanWalace/UniWake/actions/workflows/ci.yml)
@@ -82,8 +82,8 @@ cadastro, sincronizando pela rede local.
 | 🎮 | **Modo demonstração** | Uma rede de laboratórios simulada para conhecer o sistema sem enviar nada. |
 
 > [!NOTE]
-> O **Modo equipe** faz parte da versão **1.2**. A versão publicada para download hoje é a
-> **1.0.0-rc.2** (sem Modo equipe); a 1.2 sai quando for validada nos computadores da faculdade.
+> O **Modo equipe** chegou na versão **1.2.0**. Quem já tem o UniWake instalado recebe a
+> atualização sozinho, na janela de manutenção.
 
 ## 📸 Capturas de tela
 
@@ -145,12 +145,13 @@ flowchart LR
 
 ### 1. Baixe
 
-<a href="https://github.com/BryanWalace/UniWake/releases/download/v1.0.0-rc.2/UniWake-Setup.exe"><img alt="Baixar UniWake-Setup.exe" src="https://img.shields.io/badge/%E2%AC%87%20Baixar-UniWake--Setup.exe%20(v1.0.0--rc.2)-0078D4?style=for-the-badge"></a>
+<a href="https://github.com/BryanWalace/UniWake/releases/latest/download/UniWake-Setup.exe"><img alt="Baixar UniWake-Setup.exe" src="https://img.shields.io/badge/%E2%AC%87%20Baixar-UniWake--Setup.exe%20(vers%C3%A3o%20mais%20recente)-0078D4?style=for-the-badge"></a>
 
 Ou escolha uma versão em **[Releases](https://github.com/BryanWalace/UniWake/releases)**.
 
 > [!NOTE]
-> A **v1.0.0-rc.2** é uma versão candidata (pré-lançamento): já pode ser instalada e testada.
+> O botão sempre baixa a **versão estável mais recente** (a partir da 1.2.0). Versões candidatas
+> (pré-lançamentos) ficam só na página de Releases.
 
 ### 2. Confira o arquivo (opcional, recomendado)
 
@@ -412,9 +413,9 @@ também na rede dessas máquinas, ou informar o **"Broadcast dirigido"** da sala
 
 | Versão | Conteúdo | Situação |
 |---|---|---|
-| 1.0 | Ligar pela rede, painel, agendamentos, preparo e cadastro, usuários, backups, atualização automática | ✅ versão candidata publicada (1.0.0-rc.2) |
-| 1.1 | Descobrir na rede | ✅ pronta (sai com a próxima versão) |
-| 1.2 | **Modo equipe** (sincronização entre PCs da TI) | ✅ pronta (em validação) |
+| 1.0 | Ligar pela rede, painel, agendamentos, preparo e cadastro, usuários, backups, atualização automática | ✅ publicada (incluída na 1.2.0) |
+| 1.1 | Descobrir na rede | ✅ publicada (incluída na 1.2.0) |
+| 1.2 | **Modo equipe** (sincronização entre PCs da TI) | ✅ publicada (1.2.0) |
 | 1.3 | UniWake Agent: **desligar e reiniciar** pela rede ou por agendamento, aviso na tela com contagem regressiva | 🕒 planejado |
 | 1.4 | **Backup, restauração e migração** em arquivo `.uniwake` (exportar/importar, com senha) | 🕒 planejado |
 | — | Agente por VLAN, notificações (e-mail/Telegram), ferramentas de BIOS dos fabricantes, permissões por sala | 💡 ideias |
