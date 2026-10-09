@@ -337,3 +337,108 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
   the owner merged and tagged. The handoff (`NEXT.md`) tells the owner when `dev` is ready to merge.
   The README download links keep pointing to the last published release until the owner tags a new
   one.
+
+## ADR-031 — Sync-ready data layer: UUIDs, Lamport revisions, one change-log row per entity
+- **Date:** 2026-10-08 · **Status:** Accepted · **Amends:** constitution §2.3; spec NFR-10; plan §5
+- **Context:** `.agents/07-roadmap-features.md` §A: there is no 24/7 server. Each of the two IT
+  staff runs UniWake on their own PC, and v1.2 syncs them over the LAN. The design must be ready
+  for that from v1.0: stable UUIDs, `updated_at`, `updated_by_instance`, tombstones, and every write
+  appending to a local change log through a repository. v1.0 was built with local integer keys and
+  hard deletes; ~730 tests and every API route use those integer ids.
+- **Decision:**
+  1. **Two kinds of tables.** *Replicated entities* (the team's shared data) and *machine-local*
+     tables (observations and state of this PC). Replicated: `room`, `tag`, `device` (incl. its tag
+     set), `schedule` (incl. its targets), `schedule_exception`, `schedule_run`, `user`, `setting`
+     (shared scope only, ADR-032) and the scheduler pause (`scheduler_pause`, singleton `global`).
+     Everything else is machine-local and never synced or exported: `instance`, `machine_settings`,
+     `system_state` (except the pause), `sessions`, `device_state`, `device_events`, `daily_uptime`,
+     `wake_jobs`, `wake_job_devices`, `packet_log`, `test_wol_runs`, `enrollment_tokens`, `notices`,
+     `backups`, `audit_log`, and the users' lock-out counters.
+  2. **Identity.** The integer `id` stays as a *local* surrogate key (FKs, URLs, API). Each
+     replicated row also gets `uuid` (unique), its global identity, assigned once and never changed;
+     references between entities travel as UUIDs. Settings use their key as identity (two PCs
+     changing `wake.repeat` change the same thing); the pause uses `global`; a schedule run uses a
+     name-based UUID (v5) of `schedule uuid + planned instant`, so the same occurrence has the same
+     identity on every PC and two records of it merge instead of duplicating.
+  3. **Versions.** Each replicated row carries `rev` (a Lamport clock value), `updated_at` and
+     `updated_by_instance`. The clock lives in the `instance` row and is incremented on every
+     replicated write; v1.2 merges it with remote revisions on receipt. Conflicts will be resolved by
+     `(rev, instance_id)`: deterministic last-writer-wins.
+  4. **Change log = latest state per entity.** `change_log(seq AUTOINCREMENT, entity, entity_id,
+     op, rev, instance_id, at, payload)` with one row per entity: a write deletes the entity's
+     previous row and appends a new one with a full JSON snapshot (references as UUIDs; local ids,
+     lock-out counters and machine data excluded). Because snapshots are full state, superseded
+     rows carry no information, so this *is* the compaction; a peer asking "changes since N" gets
+     the latest version of everything that changed after N.
+  5. **Tombstones.** A delete replaces the entity's log row with `op = 'delete'` (no payload). The
+     live tables keep hard deletes, so no read query, unique constraint or FK cascade changes, and
+     a deleted name can be reused. Dependents removed by a cascade are tombstoned too (a schedule's
+     exceptions and runs); devices whose room or tags change because of a delete are re-logged.
+     Tombstones are pruned only in v1.2, after every peer acknowledged them. Retention pruning of
+     old schedule runs drops their log rows without tombstones (each PC applies its own retention).
+  6. **Enforcement.** Repositories call `ChangeLog.touch(entity, id)` after a write and
+     `ChangeLog.tombstone(entity, id)` before a delete, inside the write's transaction. `touch`
+     assigns the UUID when missing, bumps the clock and writes the snapshot. A checker
+     (`verifyChangeLog`) proves for any database that every replicated row has a log row with the
+     same `rev` and the same snapshot, and that no tombstone has a live row; every API test harness
+     runs it on close, so a write path that skips the log fails the suite.
+  7. **Migration.** Migration 004 adds the columns and tables; at start-up a baseline logs every
+     existing row that has no revision yet, so a v1.0 database upgraded later syncs completely.
+  8. **Schedule targets keep the target's UUID** (`schedule_targets.ref_uuid`), and deleting a
+     room, tag or device clears the local `ref_id` of targets that pointed to it. This also fixes a
+     latent v1.0 bug: SQLite may reuse the highest rowid, so a schedule whose room was deleted could
+     silently target a room created afterwards with the same id.
+- **Alternatives rejected:** UUID primary keys everywhere (rewrites every FK, route, client type and
+  most tests for no functional gain: peers never see local ids); `deleted_at` soft-delete columns
+  (every read query, uniqueness rule and cascade would have to change; a tombstone in the log is
+  what sync needs); SQLite triggers writing the log (cannot build snapshots with UUID references
+  and aggregate children cleanly; the repository rule plus the checker is explicit and tested);
+  an append-only log of every change (grows with every IP change and pause forever while carrying
+  no extra information for state-based last-writer-wins).
+- **Consequences:** v1.0 behaves exactly as before for the operator; writes cost one extra snapshot
+  query. v1.2 only adds transport, apply (with the same repositories, keeping remote `rev` and
+  instance) and tombstone pruning. Unique names (two PCs creating "Lab 1" independently) are a v1.2
+  conflict rule, not a schema change.
+
+## ADR-032 — Machine-specific settings in their own table
+- **Date:** 2026-10-08 · **Status:** Accepted · **Amends:** constitution §2.4; plan §5
+- **Context:** Roadmap §A: network interface, port, bind address and paths are properties of one
+  PC and must never be synced or exported.
+- **Decision:** Every setting declares `scope: 'shared' | 'machine'` in the shared registry (a
+  required field, so a new key cannot be added unclassified). Machine-scope keys live in the new
+  `machine_settings` table, which no change log, sync or export ever reads; migration 004 moves
+  existing values there. Machine scope: `wake.interfaces`, `wake.dryRun`, `panel.lanEnabled`,
+  `panel.lanAddress`, `enrollment.hubAddress`, `update.*` (each PC updates itself, in its own
+  window), `backup.*` (each PC backs up its own disk) and the `bootstrap.*` keys (already in
+  `config.json`). Everything else (wake policy, monitoring, scheduler, security, retention) is
+  shared team policy. The settings page marks machine-scope settings "Somente neste PC".
+- **Consequences:** The settings API and form are unchanged; only storage differs. v1.4's export
+  and v1.2's sync can treat `settings` as team data without filtering.
+
+## ADR-033 — Persistent instance identity
+- **Date:** 2026-10-08 · **Status:** Accepted · **Amends:** plan §5, §9; spec FR-012, FR-014
+- **Context:** Each installation needs a stable `instance_id` (roadmap §A) to attribute writes,
+  order conflicts and, in v1.2, track what each peer has seen.
+- **Decision:** A single-row `instance` table holds `instance_id` (random UUID, created on first
+  start), `created_at` and the Lamport clock. It is machine-local. Restoring a backup file (FR-014)
+  gives the installation a **new** `instance_id` and keeps the clock at least at the highest
+  revision in the restored data: the restored change log restarts from older sequence numbers, and
+  peers that tracked the old identity must not mistake it for the same history. The health page
+  shows the identifier (first 8 characters) to make support and v1.2 pairing easier to follow.
+- **Consequences:** A database copied to another PC by hand would share the identity; v1.4's
+  import never copies `instance`, and the copy gets its own identity.
+
+## ADR-034 — Scheduler asks an execution lease before handling an occurrence
+- **Date:** 2026-10-08 · **Status:** Accepted · **Amends:** plan §7.2
+- **Context:** Roadmap §A/§B: with several instances online, one executor is elected per run
+  (lease); alone, an instance executes. v1.0 has one instance, but the scheduler must not need a
+  redesign for v1.2.
+- **Decision:** The scheduler depends on an `ExecutionLease` port: `shouldHandle({ schedule uuid,
+  planned instant, now })` → boolean, asked before an occurrence is claimed, whether it would be
+  executed or only logged (`perdido`, `pulado`). v1.0 wires `SoloLease` (always true). v1.2's lease
+  keeps its state up to date in the background (peer announcements) so the call stays synchronous
+  and the tick stays simple. The claim-then-execute row stays the local guard; the run's
+  deterministic UUID (ADR-031) makes two instances' records of one occurrence the same entity, and
+  each run records `claimed_by_instance`.
+- **Consequences:** An instance that declines leaves no record; the executor's run arrives by sync.
+  Offering missed wakes at start-up (roadmap §B) builds on the same port in v1.2.

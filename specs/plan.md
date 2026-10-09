@@ -1,7 +1,8 @@
 # UniWake — Technical Plan
 
-Version: **1.0** · Date: 2026-10-04 · Owner: Architect
-History: v0.1 draft → reviewed in `specs/reviews/phase-2-*.md` → consolidated as v1.0.
+Version: **1.1** · Date: 2026-10-08 · Owner: Architect
+History: v0.1 draft → reviewed in `specs/reviews/phase-2-*.md` → consolidated as v1.0 → v1.1
+(Phase 6: §5.2 sync-ready data, §7.2 lease, ADR-030..034).
 Inputs: `specs/constitution.md` v1.1, `specs/spec.md` v1.0, ADR-001..026.
 
 ---
@@ -173,6 +174,33 @@ Times: epoch ms UTC `INTEGER`; booleans `INTEGER 0/1`; JSON as `TEXT`. Migration
 | `notices` | id PK, type, created_at, data JSON, acknowledged_at, acknowledged_by | |
 | `test_wol_runs` | id PK, device_id FK CASCADE, state, requested_by, started_at, offline_at, sent_at, finished_at, job_id FK→wake_jobs SET NULL, detail | idx (device_id, started_at), job_id (FR-007.4) |
 | `backups` | id PK, file, kind (`daily`,`pre-migration`,`pre-update`,`pre-restore`,`manual`), created_at, size | |
+| `instance` | id PK (=1), instance_id UUID, created_at, clock (Lamport) | migration 004; ADR-033 |
+| `change_log` | seq PK AUTOINCREMENT, entity, entity_id, op (`upsert`,`delete`), rev, instance_id, at, payload JSON NULL, **UNIQUE(entity, entity_id)** | latest state per entity; ADR-031 |
+| `machine_settings` | key PK, value JSON, updated_at, updated_by | never synced/exported; ADR-032 |
+
+### 5.2 Sync-ready data (ADR-031..034, migration 004)
+Replicated tables gain `uuid` (unique index), `rev` (default 0 = not yet logged),
+`updated_by_instance` and, where missing, `updated_at`; `schedule_runs` also gains
+`claimed_by_instance`, and `schedule_targets` gains `ref_uuid`. Classification (every new table
+MUST be added here):
+
+| Entity (log name) | Table(s) | Identity | Snapshot (references by UUID) |
+|---|---|---|---|
+| `room` | rooms | uuid | name, code, block, floor, color, notes, directedBroadcast, batchSize, batchDelayMs, createdAt |
+| `tag` | tags | uuid | name, color |
+| `device` | devices + device_tags | uuid | name, mac, ip, hostname, room, notes, enabled, manufacturer, model, serial, os, otherMacs, preparedAt, prepareResults, enrolledAt, createdAt, tags[] |
+| `schedule` | schedules + schedule_targets | uuid | name, enabled, weekdays, timeLocal, timezone, onlyOffline, batchSize, batchDelayMs, confirmedCount, createdBy, createdAt, targets[{type, ref}] |
+| `schedule_exception` | schedule_exceptions | uuid | schedule, startDate, endDate, description |
+| `schedule_run` | schedule_runs | uuid v5(schedule uuid, planned_at) | schedule, plannedAt, claimedAt, status, detail, claimedBy |
+| `user` | users | uuid | username, passwordHash, role, enabled, createdAt, passwordChangedAt |
+| `setting` | settings (shared scope) | key | value, updatedBy |
+| `scheduler_pause` | system_state `scheduler.pause` | `global` | pause (or null) |
+
+Machine-local: every other table, plus users' `failed_logins`/`last_failed_at` and
+`system_state` keys other than the pause. Code: `apps/server/src/db/sync/` (`entities.ts`
+snapshot builders, `change-log.ts` touch/tombstone/baseline/verify, `instance.ts`); the domain
+helper `uuid-v5.ts` is pure. Writes keep their existing SQL; `touch` fills `uuid`, `rev`,
+`updated_by_instance` (and `updated_at` on tables whose repositories did not set it).
 
 ### 5.1 Database performance rules (synchronous driver)
 - No query on a request or tick path may exceed 50 ms at 500 devices / 180 days of history;
@@ -299,6 +327,8 @@ is logged as an `error` row and the others continue; a device is `falha no envio
 attempt for it failed.
 
 ### 7.2 Scheduler tick (every 15 s)
+0. Every occurrence below is first offered to the `ExecutionLease` (ADR-034): if it declines,
+   the occurrence is skipped without a record (v1.0: `SoloLease`, always yes).
 1. If paused and auto-resume time passed → resume (audit).
 2. For each enabled schedule, compute occurrences in `(lastTick − grace, now]` (domain, Luxon +
    own non-existent-time rule).

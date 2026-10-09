@@ -253,6 +253,19 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] M9-R | Code review → `specs/reviews/M9-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
 | [x] M9-A | Architect conformance → `specs/reviews/M9-architect.md`. | phase 4 | — | Phase 5 may start |
 
+## M10 — Sync-ready data layer (roadmap §A; ADR-031..034; FR-017)
+| ID | Task | Refs | Tests | Done when |
+|---|---|---|---|---|
+| [ ] M10-T01 | Migration 004: `instance`, `change_log`, `machine_settings` (moves machine-scope values), uuid/rev/updated_by_instance/updated_at columns, `ref_uuid`, `claimed_by_instance`. | FR-017; ADR-031..033 | AC-017-04 | migrates a populated schema-3 copy without loss |
+| [ ] M10-T02 | `db/sync`: instance (lazy create, rotate), Lamport clock, entity snapshot builders, `ChangeLog.touch/tombstone/forget`, baseline, `verifyChangeLog`; domain `uuid-v5`. | FR-017.2–.3 | AC-017-01, AC-017-07 | — |
+| [ ] M10-T03 | Repositories log every replicated write (rooms, tags, devices incl. bulk/CSV/enrollment/monitor IP, schedules, exceptions, runs, users, settings, pause); deletes tombstone and re-log affected devices; targets keep `ref_uuid` and lose `ref_id` on delete. API harness runs `verifyChangeLog` on close. | FR-017.3; AC-005-12 | AC-017-02, AC-017-03, AC-005-12 | whole suite green with the checker |
+| [ ] M10-T04 | Settings scope (`shared`/`machine`) in the registry; machine keys in `machine_settings`; "Somente neste PC" mark in the settings page. | FR-017.4; ADR-032 | AC-017-05, AC-017-09 | — |
+| [ ] M10-T05 | Scheduler `ExecutionLease` port + `SoloLease`; runs record `claimed_by_instance`. | FR-017.5; ADR-034 | AC-017-06 | — |
+| [ ] M10-T06 | Hub start-up: ensure instance, baseline; restore rotates the instance; health shows the identifier. | FR-012; FR-014; ADR-033 | AC-017-01, AC-017-08 | — |
+| [ ] M10-D | Debug break-it pass (sync-ready data): migration on a populated copy, crash between write and log (same transaction), bulk operations at 500 devices, demo seed, restore. | tasks §Break-it | regressions | findings filed |
+| [ ] M10-R | Code review → `specs/reviews/M10-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+| [ ] M10-A | Architect conformance → `specs/reviews/M10-architect.md`. | — | — | v1.2 may start |
+
 ## Phase 5 — Validate (lead: Debug)
 | ID | Task | Refs | Evidence |
 |---|---|---|---|

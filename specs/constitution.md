@@ -62,12 +62,21 @@ written reason to skip. Changes require an ADR that names the section changed (ย
 - Timestamps stored as UTC epoch milliseconds. Timezone conversion only in scheduler evaluation
   and UI display, using IANA zone names (ADR-008).
 - MAC addresses stored normalized `AA:BB:CC:DD:EE:FF`; unique.
+- **Sync-ready (ADR-031, ADR-033).** Every table is either a *replicated entity* or
+  *machine-local*, and a new table MUST be classified in plan ยง5. Replicated rows carry a stable
+  `uuid`, `rev`, `updated_at` and `updated_by_instance`; every write to them goes through a
+  repository that updates the change log (`ChangeLog.touch` / `tombstone`) in the same
+  transaction. References between replicated entities are exchanged as UUIDs, never local ids.
+  Each installation has a persistent `instance_id`.
 
 ### 2.4 Configuration
 - Bootstrap config (data dir, ports, bind addresses, log level) precedence:
   code defaults < `config.json` in the data dir < environment variables.
 - Everything else is a setting stored in the DB, validated by a Zod schema, editable in the UI
   (NFR-03). Absent value = code default.
+- Every setting declares `scope`: `shared` (team policy, replicated) or `machine` (this PC's
+  interfaces, addresses, ports, paths, update and backup schedule), stored in `machine_settings`
+  and never synced or exported (ADR-032).
 
 ### 2.5 Dry-run and demo
 - Dry-run replaces `PacketSender` with a recording fake; a banner is visible on every page while

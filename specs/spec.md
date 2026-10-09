@@ -1,9 +1,10 @@
 # UniWake — Specification
 
-Version: **1.1** · Date: 2026-10-04 · Owner: Architect
+Version: **1.2** · Date: 2026-10-08 · Owner: Architect
 History: v0.1 draft → reviewed in `specs/reviews/phase-1-*.md` → consolidated as v1.0 → v1.1
-(Phase 2: AC-001-13/14, FR-004.7).
-Sources: `.agents/01-project-brief.md`, `specs/constitution.md`, `specs/improvements.md`,
+(Phase 2: AC-001-13/14, FR-004.7) → v1.2 (Phase 6, `specs/reviews/phase-6-*.md`: FR-017 sync-ready
+data from `.agents/07-roadmap-features.md` §A, AC-005-12, FR-012/FR-014 additions).
+Sources: `.agents/01-project-brief.md`, `.agents/07-roadmap-features.md`, `specs/constitution.md`, `specs/improvements.md`,
 `specs/decisions.md`.
 
 Acceptance criteria use **Given / When / Then** with IDs `AC-<FR>-<n>`. Every AC maps to at
@@ -338,6 +339,8 @@ on every page while paused; runs during pause are logged `pulado (pausa)`.
 in the morning result.
 - AC-005-11: Given a schedule on room R and R is deleted, Then the schedule shows "alvo vazio"
   and the next run logs `falhou (alvo vazio)`.
+- AC-005-12: Given a schedule on room R, R deleted and a new room created afterwards (SQLite may
+  reuse R's local id), Then the schedule still shows "alvo vazio" and never wakes the new room.
 
 ### FR-006 Security and audit
 **FR-006.1 First run.** While no user exists, the panel shows "Criar administrador" only to
@@ -494,7 +497,8 @@ Public `GET /api/health` returns only `{status: "ok" | "degraded" | "down"}`. Au
 page: uptime, version, DB size, last backup, scheduler last tick and next run, last sweep duration
 vs 30 s, update status, clock skew (from the GitHub `Date` header; warn > 2 min), warnings for
 power plan allowing sleep on AC, pending Windows reboot, Windows Update active hours not covering
-05:00–08:00, with pt-BR instructions.
+05:00–08:00, with pt-BR instructions, and the installation identifier (FR-017.2, first 8
+characters).
 - AC-012-01: Given the scheduler's last tick older than 2 min, Then the page shows "Agendador
   parado" in red and public health is `degraded`.
 - AC-012-02 [API]: Given no session, Then `/api/health` body has only `status`.
@@ -510,7 +514,9 @@ until acknowledged. One card per local day; runs are added as their verification
 ### FR-014 Backups (IMP-010)
 Daily backup (default 02:30) + pre-migration + pre-update; retention default 14 daily. Admin
 lists and restores from the panel; restore takes a backup of the current DB first, requires typing
-the backup date to confirm, is audited, and restarts the service.
+the backup date to confirm, is audited, and restarts the service. A restored database gets a new
+installation identifier (ADR-033, AC-017-08). Backup files are copies of this PC's database and
+include its machine-specific settings; the portable export that leaves them out is v1.4.
 - AC-014-01: Given 15 daily backups, Then the oldest is deleted.
 - AC-014-02 [API]: Given a restore request, Then a pre-restore backup exists before the swap and an
   audit entry is written; an operator gets 403.
@@ -527,6 +533,57 @@ All settings are editable in the UI (admin), grouped by area, validated with the
 Log viewer (admin): level filter, text search, last 5 MB of the current file, download.
 - AC-016-01: Given the settings schema, Then every key has a form control (schema ↔ form test).
 - AC-016-02 [API]: Given an operator, Then settings writes and the log endpoints return 403.
+
+### FR-017 Sync-ready data (team-mode foundation; roadmap §A, ADR-031..034)
+There is no 24/7 server: each IT staff member runs UniWake on their own PC, and v1.2 syncs those
+installations over the LAN. v1.0 already stores data so that sync needs no schema redesign. Nothing
+here is visible to the operator except the installation identifier on the health page and the
+"Somente neste PC" mark on machine-specific settings.
+
+**FR-017.1 Replicated vs machine-local data.** Rooms, tags, devices (with their tags), schedules
+(with their targets), schedule exceptions, schedule runs, users, shared settings and the scheduler
+pause are *replicated entities*. Every other table (observations, jobs, packets, sessions, audit,
+notices, backups, enrollment codes, machine settings, the instance identity) is *machine-local* and
+is never synced or exported.
+
+**FR-017.2 Identity and versions.** Each installation has a persistent `instance_id` (UUID). Each
+replicated entity has a stable UUID (settings: their key; schedule runs: derived from schedule and
+planned instant), `rev` (Lamport clock), `updated_at` and `updated_by_instance`.
+
+**FR-017.3 Change log and tombstones.** Every write to a replicated entity goes through a
+repository that, in the same transaction, replaces that entity's change-log row with its new full
+snapshot (references as UUIDs). A delete leaves a tombstone row. Retention pruning of old runs does
+not create tombstones.
+
+**FR-017.4 Machine-specific settings** (`wake.interfaces`, `wake.dryRun`, `panel.*`,
+`enrollment.hubAddress`, `update.*`, `backup.*`, `bootstrap.*`) are stored apart from shared
+settings, never logged, synced or exported, and marked "Somente neste PC" in the settings page.
+
+**FR-017.5 Execution lease.** Before handling a due occurrence the scheduler asks an execution
+lease; v1.0 always executes (single instance). Each run records which instance claimed it.
+
+- AC-017-01: Given a fresh data folder, When the hub starts twice, Then the same `instance_id` (a
+  UUID) is used both times, and the health page shows its first 8 characters.
+- AC-017-02 [API]: Given rooms, tags, devices, schedules, exceptions, users, settings and the pause
+  created and edited through the API, Then every replicated row has a UUID, `rev` and
+  `updated_by_instance`, and the change log holds exactly one row per entity whose `rev` and
+  snapshot match the row (references as UUIDs).
+- AC-017-03 [API]: Given a room with devices, a tag on devices and a schedule with exceptions and
+  runs, When each is deleted, Then each leaves a tombstone, the affected devices are re-logged
+  without that room/tag, and the schedule's exceptions and runs are tombstoned.
+- AC-017-04: Given a schema-3 (v1.0) database with data and machine-specific settings, When it is
+  migrated and the hub starts, Then every replicated row gets a UUID, a revision and a log row, and
+  the machine-specific values move to `machine_settings` unchanged.
+- AC-017-05 [API]: Given a machine-specific setting is changed, Then it is stored in
+  `machine_settings` and no change-log row is written; a shared setting is logged.
+- AC-017-06: Given a lease that declines, When a run is due, Then no run is claimed and no wake job
+  starts; with the solo lease the run executes and records `claimed_by_instance`.
+- AC-017-07: Given the same schedule UUID and planned instant, Then the run UUID is identical on
+  any installation (name-based UUID), and it differs for another instant.
+- AC-017-08: Given a backup is restored, When the hub starts, Then the installation has a new
+  `instance_id` and its clock is at least the highest revision in the restored data.
+- AC-017-09: Given machine-specific and shared settings, Then the settings page marks exactly the
+  machine-specific ones "Somente neste PC", and every setting declares its scope.
 
 ## 6. Functional requirements — v1.1
 ### FR-101 Network discovery (MAC scanner)
@@ -599,11 +656,15 @@ touch targets ≥ 44 px on primary actions; every list has loading/empty/error s
 - FR-101 (v1.1) and the roadmap.
 - IPv6 Wake-on-LAN; Wake-on-Wireless.
 - Per-room permissions (every operator can wake every room).
-- Multiple hubs / high availability.
+- Syncing several installations (team mode, v1.2); v1.0 only stores data ready for it (FR-017).
 - Mobile app (the panel is usable on a tablet).
 - TLS on the agent listener (RM-5).
 
 ## 11. Roadmap (spec only)
+Versions after v1.1 (`.agents/07-roadmap-features.md`): **v1.2** team mode (LAN sync between
+instances, pairing, schedule lease), **v1.3** UniWake Agent and remote/scheduled shutdown (covers
+RM-2), **v1.4** backup, restore and migration (portable `.uniwake` export/import). Each gets its own
+spec section when its SDD cycle starts.
 - **RM-1 Relay agent per VLAN** — authenticated service on one PC per VLAN that broadcasts locally
   on hub request.
 - **RM-2 Remote shutdown/restart; lightweight target agent** (CPU/RAM/disk/logged user).
