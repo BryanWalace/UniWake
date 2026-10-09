@@ -10,6 +10,7 @@ export const HELP_TOPICS = [
   'nic-power',
   'firewall-icmp',
   'vlan-broadcast',
+  'team-mode',
 ] as const;
 export type HelpTopic = (typeof HELP_TOPICS)[number];
 
@@ -215,6 +216,7 @@ export const ERROR_DEFS = {
     status: 502,
     message:
       'Não foi possível conectar ao outro PC ({address}). Verifique se o UniWake está aberto nele, o endereço e o firewall (porta 47102).',
+    help: 'team-mode',
   },
   TEAM_PAIRING_FAILED: {
     status: 502,

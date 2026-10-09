@@ -306,24 +306,24 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 |---|---|---|---|---|
 | [x] M13-T01 | `TeamLease` + scheduler deferral (re-ask declined occurrences; fallback after 90 s). | FR-204.1; ADR-039 | AC-204-01, AC-204-02, AC-204-03 | — |
 | [x] M13-T02 | Missed runs at start-up in team mode → notice "Agendamento não executado" + "Ligar agora". | FR-204.2 | AC-204-04 | — |
-| [ ] M13-T03 | Schedule log shows the executing PC's name. | FR-204.1 | UI test | — |
+| [x] M13-T03 | Schedule log shows the executing PC's name. | FR-204.1 | UI test | — |
 | [ ] M13-R | Code review → `specs/reviews/M13-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
 
 ## M14 — Team UI, installer, two-instance tests
 | ID | Task | Refs | Tests | Done when |
 |---|---|---|---|---|
-| [ ] M14-T01 | Page "Modo equipe": pair (code + countdown), join (discovered list, address, code, replace confirmation), members (status, rename, address, revoke), leave, "Sincronizar agora". | FR-201, FR-202.6 | web tests (loading/empty/error) | — |
-| [ ] M14-T02 | Page "Conflitos resolvidos". | FR-203 | web tests | — |
+| [x] M14-T01 | Page "Modo equipe": pair (code + countdown), join (discovered list, address, code, replace confirmation), members (status, rename, address, revoke), leave, "Sincronizar agora". | FR-201, FR-202.6 | web tests (loading/empty/error) | — |
+| [x] M14-T02 | Page "Conflitos resolvidos". | FR-203 | web tests | — |
 | [ ] M14-T03 | Installer firewall rule TCP+UDP 47102 (Domain/Private) + uninstall; installer smoke checks it. | FR-205 | AC-205-01 | — |
 | [x] M14-T04 | Two-instance integration test: two hubs (own ports and data folders) pair, sync rooms/devices/schedules both ways, resolve a conflict, and run a schedule on exactly one. | FR-201..204 | AC-202-01, AC-203-01, AC-204-01 | — |
 | [ ] M14-T05 | Playwright: two hubs, pair through the UI, see a room appear on the other panel. | FR-201, FR-202 | E2E | — |
-| [ ] M14-T06 | Help page "Modo equipe" (incl. Power On by RTC). | FR-206 | AC-206-01 | — |
+| [x] M14-T06 | Help page "Modo equipe" (incl. Power On by RTC). | FR-206 | AC-206-01 | — |
 | [ ] M14-R | Code review → `specs/reviews/M14-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
 
 ## M15 — Docs and community
 | ID | Task | Refs | Tests | Done when |
 |---|---|---|---|---|
-| [ ] M15-T01 | "Ajuda" menu: "Relatar problema" / "Sugerir função" with version pre-filled. | FR-207 | AC-207-01 | — |
+| [x] M15-T01 | "Ajuda" menu: "Relatar problema" / "Sugerir função" with version pre-filled. | FR-207 | AC-207-01 | — |
 | [ ] M15-T02 | Issue forms (bug, feature, question, config), SECURITY.md, CONTRIBUTING.md (labels). | owner item 5 | yaml lint test | — |
 | [ ] M15-T03 | README (pt-BR) rewritten to the current product, planned items marked "planejado". | owner item 4 | — | reviewed against code |
 

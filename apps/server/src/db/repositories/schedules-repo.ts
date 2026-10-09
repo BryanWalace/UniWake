@@ -156,7 +156,10 @@ export class SqliteSchedulesRepo implements SchedulesRepo {
     )!.n;
     const items = this.db.all<ScheduleRun>(
       'SELECT r.id, r.schedule_id AS scheduleId, s.name AS scheduleName, r.planned_at AS plannedAt, ' +
-        'r.claimed_at AS handledAt, r.status, r.detail, r.job_id AS jobId ' +
+        'r.claimed_at AS handledAt, r.status, r.detail, r.job_id AS jobId, ' +
+        // FR-204.1: name the other team PC that ran it (null when it ran here).
+        'CASE WHEN r.claimed_by_instance IS NOT NULL AND r.claimed_by_instance IS NOT (SELECT instance_id FROM instance) ' +
+        'THEN (SELECT name FROM team_members m WHERE m.uuid = r.claimed_by_instance) END AS executedBy ' +
         'FROM schedule_runs r JOIN schedules s ON s.id = r.schedule_id WHERE ' +
         where +
         ' ORDER BY r.planned_at DESC, r.id DESC LIMIT ? OFFSET ?',

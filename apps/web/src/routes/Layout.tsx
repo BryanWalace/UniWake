@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router';
 import { t } from '../i18n/pt-BR';
+import { HelpMenu } from './HelpMenu';
 
 /** `admin`: only shown to administrators (FR-006.2); the server enforces it either way. */
 const NAV: { to: string; label: string; end?: boolean; admin?: boolean }[] = [
@@ -14,8 +15,8 @@ const NAV: { to: string; label: string; end?: boolean; admin?: boolean }[] = [
   { to: '/usuarios', label: t.nav.users, admin: true },
   { to: '/configuracoes', label: t.nav.settings, admin: true },
   { to: '/logs', label: t.nav.logs, admin: true },
+  { to: '/equipe', label: t.nav.team, admin: true },
   { to: '/saude', label: t.nav.health },
-  { to: '/ajuda', label: t.nav.help },
 ];
 
 export interface LayoutProps {
@@ -53,6 +54,7 @@ export function Layout({ banners, userMenu, isAdmin = false }: LayoutProps) {
                 {item.label}
               </NavLink>
             ))}
+            <HelpMenu />
           </nav>
           <div className="ml-auto">{userMenu}</div>
         </div>

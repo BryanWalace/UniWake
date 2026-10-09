@@ -16,6 +16,7 @@ import { useRealtimeState } from '../../realtime/RealtimeProvider';
 import { useWakeUi } from '../wake/WakeProvider';
 import { useDashboard } from './api';
 import { EnrollmentMovesCard } from './EnrollmentMovesCard';
+import { MissedRunCard } from './MissedRunCard';
 import { MorningResultCard } from './MorningResultCard';
 
 const STATUS_FILTERS: { value: DeviceStatus; label: string }[] = [
@@ -35,6 +36,8 @@ const NOTICE_TEXT: Record<string, (data: Record<string, unknown>) => string> = {
   demo: () => 'Modo demonstração: nenhum pacote real é enviado.',
   restore_failed: (data) =>
     `A restauração do backup pedida não aconteceu: ${typeof data.reason === 'string' ? data.reason : 'erro desconhecido'}. O banco atual foi mantido.`,
+  team_revoked: () =>
+    'Este PC foi removido do Modo equipe por outro PC e parou de sincronizar. O cadastro continua aqui; para voltar, pareie de novo.',
   lan_error: (data) =>
     `O acesso ao painel pela rede está ligado, mas não iniciou: ${typeof data.message === 'string' ? data.message : 'erro desconhecido.'} Corrija em Configurações e reinicie o serviço.`,
 };
@@ -207,6 +210,8 @@ function Notices({ notices }: { notices: DashboardNotice[] }) {
           <MorningResultCard key={n.id} notice={n} />
         ) : n.type === 'enrollment_moves' ? (
           <EnrollmentMovesCard key={n.id} notice={n} />
+        ) : n.type === 'missed_run' ? (
+          <MissedRunCard key={n.id} notice={n} />
         ) : (
           <p
             key={n.id}

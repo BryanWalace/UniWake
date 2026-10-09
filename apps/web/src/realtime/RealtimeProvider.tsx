@@ -141,6 +141,8 @@ export function RealtimeProvider({
       for (const type of ['notice', 'scheduler']) {
         source.addEventListener(type, () => pending.add(keys.dashboard));
       }
+      // Modo equipe (FR-202): a synced batch can change anything; refetch every query.
+      source.addEventListener('sync', () => void qc.invalidateQueries());
       source.addEventListener('session.expired', () => {
         disposed = true;
         source.close();
