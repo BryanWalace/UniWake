@@ -28,9 +28,9 @@ Cadastro automático das máquinas · Descoberta na rede · Modo equipe · Atual
 
 - [Visão geral](#-visão-geral)
 - [Funcionalidades](#-funcionalidades)
-- [Capturas de tela](#-capturas-de-tela)
 - [Como funciona](#-como-funciona)
 - [Requisitos](#-requisitos)
+- [Portas e firewall](#-portas-e-firewall)
 - [Instalação](#-instalação)
 - [Primeiros passos](#-primeiros-passos)
 - [Preparar as máquinas (BIOS + prepare-target.ps1)](#-preparar-as-máquinas)
@@ -85,31 +85,6 @@ cadastro, sincronizando pela rede local.
 > O **Modo equipe** chegou na versão **1.2.0**. Quem já tem o UniWake instalado recebe a
 > atualização sozinho, na janela de manutenção.
 
-## 📸 Capturas de tela
-
-> Tiradas no **modo demonstração** (máquinas simuladas, dados fictícios). Para atualizar:
-> `npm run screenshots`.
-
-**Painel** — salas, contadores e o "Resultado da manhã":
-
-![Painel do UniWake com as salas e o resultado da manhã](docs/screenshots/painel.png)
-
-**Ligar uma sala** e acompanhar ao vivo quem acordou:
-
-![Página da sala com a ligação em andamento](docs/screenshots/ligar-sala.png)
-
-**Preparar máquinas** — o comando de cadastro, conferido por SHA-256:
-
-![Tela Preparar máquinas com o código e o comando](docs/screenshots/preparar.png)
-
-**Histórico** de ligações e execuções dos agendamentos:
-
-![Histórico de ligações e execuções dos agendamentos](docs/screenshots/historico.png)
-
-**Modo equipe** — dois PCs da TI sincronizados:
-
-![Modo equipe com dois PCs online](docs/screenshots/modo-equipe.png)
-
 ## 🧭 Como funciona
 
 ```mermaid
@@ -153,7 +128,44 @@ flowchart LR
 | **PC da TI** | Windows 10 ou 11 (64 bits), **conectado por cabo** à rede dos laboratórios. Não precisa de ninguém logado. Para os agendamentos da manhã, ele (ou outro PC da equipe) precisa estar ligado no horário. |
 | **Máquinas dos laboratórios** | Windows 10 ou 11, placa de rede cabeada com suporte a Wake-on-LAN. |
 | **Rede** | Mesma rede (ou VLAN com broadcast dirigido liberado). Veja [Redes diferentes](#redes-diferentes-vlan). |
-| **Portas** | 47100 (painel), 47101 (cadastro) e 47102 TCP+UDP (Modo equipe), liberadas pelo instalador nas redes de domínio e privadas. |
+| **Portas** | 47100 (painel), 47101 (cadastro) e 47102 TCP+UDP (Modo equipe), liberadas pelo instalador nas redes de domínio e privadas. Veja [Portas e firewall](#-portas-e-firewall). |
+
+## 🔌 Portas e firewall
+
+O instalador cria as regras de entrada no Firewall do Windows do PC do UniWake. Sem elas (ou com
+um firewall no caminho), as funções abaixo **não funcionam**:
+
+| Porta | Protocolo | Quem acessa o PC do UniWake | Sem ela… |
+|---|---|---|---|
+| **47100** | TCP | O navegador. Por padrão só no próprio PC; na rede, só por HTTPS (opcional). | o painel não abre de outros computadores (se você ligou o acesso pela rede). |
+| **47101** | TCP | **As máquinas dos laboratórios**, ao rodar o comando de **Preparar máquinas**: elas baixam o `prepare-target.ps1` e se cadastram por esta porta. | **o comando de preparo/cadastro falha** ("Não é possível conectar ao servidor remoto") e a máquina não é cadastrada. |
+| **47102** | TCP e UDP | Os outros PCs da TI no **Modo equipe** (pareamento, anúncios e sincronização). | o pareamento falha e o outro PC aparece "offline / Sem conexão". |
+
+> [!IMPORTANT]
+> As regras valem só para redes **Domínio** e **Privada**. Se a rede do PC do UniWake estiver como
+> **Pública** (Configurações → Rede e Internet → Ethernet → Tipo de perfil de rede), as portas ficam
+> fechadas: mude para Privada (ou peça à TI para usar o perfil de domínio).
+
+**Testar** de uma máquina do laboratório (ou do outro PC da TI), no PowerShell:
+
+```powershell
+Test-NetConnection <IP-do-PC-do-UniWake> -Port 47101   # cadastro (Preparar máquinas)
+Test-NetConnection <IP-do-PC-do-UniWake> -Port 47102   # Modo equipe
+```
+
+`TcpTestSucceeded : True` = a porta está aberta. Se der `False`, confira o perfil da rede, um
+antivírus com firewall próprio, uma GPO do domínio ou um firewall entre as redes (VLANs).
+
+<details>
+<summary><b>Recriar as regras à mão (PowerShell como Administrador, no PC do UniWake)</b></summary>
+
+```powershell
+netsh advfirewall firewall add rule name="UniWake Cadastro" dir=in action=allow protocol=TCP localport=47101 profile=domain,private
+netsh advfirewall firewall add rule name="UniWake - Modo equipe" dir=in action=allow protocol=TCP localport=47102 profile=domain,private
+netsh advfirewall firewall add rule name="UniWake - Modo equipe" dir=in action=allow protocol=UDP localport=47102 profile=domain,private
+```
+
+</details>
 
 ## 📦 Instalação
 
@@ -249,6 +261,15 @@ confira:
 Em **Preparar máquinas**, escolha a sala, clique em **Gerar código** e copie o comando. Em cada
 máquina, abra o **PowerShell como Administrador**, cole e pressione Enter.
 
+![Tela Preparar máquinas com o código de cadastro e o comando](docs/screenshots/preparar.png)
+<sub>Preparar máquinas: escolha a sala, gere o código e copie o comando (endereço e comando ocultados na imagem).</sub>
+
+> [!IMPORTANT]
+> **A porta 47101 (TCP) do PC do UniWake precisa estar liberada** para as máquinas dos
+> laboratórios: é por ela que o comando baixa o script e cadastra a máquina. Se ela estiver
+> bloqueada, o comando falha com "Não é possível conectar ao servidor remoto". Teste com
+> `Test-NetConnection <IP-do-PC-do-UniWake> -Port 47101` e veja [Portas e firewall](#-portas-e-firewall).
+
 O comando baixa o `prepare-target.ps1` do UniWake, **confere o SHA-256** antes de executar e então:
 
 | Etapa | Ajuste |
@@ -318,6 +339,9 @@ equipe mantém esses PCs com o **mesmo cadastro** e garante que cada agendamento
 O código nunca passa pela rede: ele autentica uma troca de chaves (SPAKE2), e 5 erros cancelam o
 código. A chave da equipe fica guardada cifrada pelo Windows (DPAPI) em cada PC.
 
+![Página Modo equipe com os PCs da equipe, situação e pendências](docs/screenshots/modo-equipe.png)
+<sub>Modo equipe: os PCs da equipe, situação, última sincronização e alterações pendentes (endereço ocultado na imagem).</sub>
+
 ### Como a sincronização funciona
 
 - Sincronizado: salas, máquinas, etiquetas, agendamentos, exceções, pausa, usuários e configurações
@@ -337,8 +361,10 @@ código. A chave da equipe fica guardada cifrada pelo Windows (DPAPI) em cada PC
 ### Firewall e PCs em outras sub-redes
 
 - A porta **47102 (TCP e UDP)** precisa estar liberada entre os PCs da equipe. O instalador cria a
-  regra "UniWake - Modo equipe" para redes de domínio e privadas; uma política do domínio ou um
-  antivírus pode bloquear mesmo assim (o PC aparece "offline" com "Sem conexão").
+  regra "UniWake - Modo equipe" para redes de domínio e privadas; uma política do domínio, um
+  antivírus ou a rede como "Pública" podem bloquear mesmo assim (o PC aparece "offline" com "Sem
+  conexão"). Teste com `Test-NetConnection <IP-do-outro-PC> -Port 47102`
+  ([Portas e firewall](#-portas-e-firewall)).
 - PCs na mesma rede se encontram sozinhos. Para um PC em **outra sub-rede**, clique em **Editar** na
   lista e informe um **endereço fixo** (nome do computador ou IP).
 - **Remover da equipe** troca a chave da equipe; os PCs que estavam desligados recebem a chave nova
@@ -361,6 +387,15 @@ código. A chave da equipe fica guardada cifrada pelo Windows (DPAPI) em cada PC
 | **Modo equipe** | PCs da equipe, sincronização, conflitos resolvidos (administradores). |
 | **Saúde do sistema** | Agendador, verificações, relógio, backups, atualizações, avisos do Windows e o identificador deste PC. |
 | **Ajuda** | Páginas de ajuda, **Relatar problema** e **Sugerir função**. |
+
+![Painel com os contadores e as salas](docs/screenshots/painel.png)
+<sub>Painel: máquinas ligadas, desligadas e desconhecidas, e as salas com "Ligar sala" e "Ligar só os desligados".</sub>
+
+![Página da sala com a ligação em andamento no painel lateral](docs/screenshots/ligar-sala.png)
+<sub>Ligar uma sala ou máquinas selecionadas e acompanhar ao vivo quem acordou (nomes, IPs e MACs ocultados na imagem).</sub>
+
+![Histórico de ligações e execuções dos agendamentos](docs/screenshots/historico.png)
+<sub>Histórico: cada ligação, quem acordou e quem não respondeu, e as execuções dos agendamentos.</sub>
 
 ## 🔄 Atualizações
 
@@ -408,6 +443,7 @@ atualiza sozinho, na própria janela de manutenção.
 | **BIOS / ErP** | Wake on LAN precisa estar ativado e **ErP/EuP/Deep Sleep desativado** — veja [a tabela da BIOS](#1-biosuefi-uma-vez-por-modelo). |
 | **"Parou de acordar"** | Uma atualização do Windows reativou a Inicialização Rápida ou mudou a placa de rede: rode o comando de preparo de novo. |
 | **"Nunca respondeu" / ping bloqueado** | O firewall da máquina bloqueia o ICMP e ela parece desligada: o preparo cria a regra `UniWake-ICMPv4-In`; uma GPO pode bloquear — o UniWake também testa portas TCP (135, 445, 3389). |
+| **O comando de Preparar máquinas falha** ("Não é possível conectar ao servidor remoto") | A máquina não alcança o PC do UniWake na porta **47101**: confira o perfil de rede (Privada/Domínio), o firewall/antivírus do PC do UniWake e firewalls entre as redes; teste com `Test-NetConnection <IP> -Port 47101`. Veja [Portas e firewall](#-portas-e-firewall). |
 | **"Dispositivo em outra sub-rede" / VLAN** | O broadcast não atravessa roteadores: veja [Redes diferentes](#redes-diferentes-vlan). |
 | **Modo equipe: PC "offline" / "Sem conexão"** | O outro PC está desligado, o UniWake não roda nele, ou a porta **47102** está bloqueada. Em outra sub-rede, informe um endereço fixo. |
 | **Modo equipe: "as chaves não conferem"** | O PC ficou desligado durante duas trocas de chave (remoções): saia da equipe e pareie de novo. |
@@ -415,7 +451,11 @@ atualiza sozinho, na própria janela de manutenção.
 | **Atualização revertida** | O painel mostra o motivo; os detalhes ficam em `C:\ProgramData\UniWake\logs`. |
 
 O menu **Ajuda** explica as causas mais comuns em detalhe, e **Logs** (administradores) mostra o
-log do serviço.
+log do serviço, com filtro por nível e busca; **Baixar arquivo** gera o log para anexar a um relato
+de problema (revise IPs e nomes antes de publicar).
+
+![Tela Logs do serviço](docs/screenshots/logs.png)
+<sub>Logs do serviço (endereço ocultado na imagem).</sub>
 
 ### Redes diferentes (VLAN)
 

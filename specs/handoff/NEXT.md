@@ -208,5 +208,6 @@ WoL real por modelo de PC, reinício sem ninguém logado, VLANs, HTTPS na rede) 
 - Fake secrets in tests must be low-entropy (`token-de-teste-aaaaaaaa`): CI runs gitleaks.
 - PowerShell files: UTF-8 BOM + CRLF (git stores LF, `.gitattributes`); PSUseSingularNouns applies.
 - R-M14-02 fixed: server tests run in worker threads (forked workers crashed with 0xC0000409 on
-  Windows). README screenshots come from demo hubs: `npm run screenshots` (never real data).
+  Windows). README screenshots are the owner's own photos with network data covered by solid boxes
+  (names, IPs, MACs, enrollment command); check any new picture the same way before committing.
 - The GitHub API allows 60 unauthenticated requests/hour: poll CI sparingly.
