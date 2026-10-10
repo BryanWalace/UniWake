@@ -13,6 +13,7 @@ Cadastro automático das máquinas · Descoberta na rede · Modo equipe · Atual
 [![CI](https://img.shields.io/github/actions/workflow/status/BryanWalace/UniWake/ci.yml?branch=main&label=testes&style=flat-square)](https://github.com/BryanWalace/UniWake/actions/workflows/ci.yml)
 ![Windows 10 | 11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square&logo=windows)
 ![Idioma](https://img.shields.io/badge/idioma-portugu%C3%AAs-009C3B?style=flat-square)
+[![Licença MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-555555?style=flat-square)](LICENSE)
 
 [Todas as versões](https://github.com/BryanWalace/UniWake/releases) ·
 [Instalação](#instalação) ·
@@ -569,6 +570,7 @@ npm run stage        # monta build/stage (bundle, painel, node.exe e WinSW confe
 
 ## Licença
 
-Ainda não há uma licença publicada: o projeto está marcado como `UNLICENSED` (todos os direitos
-reservados ao mantenedor). Para usar, copiar ou redistribuir o código, peça autorização ao mantenedor.
+Distribuído sob a [licença MIT](LICENSE): você pode usar, copiar, modificar e redistribuir o UniWake,
+inclusive em outras instituições, desde que mantenha o aviso de copyright e a licença. O software é
+fornecido "no estado em que se encontra", sem garantias.
 

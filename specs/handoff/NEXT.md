@@ -46,8 +46,7 @@ Não comecei a v1.3 (desligamento) nem a v1.4 (backup/migração), como você pe
    "Sugerir função" e "Dúvida de uso", e que não há opção de issue em branco.
 4. **(Recomendado) Proteger a `main`:** **Settings → Branches → Add branch ruleset/rule** para
    `main`: exigir pull request e o CI verde antes do merge, bloquear force-push.
-5. **Licença:** o projeto está como `UNLICENSED` (todos os direitos reservados) e o README diz isso.
-   Se quiser uma licença aberta (por exemplo MIT), me diga qual e eu adiciono o `LICENSE`.
+5. **Licença:** MIT (arquivo `LICENSE`, adicionado em 2026-10-10 a pedido do dono).
 6. **Assinatura do instalador (B-001)** continua pendente: sem certificado, o SmartScreen avisa ao
    instalar.
 
