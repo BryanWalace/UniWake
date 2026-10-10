@@ -30,6 +30,10 @@ export default defineConfig({
         test: {
           name: 'server',
           root: 'apps/server',
+          // R-M14-02: on Windows a forked worker sometimes died at exit with 0xC0000409 (native
+          // fail-fast while tearing down sockets/SQLite), failing a random file. Worker threads
+          // end without that process teardown: 0 crashes in repeated full runs.
+          pool: 'threads',
           include: ['test/**/*.test.ts'],
           exclude: ['test/**/*.perf.test.ts'],
           setupFiles: ['test/setup/network-guard.ts'],
