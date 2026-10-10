@@ -30,7 +30,8 @@
     "e2e": "npm run build && playwright test --project=chromium",
     "build:app": "node scripts/build.ts",
     "stage": "node scripts/build.ts && node scripts/fetch-node.ts && node scripts/fetch-winsw.ts",
-    "e2e:edge": "npm run build && playwright test --project=edge"
+    "e2e:edge": "npm run build && playwright test --project=edge",
+    "screenshots": "npm run build && node --import tsx scripts/screenshots.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",

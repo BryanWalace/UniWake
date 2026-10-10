@@ -87,14 +87,28 @@ cadastro, sincronizando pela rede local.
 
 ## 📸 Capturas de tela
 
-> *Espaço reservado:* as imagens serão adicionadas em `docs/screenshots/`.
+> Tiradas no **modo demonstração** (máquinas simuladas, dados fictícios). Para atualizar:
+> `npm run screenshots`.
 
-| Tela | Imagem |
-|---|---|
-| Painel com as salas e os contadores | *em breve: `docs/screenshots/painel.png`* |
-| Ligar uma sala e acompanhar ao vivo | *em breve: `docs/screenshots/ligar-sala.gif`* |
-| Preparar máquinas (comando de cadastro) | *em breve: `docs/screenshots/preparar.png`* |
-| Modo equipe (pareamento e PCs da equipe) | *em breve: `docs/screenshots/modo-equipe.png`* |
+**Painel** — salas, contadores e o "Resultado da manhã":
+
+![Painel do UniWake com as salas e o resultado da manhã](docs/screenshots/painel.png)
+
+**Ligar uma sala** e acompanhar ao vivo quem acordou:
+
+![Página da sala com a ligação em andamento](docs/screenshots/ligar-sala.png)
+
+**Preparar máquinas** — o comando de cadastro, conferido por SHA-256:
+
+![Tela Preparar máquinas com o código e o comando](docs/screenshots/preparar.png)
+
+**Histórico** de ligações e execuções dos agendamentos:
+
+![Histórico de ligações e execuções dos agendamentos](docs/screenshots/historico.png)
+
+**Modo equipe** — dois PCs da TI sincronizados:
+
+![Modo equipe com dois PCs online](docs/screenshots/modo-equipe.png)
 
 ## 🧭 Como funciona
 

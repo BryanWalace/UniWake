@@ -207,6 +207,6 @@ WoL real por modelo de PC, reinício sem ninguém logado, VLANs, HTTPS na rede) 
 - Team tests use only 127.0.0.1 (`syncBind`, announce targets); never broadcast on the real LAN.
 - Fake secrets in tests must be low-entropy (`token-de-teste-aaaaaaaa`): CI runs gitleaks.
 - PowerShell files: UTF-8 BOM + CRLF (git stores LF, `.gitattributes`); PSUseSingularNouns applies.
-- Known flake (R-M14-02): a Vitest worker on Windows sometimes exits 0xC0000409 under the full
-  parallel coverage run (local only so far); rerun.
+- R-M14-02 fixed: server tests run in worker threads (forked workers crashed with 0xC0000409 on
+  Windows). README screenshots come from demo hubs: `npm run screenshots` (never real data).
 - The GitHub API allows 60 unauthenticated requests/hour: poll CI sparingly.

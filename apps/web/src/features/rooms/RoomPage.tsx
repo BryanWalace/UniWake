@@ -13,6 +13,11 @@ import { useWakeUi } from '../wake/WakeProvider';
 import { RoomFormDialog } from './RoomFormDialog';
 
 /** Bookmarkable room page `/salas/:id` (FR-008.3). Wake buttons arrive in M3. */
+/** "B" → "Bloco B", but "Bloco A" and "1º andar" stay as typed (no "Bloco Bloco A"). */
+export function withWord(word: string, value: string): string {
+  return value.toLowerCase().includes(word.toLowerCase()) ? value : `${word} ${value}`;
+}
+
 export function RoomPage() {
   const id = Number(useParams().id);
   const room = useRoom(id);
@@ -90,8 +95,8 @@ export function RoomPage() {
       />
       <p className="mb-4 text-slate-700">
         Código <strong>{r.code}</strong>
-        {r.block ? ` · Bloco ${r.block}` : ''}
-        {r.floor ? ` · Andar ${r.floor}` : ''} ·{' '}
+        {r.block ? ` · ${withWord('Bloco', r.block)}` : ''}
+        {r.floor ? ` · ${withWord('Andar', r.floor)}` : ''} ·{' '}
         <span aria-label={`${online} de ${r.deviceCount} ligadas`}>
           {online}/{r.deviceCount} ligadas
         </span>

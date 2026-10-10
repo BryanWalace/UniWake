@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { withWord } from '../src/features/rooms/RoomPage';
 import { loggedInApi, renderApp } from './helpers';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -198,5 +199,14 @@ describe('room page /salas/:id (FR-008.3)', () => {
       .on('GET', '/api/devices', { body: { items: [], total: 0, page: 1, pageSize: 200 } });
     renderApp('/salas/99');
     expect(await screen.findByText('Sala não encontrada')).toBeInTheDocument();
+  });
+});
+
+describe('room header labels', () => {
+  it('adds "Bloco"/"Andar" only when the typed value does not already say it', () => {
+    expect(withWord('Bloco', 'B')).toBe('Bloco B');
+    expect(withWord('Bloco', 'Bloco A')).toBe('Bloco A');
+    expect(withWord('Andar', '1')).toBe('Andar 1');
+    expect(withWord('Andar', '1º andar')).toBe('1º andar');
   });
 });
