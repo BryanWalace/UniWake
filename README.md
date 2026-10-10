@@ -1,13 +1,26 @@
+<div align="center">
+
 # UniWake
 
-Liga, monitora e agenda os computadores dos laboratórios da faculdade pela rede (Wake-on-LAN),
-a partir do navegador. Roda como serviço do Windows no PC da equipe de TI.
+**Ligue, monitore e agende os computadores dos laboratórios da faculdade, direto do navegador.**
 
-[Baixar a versão mais recente](https://github.com/BryanWalace/UniWake/releases/latest/download/UniWake-Setup.exe) ·
+Wake-on-LAN por sala, etiqueta ou máquina · Painel em tempo real · Agendamentos com feriados ·
+Cadastro automático das máquinas · Descoberta na rede · Modo equipe · Atualização automática
+
+[![Baixar para Windows](https://img.shields.io/badge/Baixar%20para%20Windows-vers%C3%A3o%20mais%20recente-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/BryanWalace/UniWake/releases/latest/download/UniWake-Setup.exe)
+
+[![Versão](https://img.shields.io/github/v/release/BryanWalace/UniWake?include_prereleases&label=vers%C3%A3o&style=flat-square)](https://github.com/BryanWalace/UniWake/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/BryanWalace/UniWake/ci.yml?branch=main&label=testes&style=flat-square)](https://github.com/BryanWalace/UniWake/actions/workflows/ci.yml)
+![Windows 10 | 11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square&logo=windows)
+![Idioma](https://img.shields.io/badge/idioma-portugu%C3%AAs-009C3B?style=flat-square)
+
 [Todas as versões](https://github.com/BryanWalace/UniWake/releases) ·
-[Relatar um problema](https://github.com/BryanWalace/UniWake/issues/new/choose)
+[Instalação](#instalação) ·
+[Modo equipe](#modo-equipe-dois-ou-mais-pcs-da-ti) ·
+[Solução de problemas](#solução-de-problemas) ·
+[Relatar problema](#relatar-problemas-e-sugerir-funções)
 
-[![CI](https://github.com/BryanWalace/UniWake/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/BryanWalace/UniWake/actions/workflows/ci.yml)
+</div>
 
 ---
 
