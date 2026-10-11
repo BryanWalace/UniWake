@@ -140,11 +140,21 @@ describe('restore (FR-014)', () => {
 
 /** Undoes the newest migration (005_team) so the next start has one pending. */
 const UNDO_LATEST = [
-  'DELETE FROM schema_migrations WHERE version = 5',
-  'DROP TABLE team',
-  'DROP TABLE team_members',
-  'DROP TABLE sync_peers',
-  'DROP TABLE sync_conflicts',
+  'DELETE FROM schema_migrations WHERE version = 6',
+  ...[
+    'action',
+    'warning_minutes',
+    'allow_postpone',
+    'postpone_max',
+    'postpone_minutes',
+    'exclude_tags',
+  ].map((c) => `ALTER TABLE schedules DROP COLUMN ${c}`),
+  'ALTER TABLE devices DROP COLUMN never_scheduled_shutdown',
+  'ALTER TABLE team_members DROP COLUMN signing_key_id',
+  'ALTER TABLE team_members DROP COLUMN signing_public_jwk',
+  ...['power_reports', 'power_orders', 'power_jobs', 'device_agents', 'agent_seen', 'hub_keys'].map(
+    (t) => `DROP TABLE ${t}`,
+  ),
 ].join(';\n');
 
 describe('restore and pre-migration backups on a real hub', () => {

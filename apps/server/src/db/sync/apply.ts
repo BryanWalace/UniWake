@@ -333,15 +333,24 @@ export class RemoteApplier {
         return existing;
       }
       case 'team_member': {
-        const vals = [str(p.name), str(p.verifier), num(p.joinedAt) ?? e.at, num(p.revokedAt)];
+        const vals = [
+          str(p.name),
+          str(p.verifier),
+          num(p.joinedAt) ?? e.at,
+          num(p.revokedAt),
+          str(p.signingKeyId),
+          jsonText(p.signingPublicKey),
+        ];
         if (existing === null) {
           return db.run(
-            'INSERT INTO team_members (uuid, name, verifier, joined_at, revoked_at) VALUES (?, ?, ?, ?, ?)',
+            `INSERT INTO team_members (uuid, name, verifier, joined_at, revoked_at, signing_key_id,
+               signing_public_jwk) VALUES (?, ?, ?, ?, ?, ?, ?)`,
             [e.entityId, ...vals],
           ).lastInsertRowid;
         }
         db.run(
-          'UPDATE team_members SET name = ?, verifier = ?, joined_at = ?, revoked_at = ? WHERE id = ?',
+          `UPDATE team_members SET name = ?, verifier = ?, joined_at = ?, revoked_at = ?,
+             signing_key_id = ?, signing_public_jwk = ? WHERE id = ?`,
           [...vals, existing],
         );
         return existing;
@@ -409,6 +418,11 @@ export class RemoteApplier {
       case 'device':
         return this.upsertDevice(e, p, existing);
       case 'schedule': {
+        const action = p.action ?? 'wake';
+        // ADR-048: never guess an action; a peer on another protocol cannot get here, so refuse.
+        if (action !== 'wake' && action !== 'shutdown') {
+          throw new Error(`unknown schedule action: ${JSON.stringify(action)}`);
+        }
         const vals = [
           str(p.name),
           bool(p.enabled),
@@ -421,20 +435,28 @@ export class RemoteApplier {
           num(p.confirmedCount),
           localId(db, 'user', str(p.createdBy)),
           num(p.createdAt) ?? e.at,
+          action,
+          num(p.warningMinutes),
+          p.allowPostpone === null || p.allowPostpone === undefined ? null : bool(p.allowPostpone),
+          num(p.postponeMax),
+          num(p.postponeMinutes),
+          JSON.stringify(Array.isArray(p.excludeTags) ? p.excludeTags : []),
         ];
         let id = existing;
         if (id === null) {
           id = db.run(
             `INSERT INTO schedules (name, enabled, weekdays, time_local, timezone, only_offline, batch_size,
-               batch_delay_ms, confirmed_count, created_by, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+               batch_delay_ms, confirmed_count, created_by, created_at, action, warning_minutes,
+               allow_postpone, postpone_max, postpone_minutes, exclude_tags, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [...vals, e.at],
           ).lastInsertRowid;
         } else {
           db.run(
             `UPDATE schedules SET name = ?, enabled = ?, weekdays = ?, time_local = ?, timezone = ?,
                only_offline = ?, batch_size = ?, batch_delay_ms = ?, confirmed_count = ?, created_by = ?,
-               created_at = ? WHERE id = ?`,
+               created_at = ?, action = ?, warning_minutes = ?, allow_postpone = ?, postpone_max = ?,
+               postpone_minutes = ?, exclude_tags = ? WHERE id = ?`,
             [...vals, id],
           );
         }
@@ -550,13 +572,14 @@ export class RemoteApplier {
       jsonText(p.prepareResults),
       num(p.enrolledAt),
       num(p.createdAt) ?? e.at,
+      bool(p.neverScheduledShutdown),
     ];
     let id = existing;
     if (id === null) {
       id = db.run(
         `INSERT INTO devices (name, mac, ip, hostname, room_id, notes, enabled, manufacturer, model, serial, os,
-           other_macs, prepared_at, prepare_results, enrolled_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           other_macs, prepared_at, prepare_results, enrolled_at, created_at, never_scheduled_shutdown, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [...vals, e.at],
       ).lastInsertRowid;
       db.run('INSERT INTO device_state (device_id) VALUES (?)', [id]);
@@ -564,7 +587,7 @@ export class RemoteApplier {
       db.run(
         `UPDATE devices SET name = ?, mac = ?, ip = ?, hostname = ?, room_id = ?, notes = ?, enabled = ?,
            manufacturer = ?, model = ?, serial = ?, os = ?, other_macs = ?, prepared_at = ?, prepare_results = ?,
-           enrolled_at = ?, created_at = ? WHERE id = ?`,
+           enrolled_at = ?, created_at = ?, never_scheduled_shutdown = ? WHERE id = ?`,
         [...vals, id],
       );
     }

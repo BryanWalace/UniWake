@@ -54,6 +54,10 @@ const json = (v: string | null): unknown => {
   }
 };
 
+/** A stored list of UUIDs, sorted so equal sets serialize alike; anything else is an empty list. */
+const sortedStrings = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').sort() : [];
+
 const uuidOf = (db: Db, table: string, id: number | null): string | null =>
   id === null
     ? null
@@ -89,9 +93,22 @@ const SNAPSHOT: Record<RowEntity, (db: Db, id: number) => Snap | undefined> = {
       verifier: string;
       joined_at: number;
       revoked_at: number | null;
-    }>('SELECT name, verifier, joined_at, revoked_at FROM team_members WHERE id = ?', [id]);
+      signing_key_id: string | null;
+      signing_public_jwk: string | null;
+    }>(
+      `SELECT name, verifier, joined_at, revoked_at, signing_key_id, signing_public_jwk
+       FROM team_members WHERE id = ?`,
+      [id],
+    );
     return (
-      r && { name: r.name, verifier: r.verifier, joinedAt: r.joined_at, revokedAt: r.revoked_at }
+      r && {
+        name: r.name,
+        verifier: r.verifier,
+        joinedAt: r.joined_at,
+        revokedAt: r.revoked_at,
+        signingKeyId: r.signing_key_id,
+        signingPublicKey: json(r.signing_public_jwk),
+      }
     );
   },
   room(db, id) {
@@ -145,6 +162,7 @@ const SNAPSHOT: Record<RowEntity, (db: Db, id: number) => Snap | undefined> = {
       prepared_at: number | null;
       prepare_results: string | null;
       enrolled_at: number | null;
+      never_scheduled_shutdown: number;
       created_at: number;
     }>(
       `SELECT d.*, r.uuid AS room_uuid FROM devices d LEFT JOIN rooms r ON r.id = d.room_id
@@ -175,6 +193,7 @@ const SNAPSHOT: Record<RowEntity, (db: Db, id: number) => Snap | undefined> = {
       preparedAt: r.prepared_at,
       prepareResults: json(r.prepare_results),
       enrolledAt: r.enrolled_at,
+      neverScheduledShutdown: r.never_scheduled_shutdown === 1,
       createdAt: r.created_at,
       tags,
     };
@@ -192,6 +211,12 @@ const SNAPSHOT: Record<RowEntity, (db: Db, id: number) => Snap | undefined> = {
       confirmed_count: number | null;
       created_by: number | null;
       created_at: number;
+      action: string;
+      warning_minutes: number | null;
+      allow_postpone: number | null;
+      postpone_max: number | null;
+      postpone_minutes: number | null;
+      exclude_tags: string;
     }>('SELECT * FROM schedules WHERE id = ?', [id]);
     if (!r) return undefined;
     const targets = db
@@ -213,6 +238,12 @@ const SNAPSHOT: Record<RowEntity, (db: Db, id: number) => Snap | undefined> = {
       createdBy: uuidOf(db, 'users', r.created_by),
       createdAt: r.created_at,
       targets,
+      action: r.action,
+      warningMinutes: r.warning_minutes,
+      allowPostpone: r.allow_postpone === null ? null : r.allow_postpone === 1,
+      postponeMax: r.postpone_max,
+      postponeMinutes: r.postpone_minutes,
+      excludeTags: sortedStrings(json(r.exclude_tags)),
     };
   },
   schedule_exception(db, id) {
