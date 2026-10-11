@@ -2,6 +2,7 @@
  * M16-T02 (ADR-044): the hub's signing key is made once, kept protected, reloaded on restart,
  * replaced when it cannot be opened on this PC, and signs the bytes lab PCs verify.
  */
+import { createPrivateKey, createPublicKey } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import type { SecretProtector } from '../src/application/ports';
 import {
@@ -42,8 +43,12 @@ describe('hub signing key (ADR-044)', () => {
     expect(s.keyId()).toBe(jwkThumbprint(key));
     const [row] = rows(db);
     expect(row!.key_id).toBe(s.keyId());
-    // The stored blob is the protector's output, never the PKCS#8 key itself.
-    expect(Buffer.from(row!.private_blob).includes(Buffer.from('0\x82', 'latin1'))).toBe(false);
+    // The stored blob is the protector's output: it opens to the key, and holds no run of it.
+    const blob = Buffer.from(row!.private_blob);
+    const der = await new DevSecretProtector().unprotect(blob);
+    const opened = createPrivateKey({ key: der, format: 'der', type: 'pkcs8' });
+    expect(createPublicKey(opened).export({ format: 'jwk' }).n).toBe(key.n);
+    expect(blob.includes(der.subarray(0, 64))).toBe(false);
   });
 
   it('signs the nonce and the exact body bytes; another nonce or body does not verify', async () => {

@@ -3,8 +3,10 @@
  * non-loopback destination throws. Loopback and local IPC (named pipes) stay allowed.
  */
 /* eslint-disable @typescript-eslint/unbound-method -- the guard deliberately captures prototype methods and re-applies them with the original `this`. */
+import childProcess from 'node:child_process';
 import dgram from 'node:dgram';
 import dns from 'node:dns';
+import { syncBuiltinESMExports } from 'node:module';
 import net from 'node:net';
 
 export class NetworkGuardError extends Error {
@@ -121,5 +123,49 @@ function guardDns(): void {
   wrap(dns.promises.Resolver.prototype, true);
 }
 
+/** Programs a test may never start: they act on the real machine or network (constitution §5). */
+const FORBIDDEN_PROGRAMS = new Set(['shutdown.exe', 'shutdown']);
+/** Programs that reach the host named in their arguments. */
+const NETWORK_PROGRAMS = new Set(['ping.exe', 'ping', 'tracert.exe', 'pathping.exe']);
+
+export class ProcessGuardError extends Error {
+  constructor(what: string) {
+    super(`Process guard: tests must not run ${what}`);
+    this.name = 'ProcessGuardError';
+  }
+}
+
+/** Throws for a process a test must not start; returns otherwise. */
+export function checkSpawn(file: string, args: readonly unknown[]): void {
+  const exe = (file.split(/[\\/]/).pop() ?? file).toLowerCase();
+  if (FORBIDDEN_PROGRAMS.has(exe)) throw new ProcessGuardError(exe);
+  if (!NETWORK_PROGRAMS.has(exe)) return;
+  for (const a of args) {
+    if (typeof a !== 'string' || a.startsWith('-') || a.startsWith('/')) continue;
+    if (net.isIP(a) !== 0 || /[a-z]/i.test(a)) {
+      if (!isLoopbackHost(a)) throw new NetworkGuardError(`${exe} ${a}`);
+    }
+  }
+}
+
+/**
+ * M16-D: on Windows the hub's monitor runs `ping.exe` for devices with an IP, which put real ICMP
+ * on the LAN from hub tests (and shutdown.exe must never run from a test, v1.3). ESM named imports
+ * of builtins are live bindings, so after patching the module object the exports are re-synced.
+ */
+function guardProcesses(): void {
+  const cp = childProcess as unknown as Record<string, unknown>;
+  for (const name of ['spawn', 'spawnSync', 'execFile', 'execFileSync'] as const) {
+    const orig = cp[name] as (...a: unknown[]) => unknown;
+    cp[name] = function guardedProcess(this: unknown, file: unknown, ...rest: unknown[]) {
+      const args = Array.isArray(rest[0]) ? (rest[0] as unknown[]) : [];
+      if (typeof file === 'string') checkSpawn(file, args);
+      return orig.call(this, file, ...rest);
+    };
+  }
+  syncBuiltinESMExports();
+}
+
 installNetworkGuard();
 guardDns();
+guardProcesses();
