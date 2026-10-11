@@ -72,11 +72,22 @@ interface Loaded {
 
 export class HubKeyService {
   private loaded: Loaded | null = null;
+  private initializing: Promise<void> | null = null;
 
   constructor(private readonly d: HubKeyDeps) {}
 
-  /** Loads the key, or makes one. A key that cannot be opened here (restored from another PC) is retired. */
-  async init(): Promise<void> {
+  /**
+   * Loads the key, or makes one. A key that cannot be opened here (restored from another PC) is
+   * retired. Calls made while one is running share it (M16-D: never two active keys).
+   */
+  init(): Promise<void> {
+    this.initializing ??= this.load().finally(() => {
+      this.initializing = null;
+    });
+    return this.initializing;
+  }
+
+  private async load(): Promise<void> {
     const row = this.d.repo.active();
     if (row) {
       try {

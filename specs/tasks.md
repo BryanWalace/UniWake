@@ -349,8 +349,8 @@ decisions", ADR-043/045/047/048 amended).
 | [x] M16-T03 | Migration 006: schedules action + power fields + excluded tags, device flag "Nunca desligar por agendamento", new tables (`device_agents`, `power_jobs`, `power_orders`, `power_reports`, `agent_seen`, `hub_keys`), `team_members` signing key; schedule/device snapshots + apply; rev reset → baseline re-log; team `PROTOCOL_VERSION` 2 with "versão diferente" peer status; tested on a populated DB copy. | plan §15.3; ADR-048 | migration + checker + apply + protocol | — |
 | [x] M16-T04 | Shared schemas (check-in request/answer, agenda item, report outcomes, no user names) + `fixtures/agent/*.json` contract fixtures; owner-fixed constants; `power.*` settings (group "Desligar") with placeholder validation. | FR-302, FR-303 | schema tests | — |
 | [x] M16-T05 | Agenda generator (pure): expansion from schedules (action shutdown), exceptions, pause, scoping, nextWakes, validity, occurrence UUIDs, content-hash version. | FR-303.1, FR-303.4, FR-306.2 | AC-303-01, AC-306-03 | fixtures shared with Pester |
-| [ ] M16-D | Break-it: DST/tz edge (none in BR, still tested with another tz), midnight, schedule edited between two check-ins, 200-item cap. | tasks §Break-it | regressions | findings filed |
-| [ ] M16-R | Code review → `specs/reviews/M16-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+| [x] M16-D | Break-it: DST/tz edge (none in BR, still tested with another tz), midnight, schedule edited between two check-ins, 200-item cap. | tasks §Break-it | regressions | findings filed |
+| [x] M16-R | Code review → `specs/reviews/M16-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
 
 ## M17 — Agent channel and power orders (hub)
 | ID | Task | Refs | Tests | Done when |
