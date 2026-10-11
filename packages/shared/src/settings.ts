@@ -5,11 +5,21 @@
  * Absent value in the DB = default. `storage: 'config'` keys live in config.json (bootstrap).
  */
 import { z } from 'zod';
+import {
+  DEFAULT_POSTPONE_MESSAGE,
+  DEFAULT_WARNING_MESSAGE,
+  POSTPONE_MAX_LIMIT,
+  POSTPONE_MINUTES_MAX,
+  POSTPONE_MINUTES_MIN,
+  WARNING_MINUTES_MAX,
+} from './agent/constants';
+import { POSTPONE_COUNT_PLACEHOLDER, WARNING_TIME_PLACEHOLDER } from './agent/messages';
 
 export const SETTINGS_GROUPS = {
   wake: 'Ligação (Wake-on-LAN)',
   monitor: 'Monitoramento',
   scheduler: 'Agendamentos',
+  power: 'Desligar computadores',
   update: 'Atualizações',
   security: 'Segurança',
   panel: 'Acesso ao painel',
@@ -336,6 +346,67 @@ export const SETTING_DEFS = {
     input: 'text',
     requiresRestart: true,
   }),
+  // Power (v1.3, FR-304): defaults of new shutdown schedules and of the manual "5 min com
+  // adiamento" option, and the warning texts.
+  'power.defaultWarningMinutes': def(int(0, WARNING_MINUTES_MAX), 5, {
+    group: 'power',
+    scope: 'shared',
+    label: 'Aviso antes de desligar (padrão)',
+    help: 'Usado em novos agendamentos de desligar e na opção "5 min com adiamento" do Desligar manual.',
+    input: 'number',
+    unit: 'min',
+    min: 0,
+    max: WARNING_MINUTES_MAX,
+  }),
+  'power.postponeMax': def(int(0, POSTPONE_MAX_LIMIT), 2, {
+    group: 'power',
+    scope: 'shared',
+    label: 'Quantas vezes o usuário pode adiar (padrão)',
+    input: 'number',
+    min: 0,
+    max: POSTPONE_MAX_LIMIT,
+  }),
+  'power.postponeMinutes': def(int(POSTPONE_MINUTES_MIN, POSTPONE_MINUTES_MAX), 15, {
+    group: 'power',
+    scope: 'shared',
+    label: 'Duração de cada adiamento (padrão)',
+    input: 'number',
+    unit: 'min',
+    min: POSTPONE_MINUTES_MIN,
+    max: POSTPONE_MINUTES_MAX,
+  }),
+  'power.warningMessage': def(
+    z
+      .string()
+      .trim()
+      .min(1)
+      .max(300)
+      .refine((s) => s.includes(WARNING_TIME_PLACEHOLDER), 'Mantenha {hora} no texto do aviso'),
+    DEFAULT_WARNING_MESSAGE,
+    {
+      group: 'power',
+      scope: 'shared',
+      label: 'Texto do aviso',
+      help: '{hora} é trocado pelo horário do desligamento. Diga que o que não for salvo será perdido.',
+      input: 'text',
+    },
+  ),
+  'power.postponeMessage': def(
+    z
+      .string()
+      .trim()
+      .min(1)
+      .max(300)
+      .refine((s) => s.includes(POSTPONE_COUNT_PLACEHOLDER), 'Mantenha {n} no texto'),
+    DEFAULT_POSTPONE_MESSAGE,
+    {
+      group: 'power',
+      scope: 'shared',
+      label: 'Texto quando ainda dá para adiar',
+      help: 'Acrescentado ao aviso; {n} é trocado pelo número de adiamentos restantes.',
+      input: 'text',
+    },
+  ),
   // Enrollment
   'enrollment.tokenExpiryHours': def(int(1, 168), 8, {
     group: 'enrollment',

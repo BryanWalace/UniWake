@@ -1,0 +1,41 @@
+{
+  "protocol": 1,
+  "nonce": "q5KX2nX0v4m8Zk1d0b7S9w",
+  "agentVersion": "1.3.0",
+  "bootTime": 1791837660000,
+  "clock": 1791850920000,
+  "freeze": {
+    "product": null,
+    "state": "none",
+    "persistent": false
+  },
+  "power": {
+    "sleepAfterMinutes": 30,
+    "wakeTimers": "enabled"
+  },
+  "session": {
+    "loggedOn": true,
+    "sessions": 1
+  },
+  "reports": [
+    {
+      "uuid": "a1b2c3d4-0000-4000-8000-000000000001",
+      "occurrence": "6f1d2a3b-4c5d-5e6f-8a7b-0c1d2e3f4a5b",
+      "order": null,
+      "action": "shutdown",
+      "outcome": "done",
+      "reason": null,
+      "plannedAt": 1791596400000,
+      "executedAt": 1791598200000,
+      "postpones": 2,
+      "userLoggedOn": true,
+      "sessions": 1,
+      "wasAsleep": false,
+      "lateMinutes": null,
+      "nativeWarning": false,
+      "freezeState": "none",
+      "detail": null
+    }
+  ],
+  "ackedOrders": []
+}

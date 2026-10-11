@@ -1,0 +1,152 @@
+{
+  "protocol": 1,
+  "serverTime": 1791850920000,
+  "orders": [
+    {
+      "uuid": "b1b2c3d4-0000-4000-8000-000000000001",
+      "action": "restart",
+      "warningMinutes": 1,
+      "allowPostpone": false,
+      "postponeMax": 0,
+      "postponeMinutes": 15
+    },
+    {
+      "uuid": "b1b2c3d4-0000-4000-8000-000000000002",
+      "action": "cancel",
+      "cancels": "b1b2c3d4-0000-4000-8000-000000000009"
+    }
+  ],
+  "agenda": {
+    "version": "3f9a0c7e1b2d4f60",
+    "window": {
+      "from": 1791850800000,
+      "to": 1793060400000
+    },
+    "items": [
+      {
+        "occurrence": "6f1d2a3b-4c5d-5e6f-8a7b-000000000012",
+        "at": 1791855600000,
+        "action": "shutdown",
+        "warningMinutes": 5,
+        "allowPostpone": true,
+        "postponeMax": 2,
+        "postponeMinutes": 15
+      },
+      {
+        "occurrence": "6f1d2a3b-4c5d-5e6f-8a7b-000000000013",
+        "at": 1791942000000,
+        "action": "shutdown",
+        "warningMinutes": 5,
+        "allowPostpone": true,
+        "postponeMax": 2,
+        "postponeMinutes": 15
+      },
+      {
+        "occurrence": "6f1d2a3b-4c5d-5e6f-8a7b-000000000014",
+        "at": 1792028400000,
+        "action": "shutdown",
+        "warningMinutes": 5,
+        "allowPostpone": true,
+        "postponeMax": 2,
+        "postponeMinutes": 15
+      },
+      {
+        "occurrence": "6f1d2a3b-4c5d-5e6f-8a7b-000000000015",
+        "at": 1792114800000,
+        "action": "shutdown",
+        "warningMinutes": 5,
+        "allowPostpone": true,
+        "postponeMax": 2,
+        "postponeMinutes": 15
+      },
+      {
+        "occurrence": "6f1d2a3b-4c5d-5e6f-8a7b-000000000016",
+        "at": 1792201200000,
+        "action": "shutdown",
+        "warningMinutes": 5,
+        "allowPostpone": true,
+        "postponeMax": 2,
+        "postponeMinutes": 15
+      },
+      {
+        "occurrence": "6f1d2a3b-4c5d-5e6f-8a7b-000000000019",
+        "at": 1792460400000,
+        "action": "shutdown",
+        "warningMinutes": 5,
+        "allowPostpone": true,
+        "postponeMax": 2,
+        "postponeMinutes": 15
+      },
+      {
+        "occurrence": "6f1d2a3b-4c5d-5e6f-8a7b-000000000020",
+        "at": 1792546800000,
+        "action": "shutdown",
+        "warningMinutes": 5,
+        "allowPostpone": true,
+        "postponeMax": 2,
+        "postponeMinutes": 15
+      },
+      {
+        "occurrence": "6f1d2a3b-4c5d-5e6f-8a7b-000000000021",
+        "at": 1792633200000,
+        "action": "shutdown",
+        "warningMinutes": 5,
+        "allowPostpone": true,
+        "postponeMax": 2,
+        "postponeMinutes": 15
+      },
+      {
+        "occurrence": "6f1d2a3b-4c5d-5e6f-8a7b-000000000022",
+        "at": 1792719600000,
+        "action": "shutdown",
+        "warningMinutes": 5,
+        "allowPostpone": true,
+        "postponeMax": 2,
+        "postponeMinutes": 15
+      },
+      {
+        "occurrence": "6f1d2a3b-4c5d-5e6f-8a7b-000000000023",
+        "at": 1792806000000,
+        "action": "shutdown",
+        "warningMinutes": 5,
+        "allowPostpone": true,
+        "postponeMax": 2,
+        "postponeMinutes": 15
+      }
+    ],
+    "nextWakes": [
+      1791924000000, 1792010400000, 1792096800000, 1792183200000, 1792442400000, 1792528800000,
+      1792615200000, 1792701600000, 1792788000000
+    ]
+  },
+  "message": {
+    "warning": "Este computador será desligado às {hora} pela equipe de TI. Salve seus arquivos: o que não for salvo será perdido.",
+    "postpone": "Você pode adiar mais {n} vez(es)."
+  },
+  "hubs": {
+    "epoch": 0,
+    "list": [
+      {
+        "instanceId": "0e1f2a3b-4c5d-4e6f-8a7b-9c0d1e2f3a4b",
+        "urls": ["http://10.0.0.5:47101"],
+        "keyId": "EUXq1qrDFZWTXDDbWmU3R8rEVDuojHsR7n0Maw3vAmY",
+        "publicKey": {
+          "n": "yK3NH0ATas-evWp-vqiVF9PwxswcaVzRgSE6N4_80v2WzEKVpkrMA6se5qSK3XgVm2cmNkkfP1RsP4lMCO-06wjVWOfCTPLN6S4kvGn4vPAAD46xjX7AA5Ykm9_kXtRAzI0QfNb5PkDGwIQDgt2hFDW5rZzjEGx6mwQbtbAAOKBJTkaQ-dfrxbAileVKZv379KDxD9f6mzKyPzY83A7kt3WlcA0hti8BbWlX7yH-6wMElOfPIYdzHy1hwhRv7HLV7HVNzPmLYAbFUl2F_xbkJNgCa6n8jVuV6cGZ6UaYyrlWQ6Cz_eg99T9jdG1eoR9Lp6KacMb77CUuilx0mLZ3g5e-QbNjHsFXg7cepKLC7_DHgxBaJcVfifzJkg-8wyLKwRo6-Z9U39_5vj8_BtGojZoKarZToyzU7dRSy5_BaXfN0KkehaAR1jjK104gfjREdkuiNhQZdUT7bpGDdHg1RfV12QpK81FEgtgigSEcSyWKO2-L2A3ibcvvmyG8A69X",
+          "e": "AQAB"
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "uniwake-agent.ps1": {
+      "version": "1.3.0",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "uniwake-aviso.ps1": {
+      "version": "1.3.0",
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  },
+  "ackReports": ["a1b2c3d4-0000-4000-8000-000000000001"],
+  "newToken": null
+}
