@@ -634,8 +634,9 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
   Confidentiality of agendas is of low value; authenticity and freshness are what matter.
 - **Decision:**
   - Each hub has an **RSA-3072** signing key pair, generated on first start of v1.3, private key
-    protected with DPAPI LocalMachine (ADR-037). Key id = base64url SHA-256 of the public key
-    (SPKI DER).
+    protected with DPAPI LocalMachine (ADR-037). The public key travels as JWK members `{n, e}`
+    (base64url); key id = its RFC 7638 thumbprint (SHA-256 of `{"e":…,"kty":"RSA","n":…}`,
+    base64url), easy to compute in PowerShell without ASN.1.
   - Every check-in answer is signed: `RSASSA-PKCS1-v1_5 / SHA-256` over
     `"uniwake-agent-v1\n" + nonce + "\n" + body bytes`, sent in `X-UniWake-Key` and
     `X-UniWake-Signature`. The agent reads the exact body bytes (`HttpWebRequest`, not the decoded
@@ -660,10 +661,13 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
   script block is known to be fragile across threads) or a certificate imported into the machine
   store; it also needs certificate rotation. Signatures give the needed authenticity and freshness
   with built-in APIs. TLS remains RM-5 for confidentiality.
-- **Spike (M16-T01):** verify on Windows PowerShell 5.1 that a Node-produced signature verifies
-  with `RSACng` from a PEM/SPKI-decoded key (`ImportParameters` from modulus/exponent sent as
-  base64url, avoiding PEM parsing in PowerShell). Until then: **não verificado em máquina de
-  laboratório**.
+- **Spike (M16-T01), done 2026-10-11:** a Node RSA-3072 signature over a UTF-8 body verifies in
+  Windows PowerShell 5.1 (Windows 11, .NET Framework 4.8) with `RSACng.ImportParameters` from
+  `{n, e}` + `VerifyData(…, SHA256, Pkcs1)`; a changed body, another nonce, a malformed signature
+  or key all give `false`; the RFC 7638 key id matches Node's. Fixture
+  `packages/shared/fixtures/agent/signature.json` (throwaway key) is checked by Vitest and by
+  Pester (`scripts/tests/agent-signature.Tests.ps1`, also on the CI Windows runner). Windows 10
+  lab PCs ship .NET Framework 4.8 too (RSACng needs ≥ 4.6).
 - **Residual risk:** a revoked team member that still has its private key could sign lists for
   machines that have not yet checked in with another hub (window ≤ one check-in while any good hub
   is on). Team members are staff PCs; accepted.

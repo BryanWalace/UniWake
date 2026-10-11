@@ -619,8 +619,8 @@ Every external call in the PowerShell scripts goes through a small wrapper (`Inv
 | `power_reports` | replicated `power_report` (insert-only, uuid from the PC) | id, uuid, device_id, occurrence_uuid NULL, order_uuid NULL, outcome, planned_at, executed_at NULL, postpones, user_logged_on, session_count, was_asleep, late_minutes NULL, freeze_state, detail, received_at — **no user name column** (LGPD, Q-6) |
 | `power_jobs` | replicated `power_job` | id, uuid, action, target JSON, counts, created_by, created_at |
 | `agent_seen` | machine-local | device_id PK, seen_at, ip, boot_time, clock_offset_ms, user_logged_on, session_count |
-| `hub_keys` | machine-local | key_id PK, public_spki, private_blob (DPAPI), created_at, retired_at NULL |
-| `team_members` + | replicated (existing) | signing_key_id, signing_public_spki |
+| `hub_keys` | machine-local | key_id PK, public_jwk (`{n, e}`), private_blob (DPAPI), created_at, retired_at NULL |
+| `team_members` + | replicated (existing) | signing_key_id, signing_public_jwk |
 
 Settings (`power.*`, shared scope, group "Desligar"): defaultWarningMinutes 5 (0–30), postponeMax 2
 (0–5), postponeMinutes 15 (5–60) — defaults of new shutdown schedules and of the manual "5 min com

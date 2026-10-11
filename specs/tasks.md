@@ -344,7 +344,7 @@ decisions", ADR-043/045/047/048 amended).
 ## M16 — Foundations: signing, data, contracts
 | ID | Task | Refs | Tests | Done when |
 |---|---|---|---|---|
-| [ ] M16-T01 | Spike: Node RSA-3072 PKCS#1 v1.5 signature verified by Windows PowerShell 5.1 (`RSACng`, modulus/exponent import); record result in ADR-044. | ADR-044 | Pester on CI-Win | verified or ADR revised |
+| [x] M16-T01 | Spike: Node RSA-3072 PKCS#1 v1.5 signature verified by Windows PowerShell 5.1 (`RSACng`, modulus/exponent import); record result in ADR-044. | ADR-044 | Pester on CI-Win | verified or ADR revised |
 | [ ] M16-T02 | `Signer` port + `rsa-signer` adapter (generate on first start, DPAPI-protected private key, key id), `hub_keys` table; public key exposed to the command generator. | ADR-044 | unit + DPAPI contract (CI-Win) | — |
 | [ ] M16-T03 | Migration 006: schedules action + power fields + excluded tags, device flag "Nunca desligar por agendamento", new tables (`device_agents`, `power_jobs`, `power_orders`, `power_reports`, `agent_seen`, `hub_keys`), `team_members` signing key; schedule/device snapshots + apply; rev reset → baseline re-log; team `PROTOCOL_VERSION` 2 with "versão diferente" peer status; tested on a populated DB copy. | plan §15.3; ADR-048 | migration + checker + apply + protocol | — |
 | [ ] M16-T04 | Shared schemas (check-in request/answer, agenda item, report outcomes, no user names) + `fixtures/agent/*.json` contract fixtures; owner-fixed constants; `power.*` settings (group "Desligar") with placeholder validation. | FR-302, FR-303 | schema tests | — |
