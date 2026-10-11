@@ -1,10 +1,11 @@
 # UniWake — Constitution
 
-Version: **1.2** · Date: 2026-10-08 · Owner: Architect
+Version: **1.3** · Date: 2026-10-11 · Owner: Architect
 History: v0.1 draft → reviewed in `specs/reviews/phase-0-*.md` → consolidated as v1.0 →
 v1.1 amended by ADR-011 (§2.6), ADR-012 (§6.1), ADR-016 (§4.1, §6.7) in Phase 1.
 v1.2 amended by ADR-030 (§9.1, §10) and ADR-031 (§2.3, §2.4) for the `dev` branch workflow and
 the sync-ready data model.
+v1.3 amended by ADR-042/043 (§2.6, §5, §6.1, §6.3a) for remote shutdown through scheduled tasks.
 
 This document holds the rules every role must follow for the life of the project. It is
 binding: code, specs and reviews are judged against it. "MUST" is mandatory, "SHOULD" needs a
@@ -90,8 +91,13 @@ written reason to skip. Changes require an ADR that names the section changed (�
   broadcast and that interface's subnet-directed broadcast, on UDP 9 and 7.
 - Every packet attempt is recorded in the packet log (P4).
 - LAN surfaces (ADR-005, ADR-011): the **panel listener** (loopback by default) serves UI + full
-  API; the **agent listener** (LAN) serves exactly: minimal health, enrollment, and the
-  `prepare-target.ps1` download (whose SHA-256 is pinned in the command shown by the panel).
+  API; the **agent listener** (LAN) serves exactly: minimal health, enrollment, the
+  `prepare-target.ps1` download (whose SHA-256 is pinned in the command shown by the panel), the
+  agent check-in (per-machine token, signed answers) and the agent scripts download (hashes in
+  signed answers) — ADR-043/044.
+- The hub never connects to lab PCs to shut them down and never runs shutdown commands; lab PCs
+  pull orders and agendas (ADR-042). Nothing downloaded is installed on lab PCs: only built-in
+  Windows components (PowerShell 5.1, Task Scheduler, `shutdown.exe`, CIM, .NET Framework).
 
 ## 3. Repository layout and tooling
 ```
@@ -149,6 +155,9 @@ specs/            SDD documents
 - Database tests use in-memory SQLite with real migrations.
 - Every bug fix ships with a regression test that fails before the fix.
 - Tests are deterministic: fake clock, no real `sleep`, no order dependence.
+- **No real power or system changes in tests:** no test runs `shutdown.exe`, registers a real
+  scheduled task, changes the power plan or ACLs of real folders; PowerShell scripts reach these
+  only through wrapper functions that Pester mocks, and a guard throws on an unmocked call.
 - **Scope tests are mandatory** for every wake path: e.g. "waking room A sends zero packets to
   devices of room B".
 - **Route-table authz test** (IMP-014): enumerate every registered route; no session → 401 unless
@@ -160,7 +169,8 @@ specs/            SDD documents
 ### 6.1 Network exposure
 - Panel listener binds `127.0.0.1` by default; LAN panel access is an admin setting, audited,
   and served **over HTTPS only** with `Secure` cookies (ADR-012).
-- Agent listener exposes only health (status only), enrollment and the script download (ADR-011).
+- Agent listener exposes only health (status only), enrollment, the script downloads and the
+  token-authenticated agent check-in (ADR-011, ADR-043).
 - **Host header allowlist** on every request (loopback names + configured LAN names/IPs) to
   block DNS rebinding.
 - Security headers: CSP `default-src 'self'`, `frame-ancestors 'none'`, `nosniff`,
@@ -183,6 +193,14 @@ specs/            SDD documents
 - ≥ 128 bits from a CSPRNG; stored as SHA-256 hash; constant-time comparison; bound to one room;
   expiry (short default); max uses; revocable; rate limited; every use audited.
 - Enrollment can set only an allow-listed set of device fields.
+
+### 6.3a Agent tokens and signed answers (v1.3, ADR-043/044)
+- One token per machine, ≥ 256 bits from a CSPRNG, stored as SHA-256 hash, constant-time
+  comparison, rotated, revocable per device, rate limited per token and per IP; never logged.
+- Every answer that can make a lab PC act (orders, agenda, hub list, script hashes) is signed by
+  the hub over the machine's nonce; the agent acts on nothing it cannot verify.
+- Files run as SYSTEM on lab PCs live in a folder owned by Administrators with an explicit ACL;
+  SYSTEM never writes or deletes in a folder that users can write.
 
 ### 6.4 Supply chain and secrets
 - Lockfile committed; installs via `npm ci` only.

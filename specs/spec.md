@@ -1,10 +1,11 @@
 # UniWake — Specification
 
-Version: **1.3** · Date: 2026-10-09 · Owner: Architect
+Version: **1.4** · Date: 2026-10-11 · Owner: Architect
 History: v0.1 draft → reviewed in `specs/reviews/phase-1-*.md` → consolidated as v1.0 → v1.1
 (Phase 2: AC-001-13/14, FR-004.7) → v1.2 (Phase 6, `specs/reviews/phase-6-*.md`: FR-017 sync-ready
 data from `.agents/07-roadmap-features.md` §A, AC-005-12, FR-012/FR-014 additions) → v1.3 (Phase 7,
-`specs/reviews/phase-7-*.md`: §6a v1.2 Modo equipe, FR-201..207).
+`specs/reviews/phase-7-*.md`: §6a v1.2 Modo equipe, FR-201..207) → v1.4 (Phase 9,
+`specs/reviews/phase-9-*.md`: §6b v1.3 Desligar, FR-301..311, replaces RM-2).
 Sources: `.agents/01-project-brief.md`, `.agents/07-roadmap-features.md`, `specs/constitution.md`, `specs/improvements.md`,
 `specs/decisions.md`.
 
@@ -742,6 +743,293 @@ the matching issue form and the app version pre-filled (`?template=…&version=�
   `https://github.com/BryanWalace/UniWake/issues/new?template=bug_report.yml&version=1.2.0` and
   "Sugerir função" to the feature form, both opening in a new tab.
 
+## 6b. Functional requirements — v1.3 "Desligar" (replaces RM-2; ADR-042..048)
+Shut down and restart lab PCs, manually and on a schedule, **without installing any program** on
+them: the preparation command adds two Windows scheduled tasks and two small PowerShell scripts; the
+machines **pull** orders and their shutdown agenda from the hub and execute the agenda by
+themselves, also while the hub is off (owner's routine: wake at 17:40, hub off at 21:20, labs off at
+22:40). Machines prepared with v1.2 keep waking normally and gain shutdown when they run the new
+preparation command once.
+
+**Context assumed** (owner, 2026-10-11): lab PCs use **local accounts** (workgroup, no domain); the
+owner's institution does **not** use freezing software, but other institutions do, so freezing is a
+requirement (FR-308); only built-in Windows components may be used on lab PCs (PowerShell 5.1, Task
+Scheduler, `shutdown.exe`, `quser`, WMI/CIM, .NET Framework).
+
+### FR-301 Preparation: "Desligamento remoto" step
+**FR-301.1 New idempotent step** in `prepare-target.ps1`, after the existing steps (which keep
+their behaviour; what is already right is only checked):
+1. Writes `C:\ProgramData\UniWake\agent\uniwake-agent.ps1` and `uniwake-aviso.ps1`, downloaded
+   from the hub and accepted only if their SHA-256 equals the hashes in the **signed** enrollment
+   answer (ADR-044; the same check is used for self-update); ACL: Administrators and SYSTEM full
+   control; the warning script is readable by Users.
+2. Stores the machine's **agent token** issued by the hub in the enrollment answer (FR-302.2) in a
+   SYSTEM/Administrators-only file (ACL only; DPAPI would add nothing against local administrators
+   and breaks on frozen machines, ADR-043). The enrollment answer also carries the hub's public
+   signing key, accepted only if its fingerprint equals `-HubKeyId` from the copied command
+   (ADR-044).
+3. Registers the scheduled task **"UniWake"** (SYSTEM, at startup and every 1 minute, no wake),
+   **"UniWake Despertar"** (SYSTEM, one-time triggers at the agenda's times, "Ativar o computador
+   para executar esta tarefa", rewritten by the agent when the agenda changes, ADR-045) and
+   **"UniWake Aviso"** (group Users, interactive, at logon and on demand, ADR-046).
+4. Checks the power plan's "Permitir temporizadores de ativação" on AC and **enables it** (open
+   question Q-3); records the result.
+5. Detects freezing software and its state (FR-308.1).
+6. Adds the summary line **"Desligamento remoto: OK"** (or "ATENÇÃO" / "FALHOU" with the reason in
+   pt-BR). Running it again repairs a missing or changed task, script or token.
+
+**FR-301.2 Compatibility.** A v1.2 machine (enrolled, no agent token) keeps waking and monitoring.
+The device page and the room list show **"Pronta para desligar"** or **"Precisa do novo preparo"**
+(FR-309). Old one-liners keep working (they enroll; the hub answers without a token to scripts that
+do not ask for one).
+
+**FR-301.3 Removal.** `prepare-target.ps1 -RemoveAgent` removes the tasks, scripts and token
+(revoking it in the hub needs the panel, FR-302.3).
+
+- AC-301-01 [Pester]: Given a v1.2-prepared machine, When the new command runs, Then the three tasks
+  exist with the specified principals and triggers, the scripts have the specified ACL, the summary
+  shows "Desligamento remoto: OK", and running it again changes nothing.
+- AC-301-02 [Pester]: Given the hub does not return an agent token (older hub), Then the step ends
+  "NÃO SE APLICA" with the reason and every other step still runs.
+- AC-301-03 [Pester]: Given `-WhatIf`, Then nothing is written and the summary lists what would be
+  done.
+- AC-301-04 [Pester]: Given `-RemoveAgent`, Then the tasks, scripts and token are gone.
+
+### FR-302 Agent channel (hub side)
+**FR-302.1 One check-in route** on the agent listener (port 47101): `POST /agent/v1/checkin`,
+authenticated by the machine's agent token (`Authorization: Bearer`). The request carries pending
+reports and the machine's status; the answer carries immediate orders, the shutdown agenda, the
+list of team hubs and the agent script version — **signed by the hub** (ADR-044) and bound to a
+nonce sent by the machine. `GET /agent/v1/scripts/{uniwake-agent.ps1|uniwake-aviso.ps1}` serves
+the current scripts for preparation and self-update (verified with the signed hashes before use).
+The enrollment answer is signed the same way when the script asks for an agent token.
+
+**FR-302.2 Token per machine.** Issued at enrollment when the preparation script asks for it
+(256 random bits); the hub stores only its SHA-256. **Rotation**: every 30 days the check-in answer
+carries a new token; the old one stays valid until the machine uses the new one. A machine that
+reports "congelada" without a persistent area is **not** rotated (it would lose the new token at
+the next restart and lock itself out); the device page shows the token age. **Revocation**:
+"Revogar desligamento remoto" on the device page invalidates only that machine's token.
+
+**FR-302.3 Limits.** Per token: 6 check-ins/minute; per IP: 60/minute; body ≤ 64 KB; unknown or
+revoked token → 401 without detail; every request validated (Zod).
+
+- AC-302-01 [API]: Given a valid token, Then the check-in returns orders, agenda and signature that
+  verify with the hub's public key over the body and the machine's nonce.
+- AC-302-02 [API]: Given a revoked, unknown or missing token, Then 401 and no data.
+- AC-302-03 [API]: Given 7 check-ins in a minute with one token, Then the 7th gets 429.
+- AC-302-04: Given a token older than 30 days, Then the answer carries a new token and both work
+  until the machine uses the new one; afterwards only the new one works.
+
+### FR-303 Local agenda on the machine
+**FR-303.1 Content.** For each prepared machine the hub computes the shutdown/restart occurrences
+of the next **7 days** (open question Q-4) from the schedules that target it (rooms, tags, devices,
+all — same scoping rules as waking, spec §4), with holidays/exceptions and the pause already
+applied, plus the machine's **next wake times** (needed by FR-303.5). Each item: occurrence id
+(deterministic, ADR-031), instant (UTC), action, warning time, postpone policy, message.
+`validUntil` = generation time + 7 days.
+
+**FR-303.2 Storage.** The agent stores the last agenda locally (or in the persistent area of a
+freezing product, FR-308.4) and rewrites the "UniWake Despertar" triggers when it changes.
+
+**FR-303.3 Execution without the hub.** At an item's time the agent executes it (FR-304) using its
+clock corrected by the offset measured at the last successful check-in (ADR-045). It records the
+result and reports it at the next successful check-in.
+
+**FR-303.4 Expiry and change.** An item is executed only if `now ≤ validUntil` (a machine that has
+not talked to the hub for 7 days does nothing). A newer agenda replaces the old one entirely
+(schedules edited, deleted, paused or exceptions added take effect at the next check-in).
+
+**FR-303.5 Sleep and boot.**
+- Woken by the wake timer on time → executes (with the warning).
+- Woken late (wake timers blocked) and **before** the machine's next wake time and at most
+  **60 minutes** late (open question Q-9) → executes with the warning, report "estava em
+  suspensão"; otherwise → does not execute, report "estava em suspensão — não desligou". The cap
+  exists because a late wake with timers blocked is almost always a person (or the hub's WoL)
+  waking the PC on purpose.
+- "Asleep" = the agent's heartbeat file shows a gap > 3 minutes while the last boot is older than
+  the item; "hibernated" counts as asleep (Fast Startup is already disabled by the preparation, so
+  the last boot time is reliable).
+- Machine **booted after** the item's time (it was off) → never executes it; report "máquina
+  estava desligada". A freshly turned-on PC is never shut down by an old item.
+
+- AC-303-01: Given a schedule "Desligar" Mon–Fri 22:40 on room R, a holiday on Wednesday and
+  device D in R, Then D's agenda lists Mon, Tue, Thu, Fri 22:40 local and nothing else; after
+  pausing until Friday the agenda lists only Friday.
+- AC-303-02 [Pester]: Given an agenda item at 22:40 and the hub unreachable since 21:20, Then the
+  agent shuts the machine down at 22:40 (with warning) and reports it at the next check-in.
+- AC-303-03 [Pester]: Given an agenda with `validUntil` in the past, Then nothing is executed and
+  the report says "agenda vencida".
+- AC-303-04 [Pester]: Given an item at 22:40, last boot at 07:00, next wake at 07:00 next day and
+  the agent resuming from sleep at 22:55, Then it shuts down with warning and reports "estava em
+  suspensão"; resuming at 23:50 (70 min late) or at 07:05, Then it does not shut down.
+- AC-303-05 [Pester]: Given an item at 22:40 and last boot at 23:10, Then it is never executed.
+- AC-303-06 [Pester]: Given the machine clock 10 minutes fast and the measured offset, Then the
+  item runs at 22:40 hub time.
+
+### FR-304 Warning, postpone and the shutdown itself
+**FR-304.1 Warning.** The schedule's time is the **shutdown time T**; the warning starts **5
+minutes** before T by default (configurable per schedule, 0–30). A manual order received at R
+shuts down at R + warning. If a user is logged on, the "UniWake Aviso" task shows a pt-BR window in
+the user's session: the message with T, a countdown, and **"Adiar 15 min"** while postpones remain.
+
+**FR-304.2 Postpone.** Default up to **2** postpones of **15 minutes** (both configurable per
+schedule, "Permitir adiar" can be off). Each postpone moves T by the postpone length and the
+warning shows again before the new T. After the last one, or without an answer, the countdown ends
+and the machine shuts down. History records "adiado N× por usuário".
+
+**FR-304.3 Shutdown.** `shutdown /s /t 30 /c "<mensagem>"` (restart `/r`) at T − 30 s;
+`/t > 0` forces open applications to close (Microsoft: "/f is implied"), so unsaved work is lost:
+the warning says so. Just before it, the agent tries once to send its report to the hub (frozen
+machines lose queued reports at restart, FR-308.4). If the warning window cannot be shown (no session, task failure), the
+agent falls back to the native warning `shutdown /s /t <aviso> /c "<mensagem>"` without postpone.
+No user logged on → shutdown without warning window (`/t 30`).
+
+**FR-304.4 Cancel.** An immediate "cancel" order, or deleting/pausing the schedule before the
+machine starts the warning, stops it; during the warning the agent runs `shutdown /a` when it
+receives a cancel order.
+
+**FR-304.5 Report.** Each execution reports: outcome (desligou, reiniciou, adiou N×, cancelado,
+não executado + reason, falhou + error), planned and actual time, whether a user was logged on
+(`quser`; user name only if the setting allows, open question Q-6), was asleep, freezing state.
+
+- AC-304-01 [Pester]: Given a logged-on user, Then the warning task is started in the user's
+  session with the message, countdown and postpones left.
+- AC-304-02 [Pester]: Given T = 22:40, warning from 22:35, two postpones then no answer, Then the
+  shutdown happens at 23:10 and the report says "adiado 2× por usuário".
+- AC-304-03 [Pester]: Given the warning task fails to start, Then the agent uses
+  `shutdown /s /t 300 /c …` and reports "aviso nativo (sem adiar)".
+- AC-304-04 [Pester]: Given a cancel order during the warning, Then `shutdown /a` runs and the
+  report says "cancelado".
+- AC-304-05: Given a postpone request beyond the limit (tampered response file), Then it is ignored.
+
+### FR-305 Manual shutdown and restart
+"Desligar" and "Reiniciar" next to "Ligar sala" (room) and on the device page / selection, with the
+same preview and confirmation rules as waking (spec §4, SR-10): the preview lists how many are
+**ready** and how many **need the new preparation** (excluded). Options in the dialog: warning
+(0–30 min, default 5), allow postpone (default on). The hub creates one **order** per machine,
+delivered at the machine's next check-in (≤ 1 minute + warning), and follows the job live:
+ordered → received → warning → shut down (confirmed by ping/TCP going offline, reusing the monitor)
+or postponed/cancelled/failed. "Cancelar" cancels orders not yet executed. Orders expire after 2 h.
+
+- AC-305-01 [API]: Given room R with 10 ready machines and 2 v1.2 machines, Then the preview says
+  10 will shut down and 2 need the new preparation, and only 10 orders are created.
+- AC-305-02: Given the orders delivered and the machines going offline, Then the job shows
+  "desligou" per machine; a machine still online 5 min after its reported shutdown shows "não
+  confirmou".
+- AC-305-03 [E2E]: Given the demo hub, When "Desligar" is used on a room, Then the drawer shows the
+  machines receiving the order, one postponing and the rest shutting down.
+
+### FR-306 Schedules with action "Desligar"
+"Ação: Ligar | Desligar" in the schedule form (scheduled restart: open question Q-10); days, time,
+targets, holidays and pause work as today; existing schedules become "Ligar". "Desligar" adds:
+warning minutes, allow postpone, postpone count and length, message. The hub's scheduler **does not execute** shutdown schedules (it never sends shutdown at
+the tick): each machine executes its own agenda (FR-303), so no execution lease is involved
+(ADR-048). Schedules sync in Modo equipe like the others.
+
+- AC-306-01 [API]: Given a shutdown schedule, Then the scheduler tick creates no wake job and no
+  order for it, and the affected machines' agendas include it.
+- AC-306-02 [E2E]: Given the demo hub, When a "Desligar" schedule is created, Then its next runs
+  are listed and the schedule list shows the action.
+
+### FR-307 History
+Shutdowns and restarts appear in "Histórico" next to wakes: manual jobs, and **scheduled
+occurrences aggregated from the machines' reports** ("Desligamento 22:40 — 28/30 desligaram, 1
+adiou 2×, 1 estava desligada"), including those executed while the hub was off, which arrive when
+the machines next check in. A machine whose report was lost (frozen, no persistent area) but whose
+next check-in shows a boot after T and that the monitor saw going offline near T counts as
+"provavelmente desligou (sem relatório)". The schedule log shows the occurrence with the same identity on every
+team PC. Audit records who ordered manual shutdowns, revocations and schedule changes.
+
+- AC-307-01 [API]: Given reports for one occurrence arriving over several check-ins (hub off at the
+  time), Then one history row aggregates them by outcome.
+
+### FR-308 Freezing software (Deep Freeze and similar)
+**FR-308.1 Detection** in the preparation step and in every check-in (ADR-047 lists each product's
+method and how sure it is): Deep Freeze, Reboot Restore Rx, Shadow Defender, Windows Unified Write
+Filter (UWF). Result per machine: **"Congelamento: não detectado / detectado (congelada) / detectado
+(descongelada) / detectado (estado não verificado) / não verificado"**, with the product name.
+
+**FR-308.2 Preparation warning.** Frozen machine → the step ends **"ATENÇÃO"** with the pt-BR
+instruction: descongele (Thawed / modo manutenção), execute o comando de novo e congele outra vez.
+Enrollment and the other steps still run.
+
+**FR-308.3 Lost remote shutdown.** A machine that had remote shutdown, is seen online by the
+monitor and has not checked in for **15 minutes** (open question Q-5) shows **"Desligamento remoto
+perdido: provável congelamento ou tarefa removida"** with a link to the help page.
+
+**FR-308.4 Agenda on a frozen machine.** The agent always fetches the agenda at startup. If a
+persistent area is configured (`-PersistentPath`, e.g. Deep Freeze ThawSpace `T:\UniWake`) or the
+product allows an exclusion (UWF file exclusion, ADR-047), the agenda and pending reports are kept
+there. Otherwise: **the scheduled shutdown depends on the machine having talked to the hub after its
+last restart**; the help page and README explain it.
+
+**FR-308.5** Help page and README section "Laboratórios com Deep Freeze ou similar".
+**FR-308.6** (roadmap only) Integration with the products' own features (e.g. Deep Freeze
+shutdown schedules).
+
+- AC-308-01 [Pester]: Given each detection fixture (none, Deep Freeze frozen, Deep Freeze thawed,
+  UWF enabled, UWF disabled-next-boot, Reboot Restore Rx present), Then the reported state matches
+  ADR-047's table, and unknown cases say "não verificado".
+- AC-308-02 [Pester]: Given a frozen machine, Then "Desligamento remoto" is "ATENÇÃO" with the
+  instruction and enrollment still succeeds.
+- AC-308-03: Given a prepared machine online for 20 minutes without check-ins, Then the device shows
+  "Desligamento remoto perdido" with the help link; a check-in clears it.
+- AC-308-04 [Pester]: Given `-PersistentPath T:\UniWake` reachable, Then agenda and reports are
+  stored there.
+
+### FR-309 Readiness in the panel
+Device list, device page and room page show **"Pronta para desligar"**, **"Precisa do novo
+preparo"**, **"Desligamento remoto perdido"** or **"Desligamento remoto revogado"**, plus the
+freezing state (FR-308.1), last check-in and agent version.
+
+- AC-309-01: Given ready, v1.2, lost and revoked machines, Then each shows its state and only ready
+  machines receive orders or agendas.
+
+### FR-310 Demo mode
+The simulated network gains simulated agents: ready machines check in, shut down on orders and
+agendas, one postpones twice, two are v1.2 machines, one is frozen and becomes "perdido".
+
+- AC-310-01: Given a demo start, Then those cases are present and nothing real is sent.
+
+### FR-311 Help and README
+Help pages "Desligar computadores" and "Laboratórios com Deep Freeze ou similar"; README:
+features, preparation step, roadmap, troubleshooting (task missing, wake timers, freezing, clock).
+
+- AC-311-01: Given the help menu, Then both pages open.
+
+### v1.3 non-functional requirements
+- **NFR-301 Load:** 500 machines checking in every 60 s → ≈ 8.3 requests/s; a check-in costs ≤ 5 ms
+  of hub CPU without changes and the agenda is cached per device until relevant data change
+  [perf test].
+- **NFR-302 Lab PC cost:** the 1-minute task finishes in < 2 s with the hub off (connect timeout
+  3 s, request timeout 10 s) [manual measurement in V3].
+- **NFR-303 Security:** per-machine tokens (hash only), rotation, revocation, rate limits, signed
+  answers and signed self-update (ADR-043, ADR-044); no inbound port on lab PCs.
+
+### Open questions (owner's routine; answer before implementation)
+- **Q-1 Excluded machines.** Should some tags never shut down automatically (e.g. "servidor",
+  "professor")? Proposal: setting "Etiquetas que nunca desligam por agendamento", empty by default;
+  manual shutdown still allowed with confirmation.
+- **Q-2 User active.** With a user logged on and active, shut down after warning + postpones (as
+  decided), or skip that day? Proposal: shut down after warning + postpones (no skip).
+- **Q-3 Wake timers.** May the preparation enable "Permitir temporizadores de ativação" (AC) in the
+  current power plan? Do your lab PCs sleep at all (power plan "Suspender após")? Proposal: enable it.
+- **Q-4 Agenda horizon.** 7 days without talking to the hub before a machine stops shutting down by
+  itself — enough for long breaks (e.g. one week of holidays with the hub off)? Proposal: 7 days,
+  configurable 1–30.
+- **Q-5 Lost tolerance.** 15 minutes online without check-in before "Desligamento remoto perdido"?
+- **Q-6 Privacy.** May reports include the logged-on **user name**, or only "havia usuário logado"?
+  Proposal: only yes/no by default, user name behind a setting.
+- **Q-7 Manual default.** Manual "Desligar": same defaults as schedules (5 min, 2× 15 min), or
+  shorter (e.g. 1 min, no postpone) for end-of-day sweeps?
+- **Q-8 Message.** Default warning text: "Este computador será desligado às {hora} pela equipe de
+  TI. Salve seus arquivos." — OK?
+- **Q-9 Late wake.** A PC that slept through its shutdown time and wakes up later: shut it down
+  (with warning) only if at most 60 minutes late and before its next "Ligar"? Proposal: yes, 60 min.
+- **Q-10 Scheduled restart.** Do you want "Reiniciar" as a schedule action too (e.g. weekly restart
+  for updates), or only the manual "Reiniciar" button? Proposal: manual only in v1.3.
+
 ## 7. Non-functional requirements
 | ID | Requirement | Measure / test |
 |---|---|---|
@@ -803,20 +1091,22 @@ touch targets ≥ 44 px on primary actions; every list has loading/empty/error s
 - Per-room permissions (every operator can wake every room).
 - (v1.0 only) Syncing several installations: team mode is v1.2 (§6a); v1.0 stores data ready for it.
 - Mobile app (the panel is usable on a tablet).
-- TLS on the agent listener (RM-5).
+- TLS on the agent listener (RM-5; v1.3 signs agent answers instead, ADR-044).
 
 ## 11. Roadmap (spec only)
 Versions after v1.1 (`.agents/07-roadmap-features.md`): **v1.2** team mode (LAN sync between
-instances, pairing, schedule lease), **v1.3** UniWake Agent and remote/scheduled shutdown (covers
-RM-2), **v1.4** backup, restore and migration (portable `.uniwake` export/import). Each gets its own
+instances, pairing, schedule lease), **v1.3** remote/scheduled shutdown through scheduled tasks on
+the lab PCs (§6b, replaces RM-2), **v1.4** backup, restore and migration (portable `.uniwake` export/import). Each gets its own
 spec section when its SDD cycle starts.
 - **RM-1 Relay agent per VLAN** — authenticated service on one PC per VLAN that broadcasts locally
   on hub request.
-- **RM-2 Remote shutdown/restart; lightweight target agent** (CPU/RAM/disk/logged user).
+- **RM-2** — moved to §6b (v1.3). Still roadmap: CPU/RAM/disk inventory reported by the agent.
 - **RM-3 Notifications** (e-mail/Telegram) for failed scheduled wakes, fed by FR-013.
 - **RM-4 Vendor BIOS tooling** (Dell Command | Configure, HP BCU, Lenovo WMI) to enable WoL remotely.
 - **RM-5 TLS on the agent listener** with certificate thumbprint pinned in the command (IMP-023).
 - **RM-6 Per-room permissions** for larger IT teams.
+- **RM-7 Freezing products' own features** — e.g. drive Deep Freeze's own shutdown/maintenance
+  schedules from UniWake (FR-308.6).
 
 ## 12. Traceability: improvements → requirements
 | IMP | Requirement |

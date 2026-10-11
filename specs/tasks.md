@@ -1,7 +1,7 @@
 # UniWake — Tasks
 
-Version: **1.0** · Date: 2026-10-04 · Owner: Senior Fullstack
-History: v0.1 draft → reviewed in `specs/reviews/phase-3-*.md` → consolidated as v1.0.
+Version: **1.1** · Date: 2026-10-11 · Owner: Senior Fullstack
+History: v0.1 draft → reviewed in `specs/reviews/phase-3-*.md` → consolidated as v1.0 → v1.1 (Phase 9: M16–M20, Phase 10 for v1.3).
 Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 
 ## Rules
@@ -334,3 +334,69 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 | [x] V2-T02 | Owner checklist for two real PCs (pt-BR, in `NEXT.md`). | B-002 | checklist |
 | [x] V2-T03 | Final audit (Code Reviewer) and Architect approval. | — | `specs/reviews/v1.2-final.md` |
 
+
+---
+
+# v1.3 "Desligar" (spec §6b, plan §15, ADR-042..048)
+Gate: **owner approval of spec §6b and answers to Q-1..Q-10** before M16 starts. Answers that
+change behaviour are recorded in spec §6b and, if needed, an ADR addendum.
+
+## M16 — Foundations: signing, data, contracts
+| ID | Task | Refs | Tests | Done when |
+|---|---|---|---|---|
+| [ ] M16-T01 | Spike: Node RSA-3072 PKCS#1 v1.5 signature verified by Windows PowerShell 5.1 (`RSACng`, modulus/exponent import); record result in ADR-044. | ADR-044 | Pester on CI-Win | verified or ADR revised |
+| [ ] M16-T02 | `Signer` port + `rsa-signer` adapter (generate on first start, DPAPI-protected private key, key id), `hub_keys` table; public key exposed to the command generator. | ADR-044 | unit + DPAPI contract (CI-Win) | — |
+| [ ] M16-T03 | Migration 006: schedules action + power fields; `device_agents`, `power_jobs`, `power_orders`, `power_reports` replicated; `agent_seen`; `team_members` signing key; change-log entities + apply order; tested on a populated DB copy. | plan §15.3; ADR-048 | migration + checker + apply | — |
+| [ ] M16-T04 | Shared schemas (check-in request/answer, agenda item, report outcomes) + `fixtures/agent/*.json` contract fixtures; `power.*` settings with UI metadata. | FR-302, FR-303 | schema tests | — |
+| [ ] M16-T05 | Agenda generator (pure): expansion from schedules (action shutdown), exceptions, pause, scoping, nextWakes, validity, occurrence UUIDs, content-hash version. | FR-303.1, FR-303.4 | AC-303-01 | fixtures shared with Pester |
+| [ ] M16-D | Break-it: DST/tz edge (none in BR, still tested with another tz), midnight, schedule edited between two check-ins, 200-item cap. | tasks §Break-it | regressions | findings filed |
+| [ ] M16-R | Code review → `specs/reviews/M16-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+
+## M17 — Agent channel and power orders (hub)
+| ID | Task | Refs | Tests | Done when |
+|---|---|---|---|---|
+| [ ] M17-T01 | Agent tokens: issue at enrollment (when asked), hash, rotation with pending token, no rotation when frozen without persistence, revoke; enrollment answer signed over nonce with script hashes. | FR-302.2; ADR-043 | AC-302-02, AC-302-04 | — |
+| [ ] M17-T02 | `POST /agent/v1/checkin` + `GET /agent/v1/scripts/:name`: Zod, per-token/IP rate limits, report dedupe/ack, orders delivery, agenda cache, hub list, signature; route-table authz test updated. | FR-302.1, FR-302.3 | AC-302-01, AC-302-03 | — |
+| [ ] M17-T03 | Power orders: preview (ready vs needs preparation, SR-10), jobs, cancel, expiry, live states with monitor offline confirmation, SSE. | FR-305 | AC-305-01, AC-305-02 | — |
+| [ ] M17-T04 | Scheduler handles only `action = 'wake'`; shutdown schedules feed agendas only; schedule API accepts action + power fields. | FR-306; ADR-048 | AC-306-01 | — |
+| [ ] M17-T05 | Readiness + "perdido" heuristic + freeze field; history aggregation per occurrence and job, "sem relatório" inference; audit entries. | FR-307, FR-308.3, FR-309 | AC-307-01, AC-308-03, AC-309-01 | — |
+| [ ] M17-T06 | Team mode: replicate new entities, signing keys in members, hub list with epoch, two-instance test (machine checks in with B, order made on A, report seen on A). | ADR-048 | integration | — |
+| [ ] M17-D | Break-it: token replay after revoke, 7th check-in, 64 KB+1 body, duplicate reports from two hubs, hub killed mid-check-in, clock jumps, order cancelled while delivered. | tasks §Break-it | regressions | findings filed |
+| [ ] M17-R | Code review → `specs/reviews/M17-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+
+## M18 — Lab-PC scripts (PowerShell 5.1, built-in components only)
+| ID | Task | Refs | Tests | Done when |
+|---|---|---|---|---|
+| [ ] M18-T01 | Spike on a test PC (owner or CI-Win where possible): group-principal task started on demand shows a window in the user's session; record in ADR-046 (or switch to the fallback design). | ADR-046 | [manual] + notes | ADR-046 updated |
+| [ ] M18-T02 | Wrapper layer + unmocked-call guard; `uniwake-agent.ps1` check-in client (exact bytes, signature, nonce, hub list, timeouts), token/hub files, folder owner/ACL check. | FR-302; ADR-044 | Pester | — |
+| [ ] M18-T03 | Agent executor: agenda storage, clock offset, expiry, boot rule, sleep rule + 60 min cap, heartbeat, Despertar triggers rewrite, report queue + pre-shutdown send, orders and cancel (`shutdown /a`), self-update with hash check. | FR-303, FR-304.3–.5 | AC-303-02, AC-303-03, AC-303-04, AC-303-05, AC-303-06, AC-304-04 | contract fixtures pass |
+| [ ] M18-T04 | Warning: `uniwake-aviso.ps1` (WinForms, countdown, Adiar), file channel with request id, SYSTEM-side limits, reparse checks, native fallback, no-user path. | FR-304.1–.3; ADR-046 | AC-304-01, AC-304-02, AC-304-03, AC-304-05 | — |
+| [ ] M18-T05 | `prepare-target.ps1`: `Invoke-UwRemoteShutdownStep` (hardened folder, scripts download + hash, token, three tasks, RTCWAKE per Q-3), `-HubKeyId`, `-RemoveAgent`, `-WhatIf`, summary line, exit codes unchanged. | FR-301 | AC-301-01, AC-301-02, AC-301-03, AC-301-04 | PSScriptAnalyzer clean |
+| [ ] M18-T06 | Freeze detection per ADR-047 table, ATENÇÃO path, `-PersistentPath`, `-UwfExclude`; reported in every check-in. | FR-308.1, .2, .4 | AC-308-01, AC-308-02, AC-308-04 | — |
+| [ ] M18-D | Break-it: tampered agenda/response files, junction planted in `ui\response`, pre-created `C:\ProgramData\UniWake` owned by a user, hub answers with wrong signature/nonce, hash mismatch on self-update, report queue full. | tasks §Break-it | regressions | findings filed |
+| [ ] M18-R | Code review + security review of the scripts → `specs/reviews/M18-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+
+## M19 — Panel and demo
+| ID | Task | Refs | Tests | Done when |
+|---|---|---|---|---|
+| [ ] M19-T01 | Schedule form "Ação: Ligar / Desligar" + warning/postpone/message fields; list shows the action. | FR-306 | AC-306-02 | loading/empty/error states |
+| [ ] M19-T02 | "Desligar"/"Reiniciar" on room, device and selection: dialog with preview (ready vs needs preparation), options, confirmation, job drawer with live states, cancel. | FR-305 | AC-305-03 | — |
+| [ ] M19-T03 | Readiness badges, freeze field, last check-in, agent version, "Revogar desligamento remoto"; prepare command with `-HubKeyId` and optional persistent path. | FR-309, FR-302.2, FR-308.4 | UI tests | — |
+| [ ] M19-T04 | History: shutdown rows with aggregated outcomes, including those executed with the hub off. | FR-307 | UI test | — |
+| [ ] M19-T05 | Demo mode: simulated agents (ready, v1.2, postponing twice, frozen → perdido); never touches real hosts. | FR-310 | AC-310-01 | — |
+| [ ] M19-R | Code review → `specs/reviews/M19-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+
+## M20 — Docs, load, hardening
+| ID | Task | Refs | Tests | Done when |
+|---|---|---|---|---|
+| [ ] M20-T01 | Help pages "Desligar computadores" and "Laboratórios com Deep Freeze ou similar". | FR-311 | AC-311-01 | — |
+| [ ] M20-T02 | README: features, preparation step, ports, roadmap (1.3 delivered on release only), troubleshooting (task missing, wake timers, freezing, clock, antivirus). | FR-311 | — | reviewed against code |
+| [ ] M20-T03 | Load test: 500 simulated agents every 60 s (NFR-301). | NFR-301 | perf test | — |
+| [ ] M20-T04 | `DEV_VERSION_BASE` → 1.3.0; dev installer artifact. | ADR-041 | CI | — |
+
+## Phase 10 — Validate v1.3 (lead: Debug)
+| ID | Task | Refs | Evidence |
+|---|---|---|---|
+| [ ] V3-T01 | Walk every v1.3 AC; record evidence in `validation.md` §v1.3. | FR-301..311 | `validation.md` |
+| [ ] V3-T02 | Owner checklist for real lab PCs (pt-BR, in `NEXT.md`): prepare, manual shutdown, schedule with hub off, postpone, sleep + wake timer, user-session window, (if available) a frozen PC. | B-002 | checklist |
+| [ ] V3-T03 | Final audit (Code Reviewer) and Architect approval → `specs/reviews/v1.3-final.md`. | — | review |

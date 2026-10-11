@@ -1,7 +1,15 @@
 # NEXT — handoff
 
-Atualizado: 2026-10-09 · Branch de trabalho: **`dev`** (ADR-030) · **`main` = `9d7cc31`** · **release v1.2.0 publicada**
+Atualizado: 2026-10-11 · Branch de trabalho: **`dev`** (ADR-030) · **`main` = `9d7cc31`** · **release v1.2.0 publicada**
 (estável, pedida pelo dono; `releases/latest` = v1.2.0, download e SHA-256 conferidos)
+
+## v1.3 "Desligar" — especificação pronta, aguardando sua aprovação (2026-10-11)
+Só documentos, nada de código: spec §6b (FR-301..311), plano §15, ADR-042..048, constituição v1.3,
+tarefas M16–M20 + Fase 10, revisões `specs/reviews/phase-9-*.md`. **A implementação (M16) só
+começa depois que você aprovar e responder às perguntas Q-1..Q-10** (fim da spec §6b):
+etiquetas que nunca desligam, usuário ativo, temporizador de ativação, validade da agenda (7 dias),
+tolerância do "perdido" (15 min), nome do usuário no relatório, padrão do "Desligar" manual, texto
+do aviso, acordar atrasado (60 min) e "Reiniciar" em agendamentos.
 
 ## ✅ Merge feito (2026-10-09)
 Antes do merge: `npm run verify` (807 testes), 23 E2E, PSScriptAnalyzer + 28 Pester, CI verde na `dev`
@@ -172,6 +180,11 @@ WoL real por modelo de PC, reinício sem ninguém logado, VLANs, HTTPS na rede) 
 ## Agent notes (English)
 
 ### Current state
+- **2026-10-11: v1.3 spec stage done (docs only), waiting for owner approval + answers Q-1..Q-10**
+  (spec §6b end). Owner instruction: produce only spec/plan/ADRs/tasks, do not implement, stop
+  for approval. When approved: record the answers in spec §6b (ADR addendum if behaviour changes),
+  then M16-T01 (RSA verify spike in PowerShell 5.1) and M18-T01 (user-session task spike) first,
+  because ADR-044/046 depend on them. Bump `DEV_VERSION_BASE` to 1.3.0 when M16 starts (M20-T04).
 - Branch `dev`, ahead of `main` (`7297341`). v1.0/v1.1 (M1–M9, Phase 5), M10 (sync-ready data),
   Phase 6/7 specs, M11–M15 and Phase 8 (`specs/validation.md` §v1.2, `specs/reviews/v1.2-final.md`)
   are done. Owner instruction of 2026-10-09: build v1.2 + README + community files, then STOP. Do not
@@ -188,8 +201,8 @@ WoL real por modelo de PC, reinício sem ninguém logado, VLANs, HTTPS na rede) 
 2. Done 2026-10-09: `main` = `52bdd85` (merge of `dev`). Next merges the same way, only on the
    owner's explicit request. Tag only if asked.
 3. After a release: README download buttons → `releases/latest/download/UniWake-Setup.exe`.
-4. Then v1.3 (roadmap §C: agent + shutdown, starting with the ADR comparing WMI/WinRM/Task
-   Scheduler/agent) → v1.4 (§D), each through the full SDD loop.
+4. v1.3 specified (pull model with scheduled tasks, ADR-042 supersedes roadmap §C's service);
+   implement M16–M20 + Phase 10 after approval → v1.4 (§D) through the full SDD loop.
 
 ### Working conventions
 - Commit via the verify-gated helper (scratchpad `commit-task.sh <TASK|-> <msg-file>`: prettier →

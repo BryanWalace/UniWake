@@ -1,9 +1,9 @@
 # UniWake — Technical Plan
 
-Version: **1.2** · Date: 2026-10-09 · Owner: Architect
+Version: **1.3** · Date: 2026-10-11 · Owner: Architect
 History: v0.1 draft → reviewed in `specs/reviews/phase-2-*.md` → consolidated as v1.0 → v1.1
 (Phase 6: §5.2 sync-ready data, §7.2 lease, ADR-030..034) → v1.2 (Phase 7: §14 team mode,
-ADR-035..040).
+ADR-035..040) → v1.3 (Phase 9: §15 shutdown, ADR-042..048; §6.2 amended).
 Inputs: `specs/constitution.md` v1.1, `specs/spec.md` v1.0, ADR-001..026.
 
 ---
@@ -256,12 +256,14 @@ empty in v1.0).
 | POST `/api/notices/:id/wake-missed` | operator | FR-204.2 |
 | GET `/*` except `/api/*`, `/agent/*` | public | SPA files, `index.html` fallback |
 
-### 6.2 Agent listener — exactly three routes
+### 6.2 Agent listener — exactly five routes (three until v1.2; ADR-043)
 | Method & path | Auth | Purpose |
 |---|---|---|
 | GET `/api/health` | public | `{status}` |
-| POST `/agent/enroll` | enrollment (token) | FR-007.2 |
+| POST `/agent/enroll` | enrollment (token) | FR-007.2 (+ agent token when asked, §15.5) |
 | GET `/agent/prepare-target.ps1` | public | script bytes |
+| POST `/agent/v1/checkin` | agent token | FR-302 (v1.3, §15.4) |
+| GET `/agent/v1/scripts/:name` | public | agent scripts (v1.3) |
 
 ### 6.3 SSE events
 `device.status` `{deviceId, status, latencyMs, lastSeenAt}` · `counters` `{global, rooms[]}` ·
@@ -555,3 +557,152 @@ fields) → `rekey {epoch, key}` if one side is newer, then close; else client `
 Pairing: code 6 digits, 5 min, 5 attempts, one open code; pairing connection 30 s total. Sync:
 handshake 10 s, request 30 s, 64 MB per message; a pull returns every change since the cursor (one
 entry per entity: a team with 5 000 devices is a few MB), so references never span two batches.
+
+## 15. Shutdown (v1.3; spec §6b; ADR-042..048)
+
+### 15.1 Overview
+```
+ lab PC (no program installed)                          hub (any team member)
+ ┌──────────────────────────────────────┐              ┌───────────────────────────────┐
+ │ task "UniWake" (SYSTEM, 1 min) ──────┼── HTTP ─────▶│ POST /agent/v1/checkin :47101 │
+ │   uniwake-agent.ps1                  │◀─ signed ────┤  orders, agenda, hubs, hashes │
+ │   agenda.json / state / reports      │              │ agenda generator (cached)     │
+ │ task "UniWake Despertar" (WakeToRun) │              │ power orders / reports        │
+ │ task "UniWake Aviso" (Users) ◀─ files─┤              │ signing key (DPAPI)           │
+ │ shutdown.exe /s /t 30                │              └───────────────────────────────┘
+ └──────────────────────────────────────┘
+```
+The hub never runs a shutdown command and never connects to lab PCs. The scheduler still executes
+only wake schedules; shutdown schedules exist only as agenda items.
+
+### 15.2 Modules
+```
+packages/shared/src/agent/     checkin.ts (request/answer Zod schemas, protocol 1), agenda.ts
+                               (item, report outcomes), fixtures/agent/*.json (contract fixtures,
+                               used by Vitest and Pester)
+apps/server/src/application/power/
+  agenda-generator.ts   pure: (schedules, exceptions, pause, device targets, tz, now, days) →
+                        items + nextWakes; reuses the schedule engine's occurrence expansion
+  agent-checkin.ts      authenticate token → apply reports/acks → collect orders → agenda (cache)
+                        → hub list → script hashes → rotation → answer
+  agent-tokens.ts       issue/rotate/revoke, hash compare (timingSafeEqual)
+  power-orders.ts       manual orders (preview reuses wake target resolution + SR-10), cancel,
+                        expiry, live job (orders + monitor offline confirmation)
+  power-history.ts      aggregate reports per occurrence / job; "sem relatório" inference
+  readiness.ts          per-device state: pronta / precisa do novo preparo / perdido / revogado
+  signing.ts            Signer port use: sign(nonce, body) → {keyId, signature}
+apps/server/src/adapters/
+  rsa-signer.ts         node:crypto RSA-3072 generate/sign; private key via SecretProtector (DPAPI)
+apps/server/src/http/routes/agent.ts   + checkin and scripts routes, per-token/IP rate limits
+apps/server/src/http/routes/power.ts   panel API (below)
+apps/server/src/application/demo/      simulated agents (FR-310)
+scripts/agent/uniwake-agent.ps1        SYSTEM agent (check-in, verify, agenda, executor, reports,
+                                       despertar triggers, self-update)
+scripts/agent/uniwake-aviso.ps1        user-session warning window (WinForms) + file channel
+scripts/prepare-target.ps1             + Invoke-UwRemoteShutdownStep, freeze detection,
+                                       -HubKeyId, -PersistentPath, -UwfExclude, -RemoveAgent
+apps/web/src/features/power/           Desligar/Reiniciar dialog + job drawer, readiness badges,
+                                       freeze field, revoke, schedule form "Ação"
+```
+Ports added: `Signer` (application never imports `node:crypto` key handling directly).
+Every external call in the PowerShell scripts goes through a small wrapper (`Invoke-UwShutdown`,
+`Invoke-UwQuser`, `Invoke-UwDfc`, `Get-UwUwfFilter`, `Register-UwTask`, `Invoke-UwHttp`,
+`Get-UwBootTime`, `Get-UwNow`) so Pester mocks them; a test fails if any wrapper runs unmocked.
+
+### 15.3 Data (migration 006)
+| Table / change | Kind | Columns |
+|---|---|---|
+| `schedules` + | replicated (existing `schedule`) | action `wake`/`shutdown` (default `wake`), warning_minutes, allow_postpone, postpone_max, postpone_minutes, message NULL |
+| `device_agents` | replicated `device_agent` (uuid = device uuid) | device_id, token_hash, pending_token_hash NULL, issued_at, rotated_at, revoked_at NULL, agent_version, protocol, freeze_product, freeze_state, persistent (bool), seen_coarse_at (30-min rounded), rev, updated_by_instance, updated_at |
+| `power_orders` | replicated `power_order` | id, uuid, job_uuid, device_id, action `shutdown`/`restart`/`cancel`, warning_minutes, allow_postpone, postpone_max, postpone_minutes, message, state (`pendente`,`entregue`,`aviso`,`executada`,`cancelada`,`expirada`,`falhou`), created_by, created_at, expires_at, delivered_by_instance, rev… |
+| `power_reports` | replicated `power_report` (insert-only, uuid from the PC) | id, uuid, device_id, occurrence_uuid NULL, order_uuid NULL, outcome, planned_at, executed_at NULL, postpones, user_logged_on, user_name NULL, was_asleep, freeze_state, detail, received_at |
+| `power_jobs` | replicated `power_job` | id, uuid, action, target JSON, counts, created_by, created_at |
+| `agent_seen` | machine-local | device_id PK, seen_at, ip, boot_time, clock_offset_ms, last_nonce_at |
+| `hub_keys` | machine-local | key_id PK, public_spki, private_blob (DPAPI), created_at, retired_at NULL |
+| `team_members` + | replicated (existing) | signing_key_id, signing_public_spki |
+
+Settings (`power.*`, team scope): defaultWarningMinutes 5, postponeMax 2, postponeMinutes 15,
+agendaDays 7, lateWakeMaxMinutes 60, lostAfterMinutes 15, tokenRotationDays 30, orderExpiryMinutes
+120, message (Q-8), reportUserName false (Q-6), neverScheduledShutdownTags [] (Q-1). Machine scope:
+none new. Apply order (§14.4) gains `device_agent` after `device`, then `power_job`, `power_order`,
+`power_report`. Retention: reports and orders follow history retention (180 d), pruned per PC
+(tombstones not needed for insert-only rows older than retention; each PC prunes alike).
+
+### 15.4 Routes
+Agent listener (amends §6.2 → five routes):
+
+| Method & path | Auth | Purpose |
+|---|---|---|
+| GET `/api/health` | public | `{status}` |
+| POST `/agent/enroll` | enrollment token | FR-007.2; + agent token, hub key, script hashes (signed) when asked |
+| GET `/agent/prepare-target.ps1` | public | script bytes |
+| POST `/agent/v1/checkin` | agent token | FR-302 |
+| GET `/agent/v1/scripts/:name` | public | `uniwake-agent.ps1`, `uniwake-aviso.ps1` bytes |
+
+Panel (`/api`):
+
+| Method & path | Role | FR |
+|---|---|---|
+| POST `/api/power/preview` · POST `/api/power/jobs` · GET `/api/power/jobs/:id` · POST `/api/power/jobs/:id/cancel` | operator | FR-305 |
+| GET `/api/power/history` (also merged into `/api/history`) | viewer | FR-307 |
+| GET `/api/devices/:id/agent` · POST `/api/devices/:id/agent/revoke` | viewer / admin | FR-302.2, FR-309 |
+| `/api/schedules` (existing) with `action` and power fields | operator | FR-306 |
+| GET `/api/settings/prepare-command` (existing) adds `-HubKeyId`, optional `-PersistentPath` | admin | FR-301, FR-308.4 |
+
+SSE: `power.job` `{jobId, counts}`, `power.device` `{jobId, deviceId, state}`, `agent.status`
+`{deviceId, readiness}`. Error codes: `POWER_TARGET_EMPTY`, `POWER_NOT_READY` (all excluded),
+`POWER_JOB_NOT_FOUND`, `AGENT_TOKEN_INVALID` (agent listener, 401, no detail),
+`AGENT_RATE_LIMITED`, `AGENT_PROTOCOL_UNSUPPORTED`.
+
+### 15.5 Flows
+- **Enrollment (agent):** script sends `agent: {protocol: 1}` + nonce → hub upserts the device,
+  issues a token (revoking any previous one), answers signed → script verifies key id =
+  `-HubKeyId`, signature, nonce → downloads scripts, checks hashes → writes token, `hub.json`
+  (keys + URLs), tasks → first check-in runs immediately (`Start-ScheduledTask "UniWake"`).
+- **Check-in (hub):** rate limit → token lookup by hash (active or pending; pending promotes) →
+  Zod → insert reports (ignore known UUIDs), ack them → update `agent_seen`, `device_agents`
+  (coarse) → orders `pendente` for the device → mark `entregue` → agenda from cache (key: device +
+  data version) → hubs list (team) → hashes → rotation → JSON body → sign → send.
+- **Agent run:** lock (task IgnoreNew) → heartbeat → load state → check folder ACL → check-in
+  (each hub in list order, connect 3 s / total 10 s; stop at first verified answer) → apply answer
+  (orders, agenda, hubs, token, self-update) → rewrite "UniWake Despertar" if agenda version
+  changed → evaluate rules (ADR-045) → if something is due: warning flow (ADR-046), polling the hub
+  every 30 s for cancel → report → `shutdown` wrapper.
+- **Live job (panel):** order states from check-ins; `executada` + monitor offline within 5 min →
+  "desligou"; still online → "não confirmou"; postpones shown from the warning-phase check-ins.
+- **History:** per occurrence UUID, reports grouped by outcome; devices targeted with no report
+  after 24 h → "sem relatório" or the inference of FR-307.
+- **Team mode (ADR-048):** no lease. Every hub can answer any machine; the order/report entities
+  replicate; agenda versions are content hashes, so two hubs with the same data give the same
+  version.
+
+### 15.6 Testing
+| Layer | What | Tool |
+|---|---|---|
+| Agenda generator | holidays, pause, DST-free BR tz, scoping, nextWakes, validity | Vitest + fixtures shared with Pester |
+| Check-in | auth, revoked, rate limits, dedupe, rotation (and no rotation when frozen), signature verifies, size limits | Vitest `fastify.inject` |
+| Signing interop | Node signs, Windows PowerShell 5.1 verifies (spike, then a CI-Win Pester test) | Pester on `windows-latest` |
+| Agent executor | expiry, boot rule, sleep rule + 60 min cap, clock offset, postpone limits, cancel, fallback warning, report queue, self-update hash mismatch | Pester with mocked wrappers and a fake clock |
+| Prepare step | tasks/ACL/token, idempotency, `-WhatIf`, `-RemoveAgent`, freeze fixtures (none, DF frozen, DF thawed, UWF on/next-off, RRx, SD), owner/ACL tampering | Pester + `FakeSystem.ps1` |
+| Panel | schedule form action, Desligar/Reiniciar dialog, drawer, readiness badges, revoke | Vitest RTL + Playwright E2E (demo) |
+| Load | 500 simulated agents, 60 s period | Vitest perf (NFR-301) |
+| Real PCs | wake timer, user-session window, freeze products | [manual] V3 checklist (owner) |
+
+Constitution §5 rule (v1.3): no test runs `shutdown.exe`, registers a real scheduled task or
+changes the power plan; the scripts' wrappers are mocked and a guard throws on an unmocked call.
+
+### 15.7 Limits and timeouts
+Check-in body ≤ 64 KB, answer ≤ 256 KB (7 days × few items); reports per request ≤ 50; agenda ≤ 200
+items; orders expire after 120 min; agent HTTP connect 3 s, total 10 s per hub, ≤ 3 hubs per run;
+UI request/response files ≤ 4 KB; local report queue ≤ 500 lines.
+
+### 15.8 Risks
+| ID | Risk | Likelihood | Impact | Mitigation |
+|---|---|---|---|---|
+| RK-19 | Wake timers blocked by plan/GPO/firmware → sleeping PCs miss shutdown | Medium | Medium | Prepare enables RTCWAKE (Q-3); late-wake rule; report "estava em suspensão" |
+| RK-20 | Group-principal task does not appear in the user's session on some builds | Medium | Medium | Spike M18-T01; native-warning fallback |
+| RK-21 | Freezing software erases tasks/agenda | High where used | Medium | Detection, ATENÇÃO, persistent path, "perdido" heuristic, help page |
+| RK-22 | Lab hub spoofing orders shutdown of all labs | Low | High | Signed answers with nonce (ADR-044) |
+| RK-23 | User-writable ProgramData paths → privilege escalation | Medium | Critical | Owner/ACL hardening, SYSTEM never writes/deletes in Users folders, reparse checks (ADR-042/046) |
+| RK-24 | AV/EDR flags a SYSTEM PowerShell task every minute | Medium | Medium | Plain readable scripts, no obfuscation/encoded commands, documented paths; help page |
+| RK-25 | Unsaved work lost (`/t` implies `/f`) | Medium | Medium | Warning text, postpone, Q-2 |
