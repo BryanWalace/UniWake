@@ -682,8 +682,9 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
     the global setting, sent once per answer.
   - **Clock:** at each check-in the agent stores `offset = serverTime − local midpoint` and uses
     `local + offset`. Offsets > 2 min are reported ("relógio adiantado/atrasado X min").
-  - **Window (Q-4):** the hub sends `window {from, to}` with from = generation time and to = from +
-    14 days (constant `AGENDA_DAYS = 14`), and the concrete instants inside it, already without
+  - **Window (Q-4):** the hub sends `window {from, to}` with to = generation time + 14 days
+    (constant `AGENDA_DAYS = 14`) and from = generation time − 6 h (`AGENDA_LOOKBACK_MS`, M16-T05:
+    a PC checking in during a warning, postpone or late wake must still see that item), and the concrete instants inside it, already without
     holidays, vacations, paused days and exclusions. The machine runs only listed items with T in
     the window; there is no other validity rule, and no rule is ever re-evaluated on the machine.
     After `to`, nothing runs until a hub sends a new window.

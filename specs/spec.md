@@ -825,8 +825,9 @@ revoked token → 401 without detail; every request validated (Zod).
 
 ### FR-303 Local agenda on the machine
 **FR-303.1 Content — an explicit window.** For each prepared machine the hub sends the
-**concrete dates and times of the next 14 days** (Q-4): the window `[from, to]` (from = generation
-time, to = from + 14 days) and the shutdown occurrences inside it, computed from the schedules that
+**concrete dates and times of the next 14 days** (Q-4): the window `[from, to]` (to = generation
+time + 14 days; from = generation time − 6 h, so a PC checking in during a warning, a postpone or
+a late wake still sees the item it is handling) and the shutdown occurrences inside it, computed from the schedules that
 target the machine (rooms, tags, devices, all — same scoping rules as waking, spec §4) with
 holidays, vacations/exceptions and the pause already applied, minus exclusions (FR-306.2), plus the
 machine's **next wake times** in the window (needed by FR-303.5). Each item: occurrence id
@@ -859,8 +860,9 @@ take effect at the next check-in).
   estava desligada". A freshly turned-on PC is never shut down by an old item.
 
 - AC-303-01: Given a schedule "Desligar" Mon–Fri 22:40 on room R, a holiday on Wednesday and
-  device D in R, Then D's agenda lists Mon, Tue, Thu, Fri 22:40 local and nothing else; after
-  pausing until Friday the agenda lists only Friday.
+  device D in R, generated on Monday noon, Then D's 14-day agenda lists Mon, Tue, Thu, Fri of this
+  week and Mon–Fri of the next, all at 22:40 local, and no Wednesday of this week; after pausing
+  until Friday this week it starts on Friday.
 - AC-303-02 [Pester]: Given an agenda item at 22:40 and the hub unreachable since 21:20, Then the
   agent shuts the machine down at 22:40 (with warning) and reports it at the next check-in.
 - AC-303-03 [Pester]: Given an agenda whose window ended yesterday and an item listed after it by
