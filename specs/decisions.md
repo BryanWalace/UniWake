@@ -603,10 +603,11 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
     `agent: {protocol: 1}` request field; with it, the answer adds `agentToken`, `hubKey`, the
     script hashes and the first agenda, and is signed over the script's nonce. Older scripts are unaffected.
   - **Check-in request:** `{protocol, nonce (16 random bytes), agentVersion, bootTime, clock,
-    freeze {product, state, persistent}, session {loggedOn, idleMinutes?, user?}, reports[] (≤ 50,
-    machine-made UUIDs), ackedOrders[]}`. **Answer:** `{serverTime, orders[], agenda {version,
-    validUntil, items[], nextWakes[]}, hubs[], scripts {name: {version, sha256}}, ackReports[],
-    newToken?}`, signed (ADR-044).
+    freeze {product, state, persistent}, power {sleepAfterMinutes, wakeTimers}, session {loggedOn,
+    sessions}, reports[] (≤ 50, machine-made UUIDs), ackedOrders[]}` — **no user names** (owner,
+    LGPD: the agent drops them while parsing `quser`). **Answer:** `{serverTime, orders[], agenda
+    {version, window {from, to}, items[], nextWakes[]}, hubs[], scripts {name: {version, sha256}},
+    ackReports[], newToken?}`, signed (ADR-044).
   - **Token:** 32 random bytes (base64url), only SHA-256 stored, compared in constant time. One
     active token per machine plus at most one pending (rotation: old valid until the new one is
     used). Rotation every 30 days, skipped while the machine reports "congelada" without a
@@ -667,30 +668,41 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
   machines that have not yet checked in with another hub (window ≤ one check-in while any good hub
   is on). Team members are staff PCs; accepted.
 
-## ADR-045 — Local agenda: instants, clock offset, validity, wake task, boot and sleep rules
-- **Date:** 2026-10-11 · **Status:** Accepted
+## ADR-045 — Local agenda: explicit window, clock offset, wake task, boot and sleep rules
+- **Date:** 2026-10-11 · **Status:** Accepted (window and late-wake report per owner answers Q-3,
+  Q-4, Q-9 of 2026-10-11)
 - **Decision:**
   - **Items** carry the shutdown instant T in UTC (the hub resolves timezone/DST and holidays),
-    warning, postpone policy, message and a deterministic occurrence UUID (v5 of schedule uuid +
-    planned instant, ADR-031) so every team hub and every machine name the same occurrence.
+    warning, postpone policy and a deterministic occurrence UUID (v5 of schedule uuid + planned
+    instant, ADR-031) so every team hub and every machine name the same occurrence. The message is
+    the global setting, sent once per answer.
   - **Clock:** at each check-in the agent stores `offset = serverTime − local midpoint` and uses
     `local + offset`. Offsets > 2 min are reported ("relógio adiantado/atrasado X min").
-  - **Validity:** `validUntil` = generation + `power.agendaDays` (7). Expired agenda → nothing runs.
+  - **Window (Q-4):** the hub sends `window {from, to}` with from = generation time and to = from +
+    14 days (constant `AGENDA_DAYS = 14`), and the concrete instants inside it, already without
+    holidays, vacations, paused days and exclusions. The machine runs only listed items with T in
+    the window; there is no other validity rule, and no rule is ever re-evaluated on the machine.
+    After `to`, nothing runs until a hub sends a new window.
   - **Wake:** `WakeToRun` is a task setting, not a trigger setting, so the 1-minute task must
     **not** have it (it would wake the PC every minute). "UniWake Despertar" holds one-time
     triggers at T − warning − 1 min for the items, is rewritten when the agenda changes, and its
     action just runs the agent. It depends on the power plan option "Permitir temporizadores de
     ativação" (`powercfg` alias `RTCWAKE` under `SUB_SLEEP`, GUID
     `bd3b718a-0680-4d9d-8ab2-e1d2b4ac806d`; 0 disable, 1 enable, 2 important only). The preparation
-    reads it and, if allowed (Q-3), sets AC = 1 on the active scheme
-    (`powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_SLEEP RTCWAKE 1`, then `/SETACTIVE SCHEME_CURRENT`).
+    sets AC = 1 on the active scheme when it is not 1 already (owner, Q-3; idempotent, shown in the
+    summary): `powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_SLEEP RTCWAKE 1`, then
+    `/SETACTIVE SCHEME_CURRENT`. It **only reads** the AC sleep timeout (alias `STANDBYIDLE`, never
+    changed) and reports "Suspensão: após N min" / "nunca". `powercfg /QUERY` output is localized
+    (pt-BR Windows prints Portuguese labels), so values are read by position of the hex indexes or
+    from CIM `root\cimv2\power` — choice and verification in M18-T05 (**não verificado** yet).
     The default value varies by plan and vendor (**não verificado**); value 2 likely blocks task
     wake timers (**não verificado**); behaviour on Modern Standby (S0) PCs **não verificado**. GPOs
     or firmware can still block wake timers → the late-wake rule.
   - **Rules at each run, in order:** (1) item already done/expired/cancelled → skip; (2) last boot
     (`Win32_OperatingSystem.LastBootUpTime`) after T → "máquina estava desligada", never run;
     (3) heartbeat gap > 3 min covering T (asleep/hibernated) → run only if now < next wake and
-    now − T ≤ 60 min (Q-9), report "estava em suspensão"; (4) now ≥ T − warning → start the warning
+    now − T ≤ 60 min (Q-9), report "estava em suspensão"; otherwise report "pulado: acordou {n} min
+    após o horário"; (4) now ≥ T − warning → start the warning
     flow (ADR-046). A heartbeat file (last run time) is written every run.
   - **Storage:** `agenda.json`, `state.json` (executed occurrence/order ids for 48 h, offset, hub
     list), `reports.jsonl` (≤ 500 lines, oldest dropped and counted) in the agent folder, or in the
@@ -762,9 +774,11 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
   the hub infers "provavelmente desligou (sem relatório)" from the next boot time and the monitor.
   Token rotation is skipped on such machines (ADR-043). A self-updated agent reverts at restart and
   updates again — the hub accepts any agent with protocol 1.
-- **Lost heuristic:** a machine with remote shutdown that the monitor sees online and that has not
-  checked in for `power.lostAfterMinutes` (15) → "Desligamento remoto perdido: provável
-  congelamento ou tarefa removida" + help link. Cleared by the next check-in.
+- **Lost heuristic (owner, Q-5):** a machine with remote shutdown that has answered ping/TCP
+  without interruption for 15 minutes (from its last offline→online transition in the monitor)
+  and has not checked in since it came online → "Desligamento remoto perdido: provável
+  congelamento ou tarefa removida" + help link; "Saúde do sistema" shows the count. Cleared by the
+  next check-in.
 - **Roadmap (RM-7):** using the products' own features (e.g. Deep Freeze scheduled
   shutdown/maintenance) — needs their consoles/licences; not in v1.3.
 
@@ -784,6 +798,17 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
     log churn). Each hub also keeps an exact local `agent_seen_at` for the "perdido" heuristic and
     the live job view.
   - Hub signing public keys travel in `team_members`; private keys never leave their PC.
+  - **Mixed versions are not allowed to sync (Phase 9 finding, CRITICAL):** a v1.2 hub applying a
+    schedule snapshot with `action: "shutdown"` would ignore the unknown field, store a **wake**
+    schedule (waking the labs at shutdown time) and log its own version back to the team. So v1.3
+    raises the team `PROTOCOL_VERSION` to 2: v1.2 and v1.3 PCs reject each other's hello and
+    announcements; the v1.3 side shows the peer as "Versão diferente — atualize o UniWake neste
+    PC" (it still parses the version field of old announcements to say so). Automatic updates in the
+    nightly window normally bring every team PC to v1.3 the same night.
+  - Snapshots of `schedule` (action, warning, postpone, excluded tags) and `device` (never
+    scheduled shutdown) gain fields, so migration 006 resets their `rev` to 0 and the start-up
+    baseline logs them again with the new shape (identical content on every PC → no conflict
+    record).
 - **Consequences:** Shutdown at 22:40 does not need any hub on. Reports reach every hub through
   sync. A brief agenda flip-flop between two hubs with unsynced data is harmless (newest version
   wins at the machine; both converge).

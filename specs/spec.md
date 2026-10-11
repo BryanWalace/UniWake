@@ -772,8 +772,10 @@ their behaviour; what is already right is only checked):
    **"UniWake Despertar"** (SYSTEM, one-time triggers at the agenda's times, "Ativar o computador
    para executar esta tarefa", rewritten by the agent when the agenda changes, ADR-045) and
    **"UniWake Aviso"** (group Users, interactive, at logon and on demand, ADR-046).
-4. Checks the power plan's "Permitir temporizadores de ativação" on AC and **enables it** (open
-   question Q-3); records the result.
+4. **Enables** "Permitir temporizadores de ativação" on AC in the active power plan (idempotent;
+   summary "Temporizadores de ativação: ativados" / "já estavam ativados") and **only reads** the
+   plan's sleep timeout on AC, never changing it: summary "Suspensão: após 30 min" or "Suspensão:
+   nunca" (Q-3). The value is sent with enrollment and every check-in and shown on the device page.
 5. Detects freezing software and its state (FR-308.1).
 6. Adds the summary line **"Desligamento remoto: OK"** (or "ATENÇÃO" / "FALHOU" with the reason in
    pt-BR). Running it again repairs a missing or changed task, script or token.
@@ -822,12 +824,14 @@ revoked token → 401 without detail; every request validated (Zod).
   until the machine uses the new one; afterwards only the new one works.
 
 ### FR-303 Local agenda on the machine
-**FR-303.1 Content.** For each prepared machine the hub computes the shutdown/restart occurrences
-of the next **7 days** (open question Q-4) from the schedules that target it (rooms, tags, devices,
-all — same scoping rules as waking, spec §4), with holidays/exceptions and the pause already
-applied, plus the machine's **next wake times** (needed by FR-303.5). Each item: occurrence id
-(deterministic, ADR-031), instant (UTC), action, warning time, postpone policy, message.
-`validUntil` = generation time + 7 days.
+**FR-303.1 Content — an explicit window.** For each prepared machine the hub sends the
+**concrete dates and times of the next 14 days** (Q-4): the window `[from, to]` (from = generation
+time, to = from + 14 days) and the shutdown occurrences inside it, computed from the schedules that
+target the machine (rooms, tags, devices, all — same scoping rules as waking, spec §4) with
+holidays, vacations/exceptions and the pause already applied, minus exclusions (FR-306.2), plus the
+machine's **next wake times** in the window (needed by FR-303.5). Each item: occurrence id
+(deterministic, ADR-031), instant (UTC), action, warning time, postpone policy. Holidays and
+vacations simply do not appear in the list; old rules are never re-evaluated on the machine.
 
 **FR-303.2 Storage.** The agent stores the last agenda locally (or in the persistent area of a
 freezing product, FR-308.4) and rewrites the "UniWake Despertar" triggers when it changes.
@@ -836,15 +840,16 @@ freezing product, FR-308.4) and rewrites the "UniWake Despertar" triggers when i
 clock corrected by the offset measured at the last successful check-in (ADR-045). It records the
 result and reports it at the next successful check-in.
 
-**FR-303.4 Expiry and change.** An item is executed only if `now ≤ validUntil` (a machine that has
-not talked to the hub for 7 days does nothing). A newer agenda replaces the old one entirely
-(schedules edited, deleted, paused or exceptions added take effect at the next check-in).
+**FR-303.4 Window and change.** The machine executes only listed items inside the window; there
+is no separate validity rule: after `to` nothing is executed until a hub sends a new window. A
+newer agenda replaces the old one entirely (schedules edited, deleted, paused or exceptions added
+take effect at the next check-in).
 
 **FR-303.5 Sleep and boot.**
 - Woken by the wake timer on time → executes (with the warning).
-- Woken late (wake timers blocked) and **before** the machine's next wake time and at most
-  **60 minutes** late (open question Q-9) → executes with the warning, report "estava em
-  suspensão"; otherwise → does not execute, report "estava em suspensão — não desligou". The cap
+- Woken late (wake timers blocked): executes with the warning only if at most **60 minutes**
+  late **and** before the machine's next wake time (Q-9), report "estava em suspensão"; otherwise
+  it does not execute and reports "pulado: acordou {n} min após o horário". The cap
   exists because a late wake with timers blocked is almost always a person (or the hub's WoL)
   waking the PC on purpose.
 - "Asleep" = the agent's heartbeat file shows a gap > 3 minutes while the last boot is older than
@@ -858,11 +863,13 @@ not talked to the hub for 7 days does nothing). A newer agenda replaces the old 
   pausing until Friday the agenda lists only Friday.
 - AC-303-02 [Pester]: Given an agenda item at 22:40 and the hub unreachable since 21:20, Then the
   agent shuts the machine down at 22:40 (with warning) and reports it at the next check-in.
-- AC-303-03 [Pester]: Given an agenda with `validUntil` in the past, Then nothing is executed and
-  the report says "agenda vencida".
+- AC-303-03 [Pester]: Given an agenda whose window ended yesterday and an item listed after it by
+  a tampered file, Then nothing is executed; given a vacation week, Then the generated window has
+  no items in it.
 - AC-303-04 [Pester]: Given an item at 22:40, last boot at 07:00, next wake at 07:00 next day and
   the agent resuming from sleep at 22:55, Then it shuts down with warning and reports "estava em
-  suspensão"; resuming at 23:50 (70 min late) or at 07:05, Then it does not shut down.
+  suspensão"; resuming at 23:50 (70 min late) or at 07:05, Then it does not shut down and reports
+  "pulado: acordou 70 min após o horário" (resp. 505 min).
 - AC-303-05 [Pester]: Given an item at 22:40 and last boot at 23:10, Then it is never executed.
 - AC-303-06 [Pester]: Given the machine clock 10 minutes fast and the measured offset, Then the
   item runs at 22:40 hub time.
@@ -870,8 +877,16 @@ not talked to the hub for 7 days does nothing). A newer agenda replaces the old 
 ### FR-304 Warning, postpone and the shutdown itself
 **FR-304.1 Warning.** The schedule's time is the **shutdown time T**; the warning starts **5
 minutes** before T by default (configurable per schedule, 0–30). A manual order received at R
-shuts down at R + warning. If a user is logged on, the "UniWake Aviso" task shows a pt-BR window in
-the user's session: the message with T, a countdown, and **"Adiar 15 min"** while postpones remain.
+shuts down at R + warning (manual default 1 minute, FR-305). If a user is logged on, the "UniWake
+Aviso" task shows a pt-BR window in the user's session: the message with T, a countdown, and
+**"Adiar 15 min"** while postpones remain. With a user logged on and active the machine still
+shuts down after the warning and postpones (Q-2).
+
+**FR-304.1a Message (Q-8).** Default: "Este computador será desligado às {hora} pela equipe de TI.
+Salve seus arquivos: o que não for salvo será perdido." When postpones remain, the suffix "Você
+pode adiar mais {n} vez(es)." is appended. Both texts are settings ("Configurações → Desligar"),
+1–300 characters; saving is refused unless the main text keeps `{hora}` and the suffix keeps
+`{n}`. The same text (without the suffix) goes to `shutdown /c` (limit 512 characters).
 
 **FR-304.2 Postpone.** Default up to **2** postpones of **15 minutes** (both configurable per
 schedule, "Permitir adiar" can be off). Each postpone moves T by the postpone length and the
@@ -890,8 +905,9 @@ machine starts the warning, stops it; during the warning the agent runs `shutdow
 receives a cancel order.
 
 **FR-304.5 Report.** Each execution reports: outcome (desligou, reiniciou, adiou N×, cancelado,
-não executado + reason, falhou + error), planned and actual time, whether a user was logged on
-(`quser`; user name only if the setting allows, open question Q-6), was asleep, freezing state.
+pulado + reason, falhou + error), planned and actual time, **whether a user was logged on and how
+many sessions** (`quser`), was asleep, freezing state. **User names are never collected, sent or
+stored** (LGPD, Q-6); the agent drops them while parsing.
 
 - AC-304-01 [Pester]: Given a logged-on user, Then the warning task is started in the user's
   session with the message, countdown and postpones left.
@@ -906,14 +922,21 @@ não executado + reason, falhou + error), planned and actual time, whether a use
 ### FR-305 Manual shutdown and restart
 "Desligar" and "Reiniciar" next to "Ligar sala" (room) and on the device page / selection, with the
 same preview and confirmation rules as waking (spec §4, SR-10): the preview lists how many are
-**ready** and how many **need the new preparation** (excluded). Options in the dialog: warning
-(0–30 min, default 5), allow postpone (default on). The hub creates one **order** per machine,
+**ready** and how many **need the new preparation** (excluded), and **how many have a user logged
+on** (from their last check-in) before confirming. Warning option (Q-7): **"Aviso: 1 min"**
+(default, no postpone) | **"5 min com adiamento (padrão dos agendamentos)"**. Machines flagged
+"Nunca desligar por agendamento" (FR-306.2) are listed by name and need an extra confirmation
+checkbox. The hub creates one **order** per machine,
 delivered at the machine's next check-in (≤ 1 minute + warning), and follows the job live:
 ordered → received → warning → shut down (confirmed by ping/TCP going offline, reusing the monitor)
 or postponed/cancelled/failed. "Cancelar" cancels orders not yet executed. Orders expire after 2 h.
 
-- AC-305-01 [API]: Given room R with 10 ready machines and 2 v1.2 machines, Then the preview says
-  10 will shut down and 2 need the new preparation, and only 10 orders are created.
+- AC-305-01 [API]: Given room R with 10 ready machines (3 with a user logged on) and 2 v1.2
+  machines, Then the preview says 10 will shut down, 3 have a user logged on and 2 need the new
+  preparation, and only 10 orders are created, with a 1-minute warning and no postpone by default.
+- AC-305-04 [API]: Given a device flagged "Nunca desligar por agendamento" in the target, Then the
+  preview names it and the order is refused (409 `POWER_PROTECTED_CONFIRMATION`) unless the request
+  confirms it explicitly.
 - AC-305-02: Given the orders delivered and the machines going offline, Then the job shows
   "desligou" per machine; a machine still online 5 min after its reported shutdown shows "não
   confirmou".
@@ -921,16 +944,26 @@ or postponed/cancelled/failed. "Cancelar" cancels orders not yet executed. Order
   machines receiving the order, one postponing and the rest shutting down.
 
 ### FR-306 Schedules with action "Desligar"
-"Ação: Ligar | Desligar" in the schedule form (scheduled restart: open question Q-10); days, time,
-targets, holidays and pause work as today; existing schedules become "Ligar". "Desligar" adds:
-warning minutes, allow postpone, postpone count and length, message. The hub's scheduler **does not execute** shutdown schedules (it never sends shutdown at
-the tick): each machine executes its own agenda (FR-303), so no execution lease is involved
-(ADR-048). Schedules sync in Modo equipe like the others.
+**FR-306.1** "Ação: Ligar | Desligar" in the schedule form (scheduled restart is roadmap RM-8,
+Q-10); days, time, targets, holidays and pause work as today; existing schedules become "Ligar".
+"Desligar" adds: warning minutes, allow postpone, postpone count and length (the message is the
+global setting, FR-304.1a). The hub's scheduler **does not execute** shutdown schedules (it never
+sends shutdown at the tick): each machine executes its own agenda (FR-303), so no execution lease
+is involved (ADR-048). Schedules sync in Modo equipe like the others.
+
+**FR-306.2 Exclusions (Q-1)**, none by default:
+- per schedule: "Não desligar máquinas com as etiquetas…" (tag list, shutdown schedules only);
+- per machine: flag **"Nunca desligar por agendamento"** in the device form.
+Excluded machines never get the schedule's items in their agenda. Manual shutdown of a flagged
+machine needs an extra confirmation (FR-305).
 
 - AC-306-01 [API]: Given a shutdown schedule, Then the scheduler tick creates no wake job and no
   order for it, and the affected machines' agendas include it.
 - AC-306-02 [E2E]: Given the demo hub, When a "Desligar" schedule is created, Then its next runs
   are listed and the schedule list shows the action.
+- AC-306-03: Given a shutdown schedule on room R excluding tag "professor", device P in R tagged
+  "professor" and device F in R flagged "Nunca desligar por agendamento", Then neither P's nor F's
+  agenda contains the schedule's items and the other devices' agendas do.
 
 ### FR-307 History
 Shutdowns and restarts appear in "Histórico" next to wakes: manual jobs, and **scheduled
@@ -954,9 +987,11 @@ Filter (UWF). Result per machine: **"Congelamento: não detectado / detectado (c
 instruction: descongele (Thawed / modo manutenção), execute o comando de novo e congele outra vez.
 Enrollment and the other steps still run.
 
-**FR-308.3 Lost remote shutdown.** A machine that had remote shutdown, is seen online by the
-monitor and has not checked in for **15 minutes** (open question Q-5) shows **"Desligamento remoto
-perdido: provável congelamento ou tarefa removida"** with a link to the help page.
+**FR-308.3 Lost remote shutdown.** A machine that had remote shutdown and has answered ping/TCP
+**without interruption for 15 minutes** (counted from its last offline→online transition, so a PC
+that just booted is not flagged; Q-5) without checking in since it came online shows
+**"Desligamento remoto perdido: provável congelamento ou tarefa removida"** with a link to the
+help page. "Saúde do sistema" shows how many machines are in this state.
 
 **FR-308.4 Agenda on a frozen machine.** The agent always fetches the agenda at startup. If a
 persistent area is configured (`-PersistentPath`, e.g. Deep Freeze ThawSpace `T:\UniWake`) or the
@@ -973,15 +1008,18 @@ shutdown schedules).
   ADR-047's table, and unknown cases say "não verificado".
 - AC-308-02 [Pester]: Given a frozen machine, Then "Desligamento remoto" is "ATENÇÃO" with the
   instruction and enrollment still succeeds.
-- AC-308-03: Given a prepared machine online for 20 minutes without check-ins, Then the device shows
-  "Desligamento remoto perdido" with the help link; a check-in clears it.
+- AC-308-03: Given a prepared machine online without interruption for 20 minutes without
+  check-ins, Then the device shows "Desligamento remoto perdido" with the help link and "Saúde do
+  sistema" counts it; given one online for 10 minutes after being offline, Then it is not flagged;
+  a check-in clears it.
 - AC-308-04 [Pester]: Given `-PersistentPath T:\UniWake` reachable, Then agenda and reports are
   stored there.
 
 ### FR-309 Readiness in the panel
 Device list, device page and room page show **"Pronta para desligar"**, **"Precisa do novo
 preparo"**, **"Desligamento remoto perdido"** or **"Desligamento remoto revogado"**, plus the
-freezing state (FR-308.1), last check-in and agent version.
+freezing state (FR-308.1), last check-in, agent version, sleep timeout ("Suspensão: após 30 min" /
+"nunca" / "desconhecida", FR-301.1) and wake-timer state.
 
 - AC-309-01: Given ready, v1.2, lost and revoked machines, Then each shows its state and only ready
   machines receive orders or agendas.
@@ -1007,28 +1045,19 @@ features, preparation step, roadmap, troubleshooting (task missing, wake timers,
 - **NFR-303 Security:** per-machine tokens (hash only), rotation, revocation, rate limits, signed
   answers and signed self-update (ADR-043, ADR-044); no inbound port on lab PCs.
 
-### Open questions (owner's routine; answer before implementation)
-- **Q-1 Excluded machines.** Should some tags never shut down automatically (e.g. "servidor",
-  "professor")? Proposal: setting "Etiquetas que nunca desligam por agendamento", empty by default;
-  manual shutdown still allowed with confirmation.
-- **Q-2 User active.** With a user logged on and active, shut down after warning + postpones (as
-  decided), or skip that day? Proposal: shut down after warning + postpones (no skip).
-- **Q-3 Wake timers.** May the preparation enable "Permitir temporizadores de ativação" (AC) in the
-  current power plan? Do your lab PCs sleep at all (power plan "Suspender após")? Proposal: enable it.
-- **Q-4 Agenda horizon.** 7 days without talking to the hub before a machine stops shutting down by
-  itself — enough for long breaks (e.g. one week of holidays with the hub off)? Proposal: 7 days,
-  configurable 1–30.
-- **Q-5 Lost tolerance.** 15 minutes online without check-in before "Desligamento remoto perdido"?
-- **Q-6 Privacy.** May reports include the logged-on **user name**, or only "havia usuário logado"?
-  Proposal: only yes/no by default, user name behind a setting.
-- **Q-7 Manual default.** Manual "Desligar": same defaults as schedules (5 min, 2× 15 min), or
-  shorter (e.g. 1 min, no postpone) for end-of-day sweeps?
-- **Q-8 Message.** Default warning text: "Este computador será desligado às {hora} pela equipe de
-  TI. Salve seus arquivos." — OK?
-- **Q-9 Late wake.** A PC that slept through its shutdown time and wakes up later: shut it down
-  (with warning) only if at most 60 minutes late and before its next "Ligar"? Proposal: yes, 60 min.
-- **Q-10 Scheduled restart.** Do you want "Reiniciar" as a schedule action too (e.g. weekly restart
-  for updates), or only the manual "Reiniciar" button? Proposal: manual only in v1.3.
+### Owner decisions (2026-10-11, answers to Q-1..Q-10)
+| Q | Decision | Where |
+|---|---|---|
+| Q-1 Exclusions | None by default; per schedule "não desligar máquinas com as etiquetas…"; per machine "Nunca desligar por agendamento"; manual shutdown of a flagged machine needs extra confirmation | FR-306.2, FR-305 |
+| Q-2 User active | Shut down after warning and postpones; text says unsaved work is lost | FR-304.1, FR-304.1a |
+| Q-3 Sleep | Prepare enables wake timers (AC, active plan, idempotent, in the summary); sleep timeout only read and reported, shown on the device page | FR-301.1, FR-309 |
+| Q-4 Agenda | Explicit window of the next 14 days with concrete instants; nothing outside it runs; no separate validity rule | FR-303.1, FR-303.4 |
+| Q-5 Lost | 15 min of uninterrupted ping/TCP without check-in; count on "Saúde do sistema" | FR-308.3 |
+| Q-6 Privacy | Only "havia usuário logado" + number of sessions; user names never stored (LGPD) | FR-304.5 |
+| Q-7 Manual | Default 1-min warning without postpone; choice "1 min" / "5 min com adiamento"; preview shows machines with a user logged on | FR-305 |
+| Q-8 Message | Default text with {hora} + "Você pode adiar mais {n} vez(es)." suffix; customizable keeping placeholders | FR-304.1a |
+| Q-9 Late wake | Run only if ≤ 60 min late and before the next "Ligar"; else "pulado: acordou {n} min após o horário" | FR-303.5 |
+| Q-10 Restart | Manual only in v1.3; scheduled restart → roadmap RM-8 | FR-306.1, §11 |
 
 ## 7. Non-functional requirements
 | ID | Requirement | Measure / test |
@@ -1107,6 +1136,7 @@ spec section when its SDD cycle starts.
 - **RM-6 Per-room permissions** for larger IT teams.
 - **RM-7 Freezing products' own features** — e.g. drive Deep Freeze's own shutdown/maintenance
   schedules from UniWake (FR-308.6).
+- **RM-8 Scheduled restart** (e.g. weekly) as a schedule action (owner, Q-10).
 
 ## 12. Traceability: improvements → requirements
 | IMP | Requirement |

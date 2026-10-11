@@ -581,8 +581,8 @@ packages/shared/src/agent/     checkin.ts (request/answer Zod schemas, protocol 
                                (item, report outcomes), fixtures/agent/*.json (contract fixtures,
                                used by Vitest and Pester)
 apps/server/src/application/power/
-  agenda-generator.ts   pure: (schedules, exceptions, pause, device targets, tz, now, days) →
-                        items + nextWakes; reuses the schedule engine's occurrence expansion
+  agenda-service.ts     loads schedules/exceptions/pause/devices and calls domain/agenda.ts
+                        (pure: window, items, nextWakes; reuses domain/schedule.ts expansion)
   agent-checkin.ts      authenticate token → apply reports/acks → collect orders → agenda (cache)
                         → hub list → script hashes → rotation → answer
   agent-tokens.ts       issue/rotate/revoke, hash compare (timingSafeEqual)
@@ -612,20 +612,25 @@ Every external call in the PowerShell scripts goes through a small wrapper (`Inv
 ### 15.3 Data (migration 006)
 | Table / change | Kind | Columns |
 |---|---|---|
-| `schedules` + | replicated (existing `schedule`) | action `wake`/`shutdown` (default `wake`), warning_minutes, allow_postpone, postpone_max, postpone_minutes, message NULL |
-| `device_agents` | replicated `device_agent` (uuid = device uuid) | device_id, token_hash, pending_token_hash NULL, issued_at, rotated_at, revoked_at NULL, agent_version, protocol, freeze_product, freeze_state, persistent (bool), seen_coarse_at (30-min rounded), rev, updated_by_instance, updated_at |
-| `power_orders` | replicated `power_order` | id, uuid, job_uuid, device_id, action `shutdown`/`restart`/`cancel`, warning_minutes, allow_postpone, postpone_max, postpone_minutes, message, state (`pendente`,`entregue`,`aviso`,`executada`,`cancelada`,`expirada`,`falhou`), created_by, created_at, expires_at, delivered_by_instance, rev… |
-| `power_reports` | replicated `power_report` (insert-only, uuid from the PC) | id, uuid, device_id, occurrence_uuid NULL, order_uuid NULL, outcome, planned_at, executed_at NULL, postpones, user_logged_on, user_name NULL, was_asleep, freeze_state, detail, received_at |
+| `schedules` + | replicated (existing `schedule`) | action `wake`/`shutdown` (default `wake`), warning_minutes NULL, allow_postpone NULL, postpone_max NULL, postpone_minutes NULL (all NULL for wake schedules), exclude_tags JSON (tag UUIDs, default `[]`; unknown UUIDs ignored) |
+| `devices` + | replicated (existing `device`) | never_scheduled_shutdown (0/1) |
+| `device_agents` | replicated `device_agent` (uuid = device uuid) | device_id, token_hash, pending_token_hash NULL, issued_at, rotated_at, revoked_at NULL, agent_version, protocol, freeze_product, freeze_state, persistent (bool), sleep_after_minutes NULL (0 = never), wake_timers, seen_coarse_at (30-min rounded), rev, updated_by_instance, updated_at |
+| `power_orders` | replicated `power_order` | id, uuid, job_uuid, device_id, action `shutdown`/`restart`/`cancel`, warning_minutes, allow_postpone, postpone_max, postpone_minutes, state (`pendente`,`entregue`,`aviso`,`executada`,`cancelada`,`expirada`,`falhou`), created_by, created_at, expires_at, delivered_by_instance, rev… |
+| `power_reports` | replicated `power_report` (insert-only, uuid from the PC) | id, uuid, device_id, occurrence_uuid NULL, order_uuid NULL, outcome, planned_at, executed_at NULL, postpones, user_logged_on, session_count, was_asleep, late_minutes NULL, freeze_state, detail, received_at — **no user name column** (LGPD, Q-6) |
 | `power_jobs` | replicated `power_job` | id, uuid, action, target JSON, counts, created_by, created_at |
-| `agent_seen` | machine-local | device_id PK, seen_at, ip, boot_time, clock_offset_ms, last_nonce_at |
+| `agent_seen` | machine-local | device_id PK, seen_at, ip, boot_time, clock_offset_ms, user_logged_on, session_count |
 | `hub_keys` | machine-local | key_id PK, public_spki, private_blob (DPAPI), created_at, retired_at NULL |
 | `team_members` + | replicated (existing) | signing_key_id, signing_public_spki |
 
-Settings (`power.*`, team scope): defaultWarningMinutes 5, postponeMax 2, postponeMinutes 15,
-agendaDays 7, lateWakeMaxMinutes 60, lostAfterMinutes 15, tokenRotationDays 30, orderExpiryMinutes
-120, message (Q-8), reportUserName false (Q-6), neverScheduledShutdownTags [] (Q-1). Machine scope:
-none new. Apply order (§14.4) gains `device_agent` after `device`, then `power_job`, `power_order`,
-`power_report`. Retention: reports and orders follow history retention (180 d), pruned per PC
+Settings (`power.*`, shared scope, group "Desligar"): defaultWarningMinutes 5 (0–30), postponeMax 2
+(0–5), postponeMinutes 15 (5–60) — defaults of new shutdown schedules and of the manual "5 min com
+adiamento" option —, warningMessage (must keep `{hora}`), postponeMessage (must keep `{n}`)
+(FR-304.1a). Owner-fixed values are constants in `packages/shared/src/agent/constants.ts`, not
+settings: `AGENDA_DAYS` 14, `LATE_WAKE_MAX_MINUTES` 60, `LOST_AFTER_MINUTES` 15,
+`MANUAL_WARNING_MINUTES` 1, `TOKEN_ROTATION_DAYS` 30, `ORDER_EXPIRY_MINUTES` 120. Machine scope:
+none new. Migration 006 resets `rev` of schedules and devices to 0 so the start-up baseline
+re-logs them with the new snapshot shape (ADR-048). Team `PROTOCOL_VERSION` → 2. Apply order
+(§14.4) gains `device_agent` after `device`, then `power_job`, `power_order`, `power_report`. Retention: reports and orders follow history retention (180 d), pruned per PC
 (tombstones not needed for insert-only rows older than retention; each PC prunes alike).
 
 ### 15.4 Routes
@@ -651,7 +656,7 @@ Panel (`/api`):
 
 SSE: `power.job` `{jobId, counts}`, `power.device` `{jobId, deviceId, state}`, `agent.status`
 `{deviceId, readiness}`. Error codes: `POWER_TARGET_EMPTY`, `POWER_NOT_READY` (all excluded),
-`POWER_JOB_NOT_FOUND`, `AGENT_TOKEN_INVALID` (agent listener, 401, no detail),
+`POWER_JOB_NOT_FOUND`, `POWER_PROTECTED_CONFIRMATION` (409, FR-305), `AGENT_TOKEN_INVALID` (agent listener, 401, no detail),
 `AGENT_RATE_LIMITED`, `AGENT_PROTOCOL_UNSUPPORTED`.
 
 ### 15.5 Flows

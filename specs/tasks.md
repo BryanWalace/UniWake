@@ -338,17 +338,17 @@ Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 ---
 
 # v1.3 "Desligar" (spec §6b, plan §15, ADR-042..048)
-Gate: **owner approval of spec §6b and answers to Q-1..Q-10** before M16 starts. Answers that
-change behaviour are recorded in spec §6b and, if needed, an ADR addendum.
+Gate passed 2026-10-11: owner approved spec §6b and answered Q-1..Q-10 (spec §6b "Owner
+decisions", ADR-043/045/047/048 amended).
 
 ## M16 — Foundations: signing, data, contracts
 | ID | Task | Refs | Tests | Done when |
 |---|---|---|---|---|
 | [ ] M16-T01 | Spike: Node RSA-3072 PKCS#1 v1.5 signature verified by Windows PowerShell 5.1 (`RSACng`, modulus/exponent import); record result in ADR-044. | ADR-044 | Pester on CI-Win | verified or ADR revised |
 | [ ] M16-T02 | `Signer` port + `rsa-signer` adapter (generate on first start, DPAPI-protected private key, key id), `hub_keys` table; public key exposed to the command generator. | ADR-044 | unit + DPAPI contract (CI-Win) | — |
-| [ ] M16-T03 | Migration 006: schedules action + power fields; `device_agents`, `power_jobs`, `power_orders`, `power_reports` replicated; `agent_seen`; `team_members` signing key; change-log entities + apply order; tested on a populated DB copy. | plan §15.3; ADR-048 | migration + checker + apply | — |
-| [ ] M16-T04 | Shared schemas (check-in request/answer, agenda item, report outcomes) + `fixtures/agent/*.json` contract fixtures; `power.*` settings with UI metadata. | FR-302, FR-303 | schema tests | — |
-| [ ] M16-T05 | Agenda generator (pure): expansion from schedules (action shutdown), exceptions, pause, scoping, nextWakes, validity, occurrence UUIDs, content-hash version. | FR-303.1, FR-303.4 | AC-303-01 | fixtures shared with Pester |
+| [ ] M16-T03 | Migration 006: schedules action + power fields + excluded tags, device flag "Nunca desligar por agendamento", new tables (`device_agents`, `power_jobs`, `power_orders`, `power_reports`, `agent_seen`, `hub_keys`), `team_members` signing key; schedule/device snapshots + apply; rev reset → baseline re-log; team `PROTOCOL_VERSION` 2 with "versão diferente" peer status; tested on a populated DB copy. | plan §15.3; ADR-048 | migration + checker + apply + protocol | — |
+| [ ] M16-T04 | Shared schemas (check-in request/answer, agenda item, report outcomes, no user names) + `fixtures/agent/*.json` contract fixtures; owner-fixed constants; `power.*` settings (group "Desligar") with placeholder validation. | FR-302, FR-303 | schema tests | — |
+| [ ] M16-T05 | Agenda generator (pure): expansion from schedules (action shutdown), exceptions, pause, scoping, nextWakes, validity, occurrence UUIDs, content-hash version. | FR-303.1, FR-303.4, FR-306.2 | AC-303-01, AC-306-03 | fixtures shared with Pester |
 | [ ] M16-D | Break-it: DST/tz edge (none in BR, still tested with another tz), midnight, schedule edited between two check-ins, 200-item cap. | tasks §Break-it | regressions | findings filed |
 | [ ] M16-R | Code review → `specs/reviews/M16-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
 
@@ -357,7 +357,7 @@ change behaviour are recorded in spec §6b and, if needed, an ADR addendum.
 |---|---|---|---|---|
 | [ ] M17-T01 | Agent tokens: issue at enrollment (when asked), hash, rotation with pending token, no rotation when frozen without persistence, revoke; enrollment answer signed over nonce with script hashes. | FR-302.2; ADR-043 | AC-302-02, AC-302-04 | — |
 | [ ] M17-T02 | `POST /agent/v1/checkin` + `GET /agent/v1/scripts/:name`: Zod, per-token/IP rate limits, report dedupe/ack, orders delivery, agenda cache, hub list, signature; route-table authz test updated. | FR-302.1, FR-302.3 | AC-302-01, AC-302-03 | — |
-| [ ] M17-T03 | Power orders: preview (ready vs needs preparation, SR-10), jobs, cancel, expiry, live states with monitor offline confirmation, SSE. | FR-305 | AC-305-01, AC-305-02 | — |
+| [ ] M17-T03 | Power orders: preview (ready vs needs preparation, SR-10), jobs, cancel, expiry, live states with monitor offline confirmation, SSE. | FR-305 | AC-305-01, AC-305-02, AC-305-04 | — |
 | [ ] M17-T04 | Scheduler handles only `action = 'wake'`; shutdown schedules feed agendas only; schedule API accepts action + power fields. | FR-306; ADR-048 | AC-306-01 | — |
 | [ ] M17-T05 | Readiness + "perdido" heuristic + freeze field; history aggregation per occurrence and job, "sem relatório" inference; audit entries. | FR-307, FR-308.3, FR-309 | AC-307-01, AC-308-03, AC-309-01 | — |
 | [ ] M17-T06 | Team mode: replicate new entities, signing keys in members, hub list with epoch, two-instance test (machine checks in with B, order made on A, report seen on A). | ADR-048 | integration | — |

@@ -30,3 +30,7 @@ Date: 2026-10-11 · Lens: real lab PCs, real failures.
   scripts, no `-EncodedCommand`, help page entry (RK-24).
 - **D9-11** Modern Standby PCs and power-plan defaults for wake timers are not verified → marked
   "não verificado" in ADR-045; covered by the owner checklist (V3-T02).
+- **D9-12 (CRITICAL, found while fitting the owner's answers to the code)** A v1.2 team member
+  applying a v1.3 schedule snapshot ignores the unknown `action` field, stores a **wake** schedule
+  (waking the labs at shutdown time) and logs it back to the team. → team `PROTOCOL_VERSION` 2,
+  mixed versions do not sync and the peer shows "Versão diferente" (ADR-048, M16-T03).
