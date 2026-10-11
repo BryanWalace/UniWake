@@ -3,9 +3,13 @@
 Atualizado: 2026-10-11 · Branch de trabalho: **`dev`** (ADR-030) · **`main` = `9d7cc31`** · **release v1.2.0 publicada**
 (estável, pedida pelo dono; `releases/latest` = v1.2.0, download e SHA-256 conferidos)
 
-## v1.3 "Desligar" — aprovada; implementação em andamento na `dev` (2026-10-11)
+## v1.3 "Desligar" — M16 pronta na `dev`; próxima: M17 (2026-10-11)
 Só documentos, nada de código: spec §6b (FR-301..311), plano §15, ADR-042..048, constituição v1.3,
-tarefas M16–M20 + Fase 10, revisões `specs/reviews/phase-9-*.md`. Você aprovou e respondeu Q-1..Q-10 (tabela "Owner decisions" no fim da spec §6b). Perguntas eram:
+tarefas M16–M20 + Fase 10, revisões `specs/reviews/phase-9-*.md`. M16 (fundações) concluída: verificação de assinatura no PowerShell 5.1 comprovada, chave do hub,
+migração 006, contrato do agente, configurações "Desligar computadores" e gerador da agenda. A revisão
+achou e corrigiu um problema grave: o agendador ligaria as salas no horário de um agendamento de
+desligar (agora só executa "Ligar"). Nada disso aparece no painel ainda (vem na M19).
+Você aprovou e respondeu Q-1..Q-10 (tabela "Owner decisions" no fim da spec §6b). Perguntas eram:
 etiquetas que nunca desligam, usuário ativo, temporizador de ativação, validade da agenda (7 dias),
 tolerância do "perdido" (15 min), nome do usuário no relatório, padrão do "Desligar" manual, texto
 do aviso, acordar atrasado (60 min) e "Reiniciar" em agendamentos.
@@ -179,8 +183,9 @@ WoL real por modelo de PC, reinício sem ninguém logado, VLANs, HTTPS na rede) 
 ## Agent notes (English)
 
 ### Current state
-- **2026-10-11: v1.3 approved; owner answers recorded (spec §6b "Owner decisions"). M16 in
-  progress** — order: M16-T01 (RSA verify spike in PowerShell 5.1) and M18-T01 (user-session task spike) first,
+- **2026-10-11: v1.3 approved; M16 done (`specs/reviews/M16-review.md`, no open CRITICAL/MAJOR).
+  Next: M17-T01 (agent tokens + signed enrollment answer), then M17-T02..T06.** Notes for M17 in the
+  M16 review (R-M16-03/04). Original order note: M16-T01 (RSA verify spike in PowerShell 5.1) and M18-T01 (user-session task spike) first,
   because ADR-044/046 depend on them. Bump `DEV_VERSION_BASE` to 1.3.0 when M16 starts (M20-T04).
 - Branch `dev`, ahead of `main` (`7297341`). v1.0/v1.1 (M1–M9, Phase 5), M10 (sync-ready data),
   Phase 6/7 specs, M11–M15 and Phase 8 (`specs/validation.md` §v1.2, `specs/reviews/v1.2-final.md`)
@@ -220,3 +225,11 @@ WoL real por modelo de PC, reinício sem ninguém logado, VLANs, HTTPS na rede) 
   Windows). README screenshots are the owner's own photos with network data covered by solid boxes
   (names, IPs, MACs, enrollment command); check any new picture the same way before committing.
 - The GitHub API allows 60 unauthenticated requests/hour: poll CI sparingly.
+- R-M16-01: Vitest workers sometimes die natively (0xC0000409; Git Bash shows exit 127) on this PC.
+  Server tests run in `forks` so the crash names one file; the helper reruns verify once only for that
+  signature. Run Vitest from `C:/git/UniWake` (uppercase drive): from `c:` it loads modules twice
+  and every file fails with "failed to find the current suite".
+- Tests can never start `ping.exe` to a non-loopback host or any `shutdown.exe`: the guard in
+  `apps/server/test/setup/network-guard.ts` throws (constitution §5).
+- Node runs repo `.ts` scripts with type stripping; files with parameter properties need
+  `--experimental-transform-types`.
