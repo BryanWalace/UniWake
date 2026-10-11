@@ -85,6 +85,8 @@ import { TeamLease } from './application/team/team-lease';
 import { TeamService } from './application/team/team-service';
 import type { SecretProtector, SyncEndpoint, SyncNetwork } from './application/ports';
 import { SqliteTeamRepo } from './db/repositories/team-repo';
+import { SqliteHubKeysRepo } from './db/repositories/hub-keys-repo';
+import { HubKeyService } from './application/power/hub-key';
 import { SqliteReplicaStore } from './db/sync/apply';
 import { changeLog, configureChangeLog } from './db/sync/change-log';
 import type { HttpServices } from './http/context';
@@ -159,6 +161,8 @@ export interface Services extends HttpServices {
   scheduler: Scheduler;
   monitor: MonitorService;
   probes: ProbeQueue;
+  /** Signs answers to lab PCs (v1.3, ADR-044); `init()` runs at hub start. */
+  hubKey: HubKeyService;
 }
 
 export function createServices(
@@ -331,9 +335,10 @@ export function createServices(
   });
   // ---------------------------------------------------------------- Modo equipe (v1.2)
   const replica = new SqliteReplicaStore(db);
+  const protector = ports.secrets ?? new DevSecretProtector();
   const team = new TeamService({
     repo: new SqliteTeamRepo(db),
-    protector: ports.secrets ?? new DevSecretProtector(),
+    protector,
     clock,
     audit,
     logger: ports.logger.child({ module: 'team' }),
@@ -538,9 +543,17 @@ export function createServices(
     logger: ports.logger.child({ module: 'discovery' }),
   });
 
+  const hubKey = new HubKeyService({
+    repo: new SqliteHubKeysRepo(db),
+    protector,
+    clock,
+    logger: ports.logger.child({ module: 'hub-key' }),
+  });
+
   return {
     db,
     clock,
+    hubKey,
     audit,
     settings,
     auth,

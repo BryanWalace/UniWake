@@ -469,6 +469,8 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       services.testWol.recover();
       // Before the first scheduler tick: team mode changes how missed runs are handled (FR-204.2).
       await services.team.init();
+      // ADR-044: the key that signs answers to lab PCs (made on the first start of v1.3).
+      await services.hubKey.init();
       services.scheduler.start();
       await services.sync.start();
       services.monitor.start();
