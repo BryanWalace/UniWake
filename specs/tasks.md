@@ -382,7 +382,7 @@ decisions", ADR-043/045/047/048 amended).
 | [x] M19-T01 | Schedule form "Ação: Ligar / Desligar" + warning/postpone/message fields; list shows the action. | FR-306 | AC-306-02 | loading/empty/error states |
 | [x] M19-T02 | "Desligar"/"Reiniciar" on room, device and selection: dialog with preview (ready vs needs preparation), options, confirmation, job drawer with live states, cancel. | FR-305 | AC-305-03 | — |
 | [x] M19-T03 | Readiness badges, freeze field, last check-in, agent version, "Revogar desligamento remoto"; prepare command with `-HubKeyId` and optional persistent path. | FR-309, FR-302.2, FR-308.4 | UI tests | — |
-| [ ] M19-T04 | History: shutdown rows with aggregated outcomes, including those executed with the hub off. | FR-307 | UI test | — |
+| [x] M19-T04 | History: shutdown rows with aggregated outcomes, including those executed with the hub off. | FR-307 | UI test | — |
 | [x] M19-T05 | Demo mode: simulated agents (ready, v1.2, postponing twice, frozen → perdido); never touches real hosts. | FR-310 | AC-310-01 | — |
 | [ ] M19-R | Code review → `specs/reviews/M19-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
 

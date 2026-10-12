@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { PowerJob, PowerPreview } from '@uniwake/shared';
+import type { PowerJob, PowerOccurrence, PowerPreview } from '@uniwake/shared';
 import { type FakeApi, loggedInApi, renderApp } from './helpers';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -164,5 +164,124 @@ describe('manual shutdown (FR-305)', () => {
     await user.click(screen.getByRole('button', { name: 'Desligar' }));
     expect(await screen.findByText('Nenhuma máquina pronta para desligar.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Desligar 0 máquinas$/ })).toBeDisabled();
+  });
+});
+
+describe('Histórico: shutdowns next to wakes (M19-T04, FR-307)', () => {
+  const OCCURRENCE: PowerOccurrence = {
+    occurrence: '9:2026-10-12T22:40',
+    scheduleId: 9,
+    scheduleName: 'Desligar Lab 3 à noite',
+    plannedAt: Date.UTC(2026, 9, 12, 22, 40),
+    counts: {
+      done: 2,
+      was_off: 1,
+      late_wake: 1,
+      cancelled: 0,
+      failed: 0,
+      probably_done: 1,
+      no_report: 0,
+      postponed: 1,
+    },
+    maxPostpones: 2,
+    devices: [
+      {
+        deviceId: 1,
+        name: 'PC-01',
+        result: 'done',
+        postpones: 2,
+        wasAsleep: false,
+        lateMinutes: null,
+        nativeWarning: false,
+        userLoggedOn: true,
+      },
+      {
+        deviceId: 2,
+        name: 'PC-02',
+        result: 'done',
+        postpones: 0,
+        wasAsleep: true,
+        lateMinutes: null,
+        nativeWarning: false,
+        userLoggedOn: false,
+      },
+      {
+        deviceId: 3,
+        name: 'PC-03',
+        result: 'was_off',
+        postpones: 0,
+        wasAsleep: false,
+        lateMinutes: null,
+        nativeWarning: false,
+        userLoggedOn: null,
+      },
+      {
+        deviceId: 4,
+        name: 'PC-04',
+        result: 'late_wake',
+        postpones: 0,
+        wasAsleep: true,
+        lateMinutes: 75,
+        nativeWarning: false,
+        userLoggedOn: null,
+      },
+      {
+        deviceId: 5,
+        name: 'PC-05',
+        result: 'probably_done',
+        postpones: 0,
+        wasAsleep: false,
+        lateMinutes: null,
+        nativeWarning: false,
+        userLoggedOn: null,
+      },
+    ],
+  };
+
+  function historyApi(history: unknown): FakeApi {
+    return loggedInApi()
+      .on('GET', '/api/jobs', { body: { items: [], total: 0, page: 1, pageSize: 50 } })
+      .on('GET', '/api/schedule-runs', { body: { items: [], total: 0, page: 1, pageSize: 50 } })
+      .on('GET', '/api/schedules', { body: [] })
+      .on('GET', '/api/rooms', { body: [LAB3] })
+      .on('GET', '/api/power/jobs/4', { body: JOB })
+      .on('GET', '/api/power/history', history as { body: unknown });
+  }
+
+  it('aggregates a scheduled occurrence by outcome and lists manual jobs', async () => {
+    historyApi({ body: { occurrences: [OCCURRENCE], jobs: [JOB] } });
+    const user = userEvent.setup();
+    renderApp('/historico');
+    const section = await screen.findByRole('region', { name: 'Desligamentos e reinícios' });
+    expect(
+      await within(section).findByText(
+        '2/5 desligaram, 1 adiou até 2×, 1 provavelmente desligou (sem relatório), 1 estava desligada, 1 acordou atrasada (pulado)',
+      ),
+    ).toBeInTheDocument();
+    expect(section).toHaveTextContent('Desligar Lab 3 à noite');
+    expect(section).toHaveTextContent('PC-04: Pulado: acordou 75 min após o horário');
+    expect(section).toHaveTextContent('PC-01: Desligou · adiou 2× · havia usuário logado');
+    const table = within(section).getByRole('table', { name: /pedidos pelo painel/ });
+    expect(table).toHaveTextContent('sala Lab 3');
+    expect(table).toHaveTextContent('1/3');
+    await user.click(within(table).getByRole('button'));
+    expect(
+      await screen.findByRole('complementary', { name: 'Andamento do desligamento' }),
+    ).toHaveTextContent('PC-02');
+  });
+
+  it('shows the empty and error states', async () => {
+    historyApi({ body: { occurrences: [], jobs: [] } });
+    const { unmount } = renderApp('/historico');
+    expect(await screen.findByText('Nenhum desligamento ainda')).toBeInTheDocument();
+    unmount();
+    vi.unstubAllGlobals();
+    historyApi({
+      status: 500,
+      body: { code: 'INTERNAL_ERROR', message: 'Erro interno inesperado.' },
+    });
+    renderApp('/historico');
+    const section = await screen.findByRole('region', { name: 'Desligamentos e reinícios' });
+    expect(await within(section).findByText('Erro interno inesperado.')).toBeInTheDocument();
   });
 });
