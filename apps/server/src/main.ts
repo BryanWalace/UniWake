@@ -1,8 +1,10 @@
 /**
  * Process entry point: CLI flags, config, signals and exit codes.
  *   node server.mjs [--demo] [--data-dir <dir>] [--version]
+ *   node server.mjs --export <file> [--sections a,b] [--password-env VAR] [--data-dir <dir>]
+ *   node server.mjs --import <file> --mode merge|replace [--password-env VAR] [--data-dir <dir>]
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { resolvePrepareScriptPath } from './adapters/prepare-script';
@@ -15,7 +17,11 @@ import { NodeProcessRunner } from './adapters/process-runner';
 import { TaskUpdateLauncher } from './adapters/update-launcher';
 import { WindowsControl } from './adapters/windows-control';
 import { WindowsHostChecks } from './adapters/windows-host';
+import { DevSecretProtector, DpapiSecretProtector } from './adapters/secret-protector';
+import { SystemClock } from './adapters/system-clock';
+import { type CliIo, EXIT_USAGE, panelAnswers, runExport, runImport } from './cli/migration-cli';
 import { ConfigError, dataPaths, resolveConfig } from './config';
+import { Db } from './db/connection';
 import {
   createHub,
   EXIT_CONFIG_ERROR,
@@ -34,7 +40,23 @@ export interface CliArgs {
   demo: boolean;
   dataDir?: string;
   version: boolean;
+  /** v1.4 (FR-406): write a .uniwake file and exit. */
+  export?: string;
+  /** v1.4 (FR-406): import a .uniwake file (service stopped) and exit. */
+  import?: string;
+  mode?: string;
+  sections?: string;
+  passwordEnv?: string;
 }
+
+const VALUE_FLAGS = {
+  '--data-dir': 'dataDir',
+  '--export': 'export',
+  '--import': 'import',
+  '--mode': 'mode',
+  '--sections': 'sections',
+  '--password-env': 'passwordEnv',
+} as const;
 
 export function parseArgs(argv: readonly string[]): CliArgs {
   const args: CliArgs = { demo: false, version: false };
@@ -42,10 +64,10 @@ export function parseArgs(argv: readonly string[]): CliArgs {
     const a = argv[i];
     if (a === '--demo') args.demo = true;
     else if (a === '--version' || a === '-v') args.version = true;
-    else if (a === '--data-dir') {
+    else if (a !== undefined && a in VALUE_FLAGS) {
       const v = argv[++i];
-      if (!v) throw new ConfigError('--data-dir requires a path');
-      args.dataDir = v;
+      if (!v) throw new ConfigError(`${a} requires a value`);
+      args[VALUE_FLAGS[a as keyof typeof VALUE_FLAGS]] = v;
     } else throw new ConfigError(`unknown argument: ${a}`);
   }
   return args;
@@ -63,6 +85,10 @@ function readConfigFile(path: string): string | null {
 export interface MainOptions {
   /** Where start-up failures are reported besides stderr (IMP-028); injectable for tests. */
   eventLog?: (message: string) => Promise<void>;
+  /** CLI import (tests): whether a hub answers on the panel port. */
+  hubRunning?: (port: number) => Promise<boolean>;
+  /** CLI (tests): output and environment. */
+  io?: CliIo;
 }
 
 /** The Windows Application event log for a real hub; nothing in demo mode or elsewhere. */
@@ -84,6 +110,8 @@ export async function main(argv: readonly string[], opts: MainOptions = {}): Pro
     process.stdout.write(`${APP_VERSION}\n`);
     return 0;
   }
+
+  if (args.export || args.import) return migrationCli(args, opts);
 
   try {
     const env = process.env;
@@ -163,6 +191,67 @@ export async function main(argv: readonly string[], opts: MainOptions = {}): Pro
     process.stderr.write(`UniWake: fatal error: ${(e as Error).stack ?? String(e)}\n`);
     return 1;
   }
+}
+
+/** `--export` / `--import` (FR-406, ADR-052): no listener is opened. */
+async function migrationCli(args: CliArgs, opts: MainOptions): Promise<number> {
+  const io: CliIo = opts.io ?? {
+    out: (l) => process.stdout.write(`${l}\n`),
+    err: (l) => process.stderr.write(`UniWake: ${l}\n`),
+    env: process.env,
+  };
+  if (args.export && args.import) {
+    io.err('Use --export ou --import, não os dois.');
+    return EXIT_USAGE;
+  }
+  let config;
+  try {
+    const probe = resolveConfig(null, io.env, args.dataDir ? { dataDir: args.dataDir } : {});
+    config = resolveConfig(readConfigFile(dataPaths(probe.dataDir).config), io.env, {
+      dataDir: probe.dataDir,
+    });
+  } catch (e) {
+    io.err((e as Error).message);
+    return EXIT_USAGE;
+  }
+  if (args.export) {
+    const path = dataPaths(config.dataDir).db;
+    if (!existsSync(path)) {
+      io.err(`Banco do UniWake não encontrado em ${path}.`);
+      return EXIT_USAGE;
+    }
+    const db = new Db(path);
+    try {
+      return await runExport(
+        {
+          file: args.export,
+          sections: args.sections,
+          passwordEnv: args.passwordEnv,
+          db,
+          protector:
+            process.platform === 'win32'
+              ? new DpapiSecretProtector(new NodeProcessRunner())
+              : new DevSecretProtector(),
+          clock: new SystemClock(),
+          version: APP_VERSION,
+        },
+        io,
+      );
+    } finally {
+      db.close();
+    }
+  }
+  return runImport(
+    {
+      file: args.import!,
+      mode: args.mode,
+      passwordEnv: args.passwordEnv,
+      config,
+      hubRunning: opts.hubRunning ?? panelAnswers,
+      openHub: () => createHub({ config }),
+    },
+    io,
+  );
 }
 
 if (import.meta.main) {

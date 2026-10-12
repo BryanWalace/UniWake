@@ -97,7 +97,14 @@ describe('CLI', () => {
     });
     expect(parseArgs(['--version']).version).toBe(true);
     expect(() => parseArgs(['--nope'])).toThrow(/unknown argument/);
-    expect(() => parseArgs(['--data-dir'])).toThrow(/requires a path/);
+    expect(() => parseArgs(['--data-dir'])).toThrow(/requires a value/);
+    expect(parseArgs(['--import', 'a.uniwake', '--mode', 'merge', '--password-env', 'P'])).toEqual({
+      demo: false,
+      version: false,
+      import: 'a.uniwake',
+      mode: 'merge',
+      passwordEnv: 'P',
+    });
   });
 
   it('--version prints the version and exits 0; bad args exit 78', async () => {
