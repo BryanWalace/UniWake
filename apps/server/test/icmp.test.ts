@@ -231,11 +231,13 @@ describe.skipIf(process.platform !== 'win32')(
         new MemoryLogger(),
       );
       try {
-        const r = await icmp.ping('127.0.0.1', 1000);
+        // Generous echo timeouts: this checks the contract, not latency. With 1 s a loopback echo
+        // was missed once on a loaded windows-latest runner (CI of 9cbb832).
+        const r = await icmp.ping('127.0.0.1', 5000);
         expect(r.alive).toBe(true);
         const [a, b] = await Promise.all([
-          icmp.ping('127.0.0.2', 1000),
-          icmp.ping('127.0.0.3', 1000),
+          icmp.ping('127.0.0.2', 5000),
+          icmp.ping('127.0.0.3', 5000),
         ]);
         expect(a.alive && b.alive).toBe(true);
       } finally {
