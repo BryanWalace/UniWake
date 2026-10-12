@@ -94,3 +94,49 @@ describe('hub signing key (ADR-044)', () => {
     expect(() => s.keyId()).toThrow(/not loaded/);
   });
 });
+
+describe('hub key in exports (M21-T03, ADR-050/051)', () => {
+  it('exports the key in clear only to the caller and another hub can take it over', async () => {
+    const a = service();
+    await a.s.init();
+    const exported = await a.s.exportKey();
+    expect(exported.keyId).toBe(a.s.keyId());
+
+    const b = service();
+    await b.s.init();
+    const before = b.s.keyId();
+    await b.s.importKey(exported);
+    expect(b.s.keyId()).toBe(a.s.keyId());
+    // Signatures made by B verify with A's public key: lab PCs pinned to A keep trusting.
+    const body = Buffer.from('{"ok":true}');
+    expect(
+      verifySigned(
+        a.s.publicKey(),
+        'nonce-aaaaaaaaaaaaaaaaaa',
+        body,
+        b.s.sign('nonce-aaaaaaaaaaaaaaaaaa', body),
+      ),
+    ).toBe(true);
+    const stored = rows(b.db);
+    expect(stored.find((r) => r.key_id === before)!.retired_at).not.toBeNull();
+    expect(stored.find((r) => r.key_id === exported.keyId)!.retired_at).toBeNull();
+    // Importing it again changes nothing.
+    await b.s.importKey(exported);
+    expect(rows(b.db)).toHaveLength(2);
+  });
+
+  it('refuses a key whose id or public half does not match', async () => {
+    const a = service();
+    await a.s.init();
+    const exported = await a.s.exportKey();
+    const b = service();
+    await b.s.init();
+    await expect(b.s.importKey({ ...exported, keyId: 'outro-id' })).rejects.toThrow(
+      /does not match/,
+    );
+    await expect(
+      b.s.importKey({ ...exported, publicJwk: { ...exported.publicJwk, e: 'AAEAAQ' } }),
+    ).rejects.toThrow(/does not match/);
+    expect(b.s.keyId()).not.toBe(a.s.keyId());
+  });
+});

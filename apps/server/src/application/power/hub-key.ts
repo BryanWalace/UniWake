@@ -143,6 +143,51 @@ export class HubKeyService {
     return { ...this.key().publicJwk };
   }
 
+  /**
+   * The key in clear for a password-sealed export (ADR-050). Only ever held in memory and
+   * encrypted right away by the caller.
+   */
+  async exportKey(): Promise<{ keyId: string; publicJwk: PublicJwk; pkcs8: string }> {
+    await this.ensure();
+    const k = this.key();
+    return {
+      keyId: k.keyId,
+      publicJwk: { ...k.publicJwk },
+      pkcs8: k.privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64'),
+    };
+  }
+
+  /**
+   * Takes over a key from an import (ADR-051): it must be a consistent RSA key whose id matches;
+   * the current one is retired and the new one stored with DPAPI.
+   */
+  async importKey(k: { keyId: string; publicJwk: PublicJwk; pkcs8: string }): Promise<void> {
+    const privateKey = createPrivateKey({
+      key: Buffer.from(k.pkcs8, 'base64'),
+      format: 'der',
+      type: 'pkcs8',
+    });
+    const jwk = createPublicKey(privateKey).export({ format: 'jwk' });
+    const publicJwk: PublicJwk = { n: jwk.n!, e: jwk.e! };
+    if (
+      privateKey.asymmetricKeyType !== 'rsa' ||
+      publicJwk.n !== k.publicJwk.n ||
+      publicJwk.e !== k.publicJwk.e ||
+      jwkThumbprint(publicJwk) !== k.keyId
+    ) {
+      throw new Error('imported hub key does not match its id');
+    }
+    await this.ensure();
+    if (this.key().keyId === k.keyId) return;
+    const privateBlob = await this.d.protector.protect(
+      privateKey.export({ format: 'der', type: 'pkcs8' }),
+    );
+    this.d.repo.retire(this.key().keyId, this.d.clock.now());
+    this.d.repo.insert({ keyId: k.keyId, publicJwk, privateBlob, createdAt: this.d.clock.now() });
+    this.loaded = { keyId: k.keyId, publicJwk, privateKey };
+    this.d.logger.info({ keyId: k.keyId }, 'hub signing key imported');
+  }
+
   /** Base64 RSASSA-PKCS1-v1_5/SHA-256 signature over the nonce and the exact body bytes. */
   sign(nonce: string, body: Buffer): string {
     return sign('sha256', signedBytes(nonce, body), this.key().privateKey).toString('base64');

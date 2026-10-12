@@ -92,6 +92,7 @@ describe('route-table authorization (IMP-014, constitution §5)', () => {
       '/api/update/check',
       '/api/update/install',
       '/api/team', // Modo equipe (FR-201.5): pairing, revocation and leaving are admin actions
+      '/api/migration', // v1.4 Backup e migração (spec §6c): export, import, standby
     ];
     // v1.3 (plan §15.4): revoking a machine's remote shutdown is an admin action.
     const ADMIN_ROUTES = new Set(['POST /api/devices/:id/agent/revoke']);

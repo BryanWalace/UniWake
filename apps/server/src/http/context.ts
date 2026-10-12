@@ -18,6 +18,7 @@ import type { EnrollmentService } from '../application/enrollment/enrollment-ser
 import type { EventsBus } from '../application/events-bus';
 import type { Clock } from '../application/ports';
 import type { BackupService } from '../application/backups/backup-service';
+import type { ExportService } from '../application/migration/export-service';
 import type { HealthService } from '../application/health/health-service';
 import type { NetworkPreviewService } from '../application/network/network-preview';
 import type { LogSource } from '../application/ports';
@@ -78,6 +79,8 @@ export interface HttpServices {
   agentTokens: AgentTokensService;
   /** null when the hub has no backups directory (API tests). */
   backups: BackupService | null;
+  /** v1.4 "Backup e migração" (spec §6c). */
+  exporter: ExportService;
   /** Hub only: the log viewer source (FR-016). */
   logs?: LogSource;
   /** Present on the hub: stores an uploaded PFX for LAN HTTPS (ADR-012). */

@@ -273,6 +273,57 @@ export const ERROR_DEFS = {
     status: 404,
     message: 'Esse desligamento não foi encontrado. Atualize a página.',
   },
+  // v1.4 "Backup e migração" (spec §6c)
+  EXPORT_PASSWORD_REQUIRED: {
+    status: 422,
+    message: 'Usuários e Desligamento remoto só podem ser exportados com senha.',
+  },
+  IMPORT_TOO_LARGE: {
+    status: 413,
+    message: 'Arquivo grande demais para um backup do UniWake (máximo 50 MB).',
+  },
+  IMPORT_NOT_UNIWAKE: {
+    status: 422,
+    message: 'Este arquivo não é um backup do UniWake (.uniwake).',
+  },
+  IMPORT_DAMAGED: {
+    status: 422,
+    message: 'O arquivo está danificado ou foi alterado. Exporte de novo no PC de origem.',
+  },
+  IMPORT_NEWER: {
+    status: 422,
+    message:
+      'Arquivo de uma versão mais nova do UniWake ({version}): atualize este PC antes de importar.',
+  },
+  IMPORT_PASSWORD_REQUIRED: {
+    status: 422,
+    message: 'Este arquivo tem partes protegidas: digite a senha usada na exportação.',
+  },
+  IMPORT_BAD_PASSWORD: {
+    status: 422,
+    message: 'Senha incorreta ou arquivo alterado.',
+  },
+  IMPORT_IN_TEAM: {
+    status: 409,
+    message:
+      'Este PC está numa equipe: importe num PC fora da equipe e depois pareie, ou saia da equipe.',
+  },
+  IMPORT_EXPIRED: {
+    status: 404,
+    message: 'O arquivo enviado expirou (15 minutos). Escolha o arquivo de novo.',
+  },
+  IMPORT_REPLACE_INCOMPLETE: {
+    status: 422,
+    message: 'Para substituir, o arquivo precisa ter Cadastro e Agendamentos.',
+  },
+  MIGRATION_UNDO_UNAVAILABLE: {
+    status: 409,
+    message: 'Não há importação recente para desfazer.',
+  },
+  AGENT_STANDBY: {
+    status: 503,
+    message: 'Este UniWake está em espera depois de uma importação.',
+  },
   INTERNAL_ERROR: {
     status: 500,
     message:

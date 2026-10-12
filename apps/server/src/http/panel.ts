@@ -21,6 +21,7 @@ import { testWolRoutes } from './routes/test-wol';
 import { updateRoutes } from './routes/update';
 import { userRoutes } from './routes/users';
 import { wakeRoutes } from './routes/wake';
+import { migrationRoutes } from './routes/migration';
 import { powerRoutes } from './routes/power';
 import { registerSessionAuth } from './session-auth';
 
@@ -41,6 +42,7 @@ export async function registerPanelRoutes(app: FastifyInstance, s: HttpServices)
   settingsRoutes(app, s);
   logRoutes(app, s);
   backupRoutes(app, s);
+  migrationRoutes(app, s);
   enrollmentRoutes(app, s);
   testWolRoutes(app, s);
   updateRoutes(app, s);

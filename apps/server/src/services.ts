@@ -6,6 +6,7 @@ import type { WakeTarget } from '@uniwake/shared';
 import { AuditService } from './application/audit/audit-service';
 import { AuthService } from './application/auth/auth-service';
 import { BackupService } from './application/backups/backup-service';
+import { ExportService } from './application/migration/export-service';
 import { UsersService } from './application/auth/users-service';
 import { CsvImportService } from './application/devices/csv-import-service';
 import { DashboardService } from './application/dashboard/dashboard-service';
@@ -76,6 +77,7 @@ import { SqliteTestWolRepo } from './db/repositories/test-wol-repo';
 import { SqliteUpdateAutoSkip } from './db/repositories/update-skip-repo';
 import { SqliteUpdateStateStore } from './db/repositories/update-state-repo';
 import { hostname } from 'node:os';
+import { exportCodec } from './adapters/export-codec';
 import { DevSecretProtector } from './adapters/secret-protector';
 import { NodeSyncNetwork } from './adapters/sync-network';
 import { MissedRunsService } from './application/team/missed-runs';
@@ -103,7 +105,7 @@ import { PowerOrdersService } from './application/power/power-orders';
 import { AgendaService } from './application/power/agenda-service';
 import { scheduleRunUuid, uuidV5 } from './db/sync/uuid';
 import { createHash, randomUUID } from 'node:crypto';
-import { SqliteReplicaStore } from './db/sync/apply';
+import { changesSince, SqliteReplicaStore } from './db/sync/apply';
 import { changeLog, configureChangeLog } from './db/sync/change-log';
 import type { HttpServices } from './http/context';
 
@@ -675,10 +677,22 @@ export function createServices(
     version: opts.version ?? '0.0.0-dev',
   });
 
+  const exporter = new ExportService({
+    changes: () => changesSince(db, 0).entries,
+    hubKey: async () => hubKey.exportKey(),
+    self: () => team.self(),
+    codec: exportCodec,
+    settings,
+    audit,
+    clock,
+    version: opts.version ?? '0.0.0-dev',
+  });
+
   return {
     db,
     clock,
     hubKey,
+    exporter,
     agentTokens,
     agent,
     agenda,
