@@ -1,6 +1,6 @@
 /**
  * Starts a hub for Playwright with a fresh data dir and the built web panel.
- * Run: node --import tsx scripts/e2e-server.ts   (ports 47190/47191, loopback only)
+ * Run: node --import tsx scripts/e2e-server.ts   (ports 27190/27191, loopback only)
  */
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -9,13 +9,13 @@ import { main } from '../apps/server/src/main.ts';
 const dataDir = join(process.cwd(), '.e2e-data');
 rmSync(dataDir, { recursive: true, force: true });
 
-process.env.UNIWAKE_PANEL_PORT ??= '47190';
-process.env.UNIWAKE_AGENT_PORT ??= '47191';
+process.env.UNIWAKE_PANEL_PORT ??= '27190';
+process.env.UNIWAKE_AGENT_PORT ??= '27191';
 process.env.UNIWAKE_AGENT_BIND ??= '127.0.0.1';
-// Modo equipe on loopback only (e2e/team.spec.ts starts the second hub on 47194-47196).
-process.env.UNIWAKE_SYNC_PORT ??= '47192';
+// Modo equipe on loopback only (e2e/team.spec.ts starts the second hub on 27194-27196).
+process.env.UNIWAKE_SYNC_PORT ??= '27192';
 process.env.UNIWAKE_SYNC_BIND ??= '127.0.0.1';
-process.env.UNIWAKE_TEAM_ANNOUNCE ??= '127.0.0.1:47196';
+process.env.UNIWAKE_TEAM_ANNOUNCE ??= '127.0.0.1:27196';
 process.env.UNIWAKE_WEB_DIR ??= join(process.cwd(), 'apps', 'web', 'dist');
 process.env.UNIWAKE_LOG_LEVEL ??= 'warn';
 // Specs build their own inventory; simulated machines boot within seconds instead of minutes.

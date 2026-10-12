@@ -1,6 +1,6 @@
 /**
  * M23-T02 (AC-403-06): "Backup e migração" through the UI. The Playwright web server is PC A; this
- * spec starts PC C in-process (panel 47184). Both are demo hubs on loopback: nothing leaves the
+ * spec starts PC C in-process (panel 27184). Both are demo hubs on loopback: nothing leaves the
  * machine. A exports with a password, C imports the file (Substituir) and ends in standby.
  */
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -12,7 +12,7 @@ import { CONFIG_DEFAULTS } from '../apps/server/src/config';
 import { createHub, type Hub } from '../apps/server/src/hub';
 import { ADMIN, expect, guardConsole, test } from './fixtures';
 
-const C_URL = 'http://127.0.0.1:47184';
+const C_URL = 'http://127.0.0.1:27184';
 const PASSWORD = 'senha-de-teste-aaaa';
 
 let hubC: Hub | null = null;
@@ -26,10 +26,10 @@ test.beforeAll(async () => {
       dataDir: dirC,
       demo: true,
       demoSeed: false,
-      panelPort: 47184,
-      agentPort: 47185,
+      panelPort: 27184,
+      agentPort: 27185,
       agentBind: '127.0.0.1',
-      syncPort: 47186,
+      syncPort: 27186,
       logLevel: 'warn',
     },
     logger: pino({ level: 'silent' }),
@@ -37,7 +37,7 @@ test.beforeAll(async () => {
     syncBind: '127.0.0.1',
     secrets: new DevSecretProtector(),
     machineName: 'PC-C',
-    teamDefaultPort: 47186,
+    teamDefaultPort: 27186,
     teamAnnounceTargets: () => [],
   });
   await hubC.start();
