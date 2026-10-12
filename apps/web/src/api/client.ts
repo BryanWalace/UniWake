@@ -79,6 +79,52 @@ export async function request<T>(
   return data as T;
 }
 
+async function failure(res: Response): Promise<never> {
+  let data: unknown;
+  try {
+    data = JSON.parse(await res.text());
+  } catch {
+    data = undefined;
+  }
+  if (isApiError(data))
+    throw new ApiRequestError(res.status, data.code, data.message, data.details);
+  throw new ApiRequestError(res.status, 'INTERNAL_ERROR', NETWORK_ERROR_MESSAGE);
+}
+
+async function send(path: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(path, { credentials: 'same-origin', ...init });
+  } catch {
+    throw new ApiRequestError(0, 'NETWORK_ERROR', NETWORK_ERROR_MESSAGE);
+  }
+}
+
+/** Uploads a file as the raw request body (v1.4 import, F11-01). */
+export async function postFile<T>(path: string, file: Blob): Promise<T> {
+  const res = await send(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/octet-stream' },
+    body: file,
+  });
+  if (!res.ok) return failure(res);
+  return (await res.json()) as T;
+}
+
+/** POSTs JSON and receives a file (v1.4 export): the bytes and the name the hub chose. */
+export async function postForFile(
+  path: string,
+  body: unknown,
+): Promise<{ blob: Blob; fileName: string }> {
+  const res = await send(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) return failure(res);
+  const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1];
+  return { blob: await res.blob(), fileName: name ?? 'UniWake.uniwake' };
+}
+
 export const api = {
   get: <T>(path: string, opts?: RequestOptions) => request<T>('GET', path, undefined, opts),
   post: <T>(path: string, body?: unknown, opts?: RequestOptions) =>

@@ -87,6 +87,41 @@ export class WakeService {
     }));
   }
 
+  /**
+   * The same target resolution as waking (spec §4), for manual shutdown/restart (FR-305):
+   * devices, rooms, the SR-10 rule, labels. Busy-in-a-wake-job is not an exclusion there.
+   */
+  resolveForPower(target: WakeTarget): {
+    devices: Resolution['devices'];
+    rooms: WakePreview['rooms'];
+    needsConfirmation: boolean;
+    label: string;
+    auditTarget: string;
+  } {
+    const res = this.resolve({ target, onlyOffline: false });
+    const busy = res.excluded.filter((e) => e.reason === 'in_active_job').map((e) => e.deviceId);
+    const snapshot = new Map(this.d.snapshot().map((d) => [d.id, d]));
+    const devices = [...res.devices, ...busy.flatMap((id) => snapshot.get(id) ?? [])];
+    const counts = new Map<number | null, number>();
+    for (const d of devices) counts.set(d.roomId, (counts.get(d.roomId) ?? 0) + 1);
+    const full: Resolution = {
+      ...res,
+      devices,
+      rooms: [...counts].map(([roomId, count]) => ({ roomId, count })),
+    };
+    return {
+      devices,
+      rooms: this.roomsView(full),
+      needsConfirmation: needsConfirmation(
+        target,
+        full,
+        this.d.settings.get('wake.confirmThreshold'),
+      ),
+      label: this.label(target, full),
+      auditTarget: this.auditTarget(target),
+    };
+  }
+
   preview(req: WakeRequestParams): WakePreview {
     const res = this.resolve(req);
     return {

@@ -26,8 +26,11 @@ export interface Resolution {
   rooms: { roomId: number | null; count: number }[];
 }
 
-/** Matches before exclusions (SR-02, SR-03, SR-04, SR-05). */
-function matches(target: WakeTarget, d: DeviceSnap): boolean {
+/** Matches before exclusions (SR-02, SR-03, SR-04, SR-05); also used by shutdown agendas. */
+export function targetMatches(
+  target: WakeTarget,
+  d: Pick<DeviceSnap, 'id' | 'roomId' | 'tagIds'>,
+): boolean {
   switch (target.type) {
     case 'devices':
       return target.deviceIds.includes(d.id);
@@ -48,7 +51,7 @@ export function resolveWake(
   const devices: DeviceSnap[] = [];
   const excluded: WakeExclusion[] = [];
   for (const d of snapshot) {
-    if (!matches(req.target, d)) continue;
+    if (!targetMatches(req.target, d)) continue;
     if (!d.enabled) {
       excluded.push({ deviceId: d.id, name: d.name, reason: 'disabled' }); // SR-04
       continue;

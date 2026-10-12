@@ -18,7 +18,9 @@ export type HubEvent =
   | { type: 'notice'; id: number; noticeType: string }
   | { type: 'scheduler'; paused: boolean }
   /** A sync batch changed replicated data (FR-202): panels refetch everything. */
-  | { type: 'sync' };
+  | { type: 'sync' }
+  /** A manual shutdown/restart job changed (FR-305): its drawer refetches it. */
+  | { type: 'power.job'; jobId: number };
 
 export type HubListener = (e: HubEvent) => void;
 

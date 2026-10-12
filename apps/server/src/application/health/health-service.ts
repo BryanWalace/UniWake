@@ -34,7 +34,9 @@ export interface HealthWarning {
     | 'sleep_on_ac'
     | 'pending_reboot'
     | 'active_hours'
-    | 'database';
+    | 'database'
+    | 'remote_shutdown_lost'
+    | 'auto_export_failed';
   severity: 'error' | 'warning';
   message: string;
 }
@@ -57,6 +59,8 @@ export interface HealthDetails {
   monitor: { lastSweepAt: number | null; durationMs: number | null; stalled: boolean };
   clock: { skewMs: number | null; checkedAt: number | null };
   host: HostFacts & { checkedAt: number | null };
+  /** v1.3 remote shutdown readiness counts (FR-309; Q-5: how many are "perdido"). */
+  power: { ready: number; needsPreparation: number; revoked: number; lost: number } | null;
   warnings: HealthWarning[];
 }
 
@@ -76,6 +80,9 @@ export interface HealthDeps {
   monitorIntervalMs: () => number;
   host: HostChecks | null;
   time: TimeCheck | null;
+  powerCounts?: () => { ready: number; needs_preparation: number; revoked: number; lost: number };
+  /** v1.4 automatic export (FR-405): its last result, or null when it never ran. */
+  lastAutoExport?: () => { ok: boolean; error: string | null; at: number } | null;
 }
 
 const MIN = 60_000;
@@ -235,6 +242,22 @@ export class HealthService {
         message: `O "horário ativo" do Windows Update (${this.host.activeHours.start}h–${this.host.activeHours.end}h) não cobre 05:00–08:00: o Windows pode reiniciar durante a ligação da manhã. Ajuste em Windows Update › Opções avançadas.`,
       });
     }
+    const auto = this.d.lastAutoExport?.() ?? null;
+    if (auto && !auto.ok) {
+      warnings.push({
+        code: 'auto_export_failed',
+        severity: 'warning',
+        message: `A exportação automática falhou: ${auto.error ?? 'erro desconhecido'}. Confira a pasta em Configurações › Exportação automática (numa pasta da rede, a conta do computador precisa poder gravar).`,
+      });
+    }
+    const counts = this.d.powerCounts?.() ?? null;
+    if (counts && counts.lost > 0) {
+      warnings.push({
+        code: 'remote_shutdown_lost',
+        severity: 'warning',
+        message: `${counts.lost} ${counts.lost === 1 ? 'máquina está' : 'máquinas estão'} com "Desligamento remoto perdido": ligadas, mas sem falar com o UniWake (provável congelamento ou tarefa removida). Veja Ajuda › Laboratórios com Deep Freeze ou similar.`,
+      });
+    }
     return {
       status: !dbOk ? 'down' : schedulerStalled || monitorStalled ? 'degraded' : 'ok',
       version: this.d.version,
@@ -256,6 +279,12 @@ export class HealthService {
       },
       clock: this.skew,
       host: this.host,
+      power: counts && {
+        ready: counts.ready,
+        needsPreparation: counts.needs_preparation,
+        revoked: counts.revoked,
+        lost: counts.lost,
+      },
       warnings,
     };
   }

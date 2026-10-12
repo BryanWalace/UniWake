@@ -68,6 +68,7 @@ function dashboard(over: Partial<Dashboard> = {}): Dashboard {
     dryRun: false,
     lastSweepAt: NOW,
     pause: null,
+    standby: null,
     ...over,
   };
 }

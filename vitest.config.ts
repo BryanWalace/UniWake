@@ -30,10 +30,11 @@ export default defineConfig({
         test: {
           name: 'server',
           root: 'apps/server',
-          // R-M14-02: on Windows a forked worker sometimes died at exit with 0xC0000409 (native
-          // fail-fast while tearing down sockets/SQLite), failing a random file. Worker threads
-          // end without that process teardown: 0 crashes in repeated full runs.
-          pool: 'threads',
+          // R-M14-02 / R-M16-01: on this Windows PC a worker sometimes dies natively (0xC0000409)
+          // while team-socket tests run alongside others; not reproducible outside Vitest. With
+          // threads that killed the whole run silently (Git Bash exit 127); forks keep the crash
+          // to one file and name it. The commit helper retries only that signature, once.
+          pool: 'forks',
           include: ['test/**/*.test.ts'],
           exclude: ['test/**/*.perf.test.ts'],
           setupFiles: ['test/setup/network-guard.ts'],

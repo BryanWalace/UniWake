@@ -11,6 +11,9 @@ export const HELP_TOPICS = [
   'firewall-icmp',
   'vlan-broadcast',
   'team-mode',
+  'remote-shutdown',
+  'frozen-labs',
+  'backup-migration',
 ] as const;
 export type HelpTopic = (typeof HELP_TOPICS)[number];
 
@@ -233,6 +236,94 @@ export const ERROR_DEFS = {
   MISSED_RUN_NOT_FOUND: {
     status: 404,
     message: 'Esse aviso já foi resolvido ou o agendamento foi removido.',
+  },
+  // v1.3 (plan §15.4). Agent-listener codes go to lab PCs: no detail about why (ADR-043).
+  AGENT_TOKEN_INVALID: {
+    status: 401,
+    message: 'Esta máquina não está autorizada. Execute o comando de "Preparar máquinas" de novo.',
+  },
+  AGENT_RATE_LIMITED: {
+    status: 429,
+    message: 'Muitas consultas desta máquina. Ela tenta de novo no próximo minuto.',
+  },
+  AGENT_PROTOCOL_UNSUPPORTED: {
+    status: 422,
+    message:
+      'Versão do agente não suportada por este UniWake. Execute o comando de preparo de novo.',
+  },
+  AGENT_SCRIPTS_MISSING: {
+    status: 500,
+    message:
+      'Arquivos do agente ausentes nesta instalação do UniWake. Reinstale ou atualize o UniWake.',
+  },
+  POWER_TARGET_EMPTY: {
+    status: 422,
+    message: 'Nenhuma máquina para desligar nessa seleção.',
+  },
+  POWER_NOT_READY: {
+    status: 422,
+    message:
+      'Nenhuma das máquinas está pronta para desligar. Execute o novo comando de "Preparar máquinas" nelas.',
+  },
+  POWER_PROTECTED_CONFIRMATION: {
+    status: 409,
+    message:
+      'A seleção inclui máquinas marcadas "Nunca desligar por agendamento". Confirme para desligá-las também.',
+  },
+  POWER_JOB_NOT_FOUND: {
+    status: 404,
+    message: 'Esse desligamento não foi encontrado. Atualize a página.',
+  },
+  // v1.4 "Backup e migração" (spec §6c)
+  EXPORT_PASSWORD_REQUIRED: {
+    status: 422,
+    message: 'Usuários e Desligamento remoto só podem ser exportados com senha.',
+  },
+  IMPORT_TOO_LARGE: {
+    status: 413,
+    message: 'Arquivo grande demais para um backup do UniWake (máximo 50 MB).',
+  },
+  IMPORT_NOT_UNIWAKE: {
+    status: 422,
+    message: 'Este arquivo não é um backup do UniWake (.uniwake).',
+  },
+  IMPORT_DAMAGED: {
+    status: 422,
+    message: 'O arquivo está danificado ou foi alterado. Exporte de novo no PC de origem.',
+  },
+  IMPORT_NEWER: {
+    status: 422,
+    message:
+      'Arquivo de uma versão mais nova do UniWake ({version}): atualize este PC antes de importar.',
+  },
+  IMPORT_PASSWORD_REQUIRED: {
+    status: 422,
+    message: 'Este arquivo tem partes protegidas: digite a senha usada na exportação.',
+  },
+  IMPORT_BAD_PASSWORD: {
+    status: 422,
+    message: 'Senha incorreta ou arquivo alterado.',
+  },
+  IMPORT_IN_TEAM: {
+    status: 409,
+    message:
+      'Este PC está numa equipe: importe num PC fora da equipe e depois pareie, ou saia da equipe.',
+  },
+  IMPORT_EXPIRED: {
+    status: 404,
+    message: 'O arquivo enviado expirou (15 minutos). Escolha o arquivo de novo.',
+  },
+  IMPORT_REPLACE_INCOMPLETE: {
+    status: 422,
+    message: 'Para substituir, o arquivo precisa ter Cadastro e Agendamentos.',
+  },
+  MIGRATION_UNDO_UNAVAILABLE: {
+    status: 409,
+    message: 'Não há importação recente para desfazer.',
+  },
+  AGENT_STANDBY: {
+    status: 503,
+    message: 'Este UniWake está em espera depois de uma importação.',
   },
   INTERNAL_ERROR: {
     status: 500,

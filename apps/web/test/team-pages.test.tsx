@@ -260,6 +260,7 @@ describe('missed run (FR-204.2)', () => {
           dryRun: false,
           lastSweepAt: null,
           pause: null,
+          standby: null,
         },
       })
       .on('POST', '/api/notices/7/wake-missed', { body: { jobId: 3 } });

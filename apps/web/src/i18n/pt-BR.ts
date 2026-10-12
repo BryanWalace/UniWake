@@ -17,6 +17,7 @@ export const t = {
     logs: 'Logs',
     help: 'Ajuda',
     team: 'Modo equipe',
+    migration: 'Backup e migração',
   },
   user: {
     logout: 'Sair',

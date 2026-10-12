@@ -1,8 +1,9 @@
 import { type FormEvent, useState } from 'react';
-import type {
-  CreatedEnrollmentToken,
-  EnrollmentToken,
-  EnrollmentTokenState,
+import {
+  type CreatedEnrollmentToken,
+  type EnrollmentToken,
+  type EnrollmentTokenState,
+  persistentPathSchema,
 } from '@uniwake/shared';
 import { ApiRequestError } from '../../api/client';
 import { useRooms } from '../../api/hooks';
@@ -134,9 +135,29 @@ function CommandSection({ token }: { token: CreatedEnrollmentToken }) {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
   const chosen = address ?? addresses.data?.selected ?? null;
-  const built = useEnrollmentCommand(token.token, chosen);
+  // FR-308.4: labs with freezing software keep the agenda in a folder that survives restarts.
+  const [persistent, setPersistent] = useState('');
+  const [applied, setApplied] = useState<{ persistentPath?: string; uwfExclude?: boolean }>({});
+  const [uwf, setUwf] = useState(false);
+  const [pathError, setPathError] = useState<string | null>(null);
+  const built = useEnrollmentCommand(token.token, chosen, applied);
   const command = built.data ?? null;
   const error = copyError ?? (built.isError ? errorText(built.error) : null);
+
+  function applyOptions(e: FormEvent) {
+    e.preventDefault();
+    const text = persistent.trim();
+    if (text) {
+      const parsed = persistentPathSchema.safeParse(text);
+      if (!parsed.success) {
+        setPathError(parsed.error.issues[0]?.message ?? 'Pasta inválida.');
+        return;
+      }
+    }
+    setPathError(null);
+    setCopied(false);
+    setApplied({ ...(text ? { persistentPath: text } : {}), ...(uwf ? { uwfExclude: true } : {}) });
+  }
 
   function choose(next: string) {
     setAddress(next);
@@ -191,6 +212,39 @@ function CommandSection({ token }: { token: CreatedEnrollmentToken }) {
           ))}
         </SelectField>
       )}
+      <details className="rounded-md border border-blue-200 bg-white p-3">
+        <summary className="cursor-pointer text-sm font-medium">
+          Laboratório com Deep Freeze ou similar (opcional)
+        </summary>
+        <form className="mt-3 space-y-3" onSubmit={applyOptions}>
+          <p className="text-sm text-slate-700">
+            Se as máquinas desfazem as alterações ao reiniciar, indique uma pasta que é preservada
+            (por exemplo, a área "ThawSpace" do Deep Freeze). Sem ela, o desligamento agendado só
+            funciona enquanto a máquina não reinicia.
+          </p>
+          <TextField
+            label="Pasta persistente"
+            hint={'Exemplo: T:\\UniWake. Sem espaços.'}
+            value={persistent}
+            error={pathError ?? undefined}
+            onChange={(e) => setPersistent(e.target.value)}
+            className="max-w-md"
+          />
+          <label className="inline-flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={uwf} onChange={(e) => setUwf(e.target.checked)} />
+            Excluir a pasta do agente do Filtro de Gravação Unificado (UWF)
+          </label>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button type="submit">Atualizar comando</Button>
+            {(persistent.trim() !== (applied.persistentPath ?? '') ||
+              uwf !== (applied.uwfExclude ?? false)) && (
+              <span className="text-sm text-amber-900">
+                O comando abaixo ainda não tem estas opções.
+              </span>
+            )}
+          </div>
+        </form>
+      </details>
       <FormError message={error} />
       {command && (
         <>

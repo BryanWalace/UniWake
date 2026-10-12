@@ -25,6 +25,9 @@ const SCHEDULE: Schedule = {
   nextRun: new Date(2026, 9, 6, 6, 50).getTime(), // local time: tests run in any zone
   createdAt: 0,
   updatedAt: 0,
+  action: 'wake',
+  power: null,
+  excludeTagIds: [],
 };
 
 function api(list: Schedule[] = [SCHEDULE]): FakeApi {
@@ -111,10 +114,44 @@ describe('schedules page (FR-005.1, FR-005.8)', () => {
       weekdays: 31,
       timeLocal: '06:50',
       target: { type: 'rooms', roomIds: [3], includeNoRoom: false },
+      action: 'wake',
       onlyOffline: false,
       stagger: null,
     });
     expect(posts[1]).toMatchObject({ confirm: { count: 30 } });
+  });
+
+  it('a "Desligar" schedule sends the warning, postpone and excluded tags, and hides the wake options', async () => {
+    const posts: unknown[] = [];
+    api([])
+      .on('GET', '/api/tags', {
+        body: [{ id: 7, name: 'professor', color: '#000', deviceCount: 1 }],
+      })
+      .on('POST', '/api/schedules', (body) => {
+        posts.push(body);
+        return { status: 201, body: { ...SCHEDULE, name: 'Noite', action: 'shutdown' } };
+      });
+    const user = userEvent.setup();
+    renderApp('/agendamentos');
+    await user.click(await screen.findByRole('button', { name: 'Novo agendamento' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Novo agendamento' });
+    await user.click(within(dialog).getByRole('radio', { name: 'Desligar' }));
+    expect(
+      within(dialog).queryByText('Ligar só as que estiverem desligadas'),
+    ).not.toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText('Nome'), 'Noite');
+    await user.click(await within(dialog).findByRole('checkbox', { name: /Lab 3/ }));
+    await user.type(within(dialog).getByLabelText('Aviso antes de desligar (min)'), '10');
+    await user.click(within(dialog).getByRole('checkbox', { name: 'professor' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Salvar' }));
+    await screen.findByText('Agendamento "Noite" salvo.');
+    expect(posts[0]).toMatchObject({
+      action: 'shutdown',
+      onlyOffline: false,
+      stagger: null,
+      power: { warningMinutes: 10, allowPostpone: true },
+      excludeTagIds: [7],
+    });
   });
 
   it('shows field errors from the server next to the fields', async () => {

@@ -5,7 +5,7 @@ and CI workflow steps. "pass (automated)" means the listed tests or CI steps exi
 verify` / CI ran them green on the commit this file was generated from; up to three pieces of
 evidence are shown per criterion.
 
-**149** automated criteria with evidence · **1** manual (owner checklist, V-T05) ·
+**197** automated criteria with evidence · **1** manual (owner checklist, V-T05) ·
 **0** without evidence.
 
 | AC | Task | Status | Evidence |
@@ -160,3 +160,51 @@ evidence are shown per criterion.
 | AC-205-01 | M14-T03 | pass (automated) | CI `.github/workflows/ci.yml` step “Install, upgrade and uninstall (AC-001-01a, AC-001-02, AC-001-03, AC-205-01)” |
 | AC-206-01 | M14-T06 | pass (automated) | `apps/web/test/team-pages.test.tsx` › AC-206-01: "Modo equipe" opens the team help page with the Power On by RTC tip |
 | AC-207-01 | M15-T01 | pass (automated) | `apps/web/test/team-pages.test.tsx` › AC-207-01: issue links open the right GitHub forms with the version pre-filled |
+| AC-301-01 | M18-T05 | pass (automated) | `scripts/tests/prepare-target.agent.Tests.ps1` › AC-301-01: on a v1.2-prepared PC the new command installs the agent and tasks; a second run ends the same |
+| AC-301-02 | M18-T05 | pass (automated) | `scripts/tests/prepare-target.agent.Tests.ps1` › AC-301-02: an older hub (no agent in the answer) → NÃO SE APLICA, every other step still runs |
+| AC-301-03 | M18-T05 | pass (automated) | `scripts/tests/prepare-target.agent.Tests.ps1` › AC-301-03: with -WhatIf nothing is written and the summary lists what would be done |
+| AC-301-04 | M18-T05 | pass (automated) | `scripts/tests/prepare-target.agent.Tests.ps1` › AC-301-04: -RemoveAgent removes the tasks and the agent files, nothing else |
+| AC-302-01 | M17-T02 | pass (automated) | `apps/server/test/agent-checkin.test.ts` › AC-302-01: a valid token gets orders, agenda and a signature over the body and its nonce |
+| AC-302-02 | M17-T01 | pass (automated) | `apps/server/test/agent-checkin.test.ts` › AC-302-02: a revoked, unknown or missing token gets 401 and no data<br>`apps/server/test/agent-enroll.test.ts` › AC-302-02: a revoked, unknown or replaced token identifies no machine |
+| AC-302-03 | M17-T02 | pass (automated) | `apps/server/test/agent-checkin.test.ts` › AC-302-03: the 7th check-in in a minute with one token gets 429 |
+| AC-302-04 | M17-T01 | pass (automated) | `apps/server/test/agent-enroll.test.ts` › AC-302-04: after 30 days a new token is due; both work until the new one is used |
+| AC-303-01 | M16-T05 | pass (automated) | `apps/server/test/agenda.test.ts` › AC-303-01: holidays and pauses simply produce no item; 14 days of concrete instants |
+| AC-303-02 | M18-T03 | pass (automated) | `scripts/tests/agent-executor.Tests.ps1` › AC-303-02: with the hub unreachable since 21:20, the PC shuts down at 22:40 with the warning and reports it later |
+| AC-303-03 | M18-T03 | pass (automated) | `scripts/tests/agent-executor.Tests.ps1` › AC-303-03: an agenda whose window ended runs nothing, even an item listed after it |
+| AC-303-04 | M18-T03 | pass (automated) | `scripts/tests/agent-executor.Tests.ps1` › AC-303-04: asleep through 22:35, woken at 22:55 → shuts down with a fresh warning; at 23:50 or after the next wake → skipped |
+| AC-303-05 | M18-T03 | pass (automated) | `scripts/tests/agent-executor.Tests.ps1` › AC-303-05: a PC turned on after 22:40 is never shut down by that item |
+| AC-303-06 | M18-T03 | pass (automated) | `scripts/tests/agent-executor.Tests.ps1` › AC-303-06: with the PC clock 10 min fast, the item runs at 22:40 hub time |
+| AC-304-01 | M18-T04 | pass (automated) | `scripts/tests/agent-warning.Tests.ps1` › AC-304-01: with a user logged on, the warning task gets the message, the time and the postpones left |
+| AC-304-02 | M18-T04 | pass (automated) | `scripts/tests/agent-warning.Tests.ps1` › AC-304-02: two postpones then no answer: shutdown at 23:10, reported "adiado 2×" |
+| AC-304-03 | M18-T04 | pass (automated) | `scripts/tests/agent-warning.Tests.ps1` › AC-304-03: when the warning window does not come up, the native warning runs (shutdown /t 300), no postpone |
+| AC-304-04 | M18-T03 | pass (automated) | `scripts/tests/agent-executor.Tests.ps1` › AC-304-04: a cancel during the native warning runs shutdown /a and reports nothing more |
+| AC-304-05 | M18-T04 | pass (automated) | `scripts/tests/agent-warning.Tests.ps1` › AC-304-05: answers for another request, oversized files and repeated responses change nothing |
+| AC-305-01 | M17-T03 | pass (automated) | `apps/server/test/power-orders.test.ts` › AC-305-01: preview counts ready, v1.2 and logged-on machines; only ready ones get orders, 1 min without postpone |
+| AC-305-04 | M17-T03 | pass (automated) | `apps/server/test/power-orders.test.ts` › AC-305-04: a machine flagged "Nunca desligar por agendamento" is named and needs an explicit confirmation |
+| AC-305-02 | M17-T03 | pass (automated) | `apps/server/test/power-orders.test.ts` › AC-305-02: executed + offline = desligou; still online 5 min later = não confirmou |
+| AC-305-03 | M19-T02 | pass (automated) | `e2e/power.spec.ts` › AC-305-03: "Desligar" on a room shows the machines receiving, one postponing and the rest shutting down |
+| AC-306-01 | M17-T04 | pass (automated) | `apps/server/test/schedule-actions.test.ts` › AC-306-01: the hub never runs a shutdown schedule; the machines' agendas carry it |
+| AC-306-02 | M19-T01 | pass (automated) | `e2e/power.spec.ts` › AC-306-02: a "Desligar" schedule lists its next runs and shows its action |
+| AC-306-03 | M16-T05 | pass (automated) | `apps/server/test/agenda.test.ts` › AC-306-03: excluded tags and "Nunca desligar por agendamento" get no items; others do |
+| AC-307-01 | M17-T05 | pass (automated) | `apps/server/test/power-status.test.ts` › AC-307-01: reports arriving over several check-ins become one row aggregated by outcome |
+| AC-308-01 | M18-T06 | pass (automated) | `scripts/tests/agent-freeze.Tests.ps1` › AC-308-01: each fixture gives ADR-047 |
+| AC-308-02 | M18-T06 | pass (automated) | `scripts/tests/prepare-target.agent.Tests.ps1` › AC-308-02: on a frozen machine the step ends ATENÇÃO with the instruction; enrollment still succeeds |
+| AC-308-03 | M17-T05 | pass (automated) | `apps/server/test/power-status.test.ts` › AC-308-03: online 20 min without a check-in = perdido (counted on Saúde do sistema); a check-in clears it |
+| AC-308-04 | M18-T06 | pass (automated) | `scripts/tests/agent-freeze.Tests.ps1` › AC-308-04: with a persistent path configured, agenda, state and reports live there<br>`scripts/tests/prepare-target.agent.Tests.ps1` › AC-308-04: -PersistentPath is kept for the agent and checked; -UwfExclude excludes the data folder on UWF |
+| AC-309-01 | M17-T05 | pass (automated) | `apps/server/test/power-status.test.ts` › AC-309-01: ready, v1.2, lost and revoked machines show their state; only ready ones get orders |
+| AC-310-01 | M19-T05 | pass (automated) | `apps/server/test/demo-agents.test.ts` › AC-310-01: every case is present and nothing real is sent |
+| AC-311-01 | M20-T01 | pass (automated) | `apps/web/test/help-pages.test.tsx` › AC-311-01: both remote shutdown pages open from the help index |
+| AC-401-01 | M21-T03 | pass (automated) | `apps/server/test/migration-export.test.ts` › AC-401-01: without a password the file carries Cadastro, Agendamentos and shared settings only |
+| AC-401-02 | M21-T03 | pass (automated) | `apps/server/test/export-format.test.ts` › AC-401-02: secret sections need a password of at least 10 characters<br>`apps/server/test/migration-export.test.ts` › AC-401-02: Usuários without a password, or a short one, is refused |
+| AC-402-01 | M21-T02 | pass (automated) | `apps/server/test/migration-import.test.ts` › AC-402-01: wrong or missing password changes nothing; the right one brings users and the key<br>`apps/server/test/secret-box.test.ts` › AC-402-01: a wrong password, one changed byte or another file all give the same error |
+| AC-402-02 | M21-T02 | pass (automated) | `apps/server/test/migration-export.test.ts` › AC-402-02: with a password, users and agent records are sealed, never in clear<br>`apps/server/test/secret-box.test.ts` › AC-402-02: the sealed form never shows the secret or the password |
+| AC-403-01 | M22-T02 | pass (automated) | `apps/server/test/migration-import.test.ts` › AC-403-01: the preview counts creates, updates, unchanged and conflicts, and changes nothing<br>`apps/web/test/migration-page.test.tsx` › AC-403-01: file → manifest → password → preview → IMPORTAR → done |
+| AC-403-02 | M22-T02 | pass (automated) | `apps/server/test/migration-import.test.ts` › AC-403-02: merge deletes nothing; replace makes the sections equal to the file and keeps machine settings |
+| AC-403-03 | M22-T02 | pass (automated) | `apps/server/test/migration-import.test.ts` › AC-403-03: a pre-import backup is taken and "Desfazer importação" requests its restore |
+| AC-403-04 | M22-T01 | pass (automated) | `apps/server/test/export-format.test.ts` › AC-403-04: a newer format is refused with its app version<br>`apps/server/test/migration-import.test.ts` › AC-403-04: a newer format is refused with its version; garbage and edited files too |
+| AC-403-05 | M22-T01 | pass (automated) | `apps/server/test/migration-import.test.ts` › AC-403-05: in a team the import is refused (the file is still inspected); export works |
+| AC-403-06 | M23-T02 | pass (automated) | `e2e/migration.spec.ts` › AC-403-06: export with a password on one hub, import it on another with preview |
+| AC-404-01 | M22-T03 | pass (automated) | `apps/server/test/migration-import.test.ts` › AC-404-01: an imported copy is in standby — schedules skipped, check-ins refused — until activated<br>`apps/web/test/migration-page.test.tsx` › AC-404-01: the banner and "Ativar este UniWake" with typed confirmation |
+| AC-405-01 | M23-T03 | pass (automated) | `apps/server/test/auto-export.test.ts` › AC-405-01: writes a file without secrets to the folder<br>`apps/server/test/auto-export.test.ts` › AC-405-01: keeps only the newest N of this PC and never touches other files<br>`apps/server/test/auto-export.test.ts` › AC-405-01: a missing folder is a warning in "Saúde do sistema" until the next success |
+| AC-406-01 | M23-T04 | pass (automated) | `apps/server/test/migration-cli.test.ts` › AC-406-01: --export writes a valid file; secret sections need --password-env<br>`apps/server/test/migration-cli.test.ts` › AC-406-01: --import refuses while a hub answers (exit 3), then imports (exit 0) |
+| AC-407-01 | M24-T01 | pass (automated) | `apps/web/test/help-pages.test.tsx` › AC-407-01: "Backup e migração" opens from the help index |

@@ -9,6 +9,8 @@ import { sql as roomJobIndex } from './migrations/002_room_job_index';
 import { sql as testWol } from './migrations/003_test_wol';
 import { sql as syncReady } from './migrations/004_sync_ready';
 import { sql as team } from './migrations/005_team';
+import { sql as power } from './migrations/006_power';
+import { sql as importBackup } from './migrations/007_import_backup';
 
 export interface Migration {
   version: number;
@@ -22,6 +24,8 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 3, name: 'test_wol', sql: testWol },
   { version: 4, name: 'sync_ready', sql: syncReady },
   { version: 5, name: 'team', sql: team },
+  { version: 6, name: 'power', sql: power },
+  { version: 7, name: 'import_backup', sql: importBackup },
 ];
 
 export interface MigrateOptions {

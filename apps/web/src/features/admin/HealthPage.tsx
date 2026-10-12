@@ -4,6 +4,7 @@ import { api } from '../../api/client';
 import { ErrorState, LoadingState } from '../../components/Banner';
 import { Button, PageHeader } from '../../components/ui';
 import { formatDateTime } from '../../lib/format';
+import { HelpLink } from '../help/HelpPage';
 import { UpdateCard } from './UpdateCard';
 
 interface HealthDetails {
@@ -148,6 +149,11 @@ export function HealthPage() {
               }`}
             >
               {w.message}
+              {w.code === 'remote_shutdown_lost' && (
+                <span className="mt-1 block">
+                  <HelpLink topic="frozen-labs" />
+                </span>
+              )}
             </li>
           ))}
         </ul>

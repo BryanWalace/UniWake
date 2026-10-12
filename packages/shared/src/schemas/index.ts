@@ -13,3 +13,5 @@ export * from './update';
 export * from './users';
 export * from './wake';
 export * from './team';
+export * from './power';
+export * from './migration';

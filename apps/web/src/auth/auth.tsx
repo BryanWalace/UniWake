@@ -7,6 +7,7 @@ import { keys } from '../api/hooks';
 import { ErrorState, LoadingState } from '../components/Banner';
 import { t } from '../i18n/pt-BR';
 import { WakeProvider } from '../features/wake/WakeProvider';
+import { PowerProvider } from '../features/power/PowerProvider';
 import { PasswordDialog } from '../features/admin/PasswordDialog';
 import { GlobalBanners } from '../features/dashboard/GlobalBanners';
 import { RealtimeProvider } from '../realtime/RealtimeProvider';
@@ -102,11 +103,13 @@ export function RequireAuth() {
   return (
     <RealtimeProvider>
       <WakeProvider>
-        <Layout
-          banners={<GlobalBanners />}
-          userMenu={<UserMenu me={me.data} />}
-          isAdmin={me.data.role === 'admin'}
-        />
+        <PowerProvider>
+          <Layout
+            banners={<GlobalBanners />}
+            userMenu={<UserMenu me={me.data} />}
+            isAdmin={me.data.role === 'admin'}
+          />
+        </PowerProvider>
       </WakeProvider>
     </RealtimeProvider>
   );

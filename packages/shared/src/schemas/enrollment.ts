@@ -56,9 +56,34 @@ export const enrollmentTokenValueSchema = z
   .string()
   .regex(/^[A-Za-z0-9_-]{16,64}$/, 'Código de cadastro inválido.');
 
+/** Top-level Windows folders a persistent folder may never be (D-M19-01, as prepare-target.ps1). */
+const RESERVED_FOLDERS = ['windows', 'users', 'programdata', 'recovery', 'boot', 'perflogs', 'efi'];
+
+/**
+ * A folder that survives freezing (FR-308.4), e.g. `T:\UniWake`: a drive, then a safe path (no
+ * spaces or quotes, so it can go inside the one-line command). The preparation locks it down to
+ * Administrators and SYSTEM, so it can be neither a Windows folder nor contain "." or ".." parts
+ * (D-M19-01); the script also refuses a folder that already holds other files.
+ */
+export const persistentPathSchema = z
+  .string()
+  .trim()
+  .regex(/^[A-Za-z]:\\[A-Za-z0-9._\\-]{1,120}$/, 'Use uma pasta como T:\\UniWake (sem espaços).')
+  .refine((p) => {
+    const parts = p.slice(3).split('\\').filter(Boolean);
+    return (
+      parts.length > 0 &&
+      parts.every((x) => !/^\.+$/.test(x)) &&
+      !RESERVED_FOLDERS.includes(parts[0]!.replace(/\.+$/, '').toLowerCase())
+    );
+  }, 'Use uma pasta só do UniWake, como T:\\UniWake (não uma pasta do Windows).');
+
 export const enrollmentCommandSchema = z.object({
   token: enrollmentTokenValueSchema,
   address: ipv4Schema,
+  persistentPath: persistentPathSchema.optional(),
+  /** Exclude the agent's data folder from the Unified Write Filter (FR-308.4). */
+  uwfExclude: z.boolean().optional(),
 });
 export type EnrollmentCommandInput = z.input<typeof enrollmentCommandSchema>;
 

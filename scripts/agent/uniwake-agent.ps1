@@ -1,0 +1,1204 @@
+﻿<#
+.SYNOPSIS
+  UniWake agent for lab PCs (v1.3, ADR-042). Run by the scheduled task "UniWake" as SYSTEM, at
+  startup and every minute, and by "UniWake Despertar" when the PC wakes for a shutdown.
+.DESCRIPTION
+  Pulls orders and the shutdown agenda from the hub and runs them, also while the hub is off.
+  Built-in Windows components only (PowerShell 5.1, .NET Framework, Task Scheduler, shutdown.exe).
+  Nothing the hub sends is used unless its signature verifies (ADR-044). Every call that touches
+  the computer goes through a wrapper below; tests mock them and the wrappers refuse to run unless
+  the agent was started for real (Invoke-UwAgent).
+#>
+[CmdletBinding()]
+param(
+  # Started by "UniWake Despertar" (the PC was woken for an agenda item).
+  [switch]$Wake
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+$script:UwAgentVersion = '1.3.0'
+$script:UwProtocol = 1
+$script:UwRoot = Join-Path $env:ProgramData 'UniWake'
+$script:UwAgentDir = Join-Path $script:UwRoot 'agent'
+$script:UwDataDir = Join-Path $script:UwAgentDir 'data'
+$script:UwUiDir = Join-Path $script:UwRoot 'ui'
+# Wrappers only touch the computer after Invoke-UwAgent sets this (never when dot-sourced by tests).
+$script:UwRealSystem = $false
+$script:UwIgnorePersistent = $false
+
+$script:UwMinute = 60000L
+$script:UwLateWakeMaxMinutes = 60
+$script:UwSleepGapMs = 3L * 60000
+$script:UwMaxQueuedReports = 500
+$script:UwMaxReportsPerCheckin = 50
+# One timeout per request (HttpWebRequest has no separate connect timeout) and at most 3 attempts
+# per run, so a run with every hub PC off ends in about 15 s of waiting (plan §15.7, NFR-302). The
+# hub that answered last lists itself first, so it is tried first.
+$script:UwHttpTimeoutMs = 5000
+$script:UwMaxHubAttempts = 3
+
+# ------------------------------------------------------------------ signatures (ADR-044)
+
+$script:UwSignedPrefix = 'uniwake-agent-v1'
+
+function ConvertFrom-UwBase64Url {
+  [CmdletBinding()]
+  [OutputType([byte[]])]
+  param([Parameter(Mandatory)][string]$Text)
+  $b64 = $Text.Replace('-', '+').Replace('_', '/')
+  switch ($b64.Length % 4) {
+    2 { $b64 += '==' }
+    3 { $b64 += '=' }
+  }
+  , [Convert]::FromBase64String($b64)
+}
+
+function ConvertTo-UwBase64Url {
+  [CmdletBinding()]
+  [OutputType([string])]
+  param([Parameter(Mandatory)][byte[]]$Bytes)
+  [Convert]::ToBase64String($Bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+}
+
+function Get-UwSha256Hex {
+  [CmdletBinding()]
+  [OutputType([string])]
+  param([Parameter(Mandatory)][AllowEmptyCollection()][byte[]]$Bytes)
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    -join ($sha.ComputeHash($Bytes) | ForEach-Object { $_.ToString('x2') })
+  } finally {
+    $sha.Dispose()
+  }
+}
+
+# RFC 7638 thumbprint of the hub's RSA public key: the id pinned by -HubKeyId.
+function Get-UwKeyId {
+  [CmdletBinding()]
+  [OutputType([string])]
+  param(
+    [Parameter(Mandatory)][string]$N,
+    [Parameter(Mandatory)][string]$E
+  )
+  $json = '{"e":"' + $E + '","kty":"RSA","n":"' + $N + '"}'
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    ConvertTo-UwBase64Url -Bytes $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($json))
+  } finally {
+    $sha.Dispose()
+  }
+}
+
+# True only if $Signature is the hub's RSASSA-PKCS1-v1_5/SHA-256 signature over
+# "uniwake-agent-v1\n<nonce>\n" followed by the exact body bytes.
+function Test-UwSignature {
+  [CmdletBinding()]
+  [OutputType([bool])]
+  param(
+    [Parameter(Mandatory)][AllowEmptyCollection()][byte[]]$Body,
+    [Parameter(Mandatory)][string]$Nonce,
+    [Parameter(Mandatory)][string]$Signature,
+    [Parameter(Mandatory)][string]$N,
+    [Parameter(Mandatory)][string]$E
+  )
+  try {
+    $prefix = [System.Text.Encoding]::UTF8.GetBytes("$script:UwSignedPrefix`n$Nonce`n")
+    $data = New-Object byte[] ($prefix.Length + $Body.Length)
+    [Array]::Copy($prefix, 0, $data, 0, $prefix.Length)
+    [Array]::Copy($Body, 0, $data, $prefix.Length, $Body.Length)
+    $params = New-Object System.Security.Cryptography.RSAParameters
+    $params.Modulus = ConvertFrom-UwBase64Url -Text $N
+    $params.Exponent = ConvertFrom-UwBase64Url -Text $E
+    $rsa = New-Object System.Security.Cryptography.RSACng
+    try {
+      $rsa.ImportParameters($params)
+      return $rsa.VerifyData(
+        $data,
+        [Convert]::FromBase64String($Signature),
+        [System.Security.Cryptography.HashAlgorithmName]::SHA256,
+        [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
+    } finally {
+      $rsa.Dispose()
+    }
+  } catch {
+    # A malformed key or signature is a failed verification, never an exception for the caller.
+    return $false
+  }
+}
+
+# ------------------------------------------------------------------ small helpers
+
+function Get-UwNonce {
+  [CmdletBinding()]
+  [OutputType([string])]
+  param()
+  $bytes = New-Object byte[] 16
+  $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+  try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
+  ConvertTo-UwBase64Url -Bytes $bytes
+}
+
+function Get-UwUuid {
+  [CmdletBinding()]
+  [OutputType([string])]
+  param()
+  [guid]::NewGuid().ToString()
+}
+
+function Read-UwJson {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][string]$Path,
+    $Default = $null
+  )
+  if (-not (Test-Path -LiteralPath $Path)) { return $Default }
+  try {
+    $text = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
+    if ([string]::IsNullOrWhiteSpace($text)) { return $Default }
+    return ($text | ConvertFrom-Json)
+  } catch {
+    return $Default
+  }
+}
+
+# Write to a temporary file, then replace: a power cut never leaves half a file.
+function Save-UwJson {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][string]$Path,
+    [Parameter(Mandatory)][AllowNull()]$Value
+  )
+  $dir = Split-Path -Parent $Path
+  if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+  $tmp = "$Path.tmp"
+  $json = ConvertTo-Json -InputObject $Value -Depth 10 -Compress
+  [System.IO.File]::WriteAllText($tmp, $json, (New-Object System.Text.UTF8Encoding($false)))
+  Move-Item -LiteralPath $tmp -Destination $Path -Force
+}
+
+# Local wall-clock text of an instant (for the warning message), e.g. "22:40".
+function Format-UwTime {
+  [CmdletBinding()]
+  [OutputType([string])]
+  param([Parameter(Mandatory)][long]$Ms)
+  [DateTimeOffset]::FromUnixTimeMilliseconds($Ms).ToLocalTime().ToString('HH:mm')
+}
+
+# ------------------------------------------------------------------ system access (mocked in tests)
+
+function Assert-UwRealSystem {
+  [CmdletBinding()]
+  param([string]$Name)
+  if (-not $script:UwRealSystem) {
+    throw "Chamada real ao sistema fora do agente (teste sem mock?): $Name"
+  }
+}
+
+function Get-UwUtcNow {
+  [CmdletBinding()]
+  [OutputType([long])]
+  param()
+  Assert-UwRealSystem 'Get-UwUtcNow'
+  [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+}
+
+function Wait-UwSecond {
+  [CmdletBinding()]
+  param([int]$Seconds = 1)
+  Assert-UwRealSystem 'Wait-UwSecond'
+  Start-Sleep -Seconds $Seconds
+}
+
+function Get-UwBootTime {
+  [CmdletBinding()]
+  param()
+  Assert-UwRealSystem 'Get-UwBootTime'
+  try {
+    $boot = (Get-CimInstance -ClassName Win32_OperatingSystem).LastBootUpTime
+    return ([DateTimeOffset]$boot).ToUnixTimeMilliseconds()
+  } catch {
+    return $null
+  }
+}
+
+# One HTTP request with the exact response bytes (signatures cover bytes, not decoded text).
+function Invoke-UwHttp {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][string]$Method,
+    [Parameter(Mandatory)][string]$Url,
+    [hashtable]$Headers = @{},
+    [byte[]]$Body = $null,
+    [int]$TimeoutMs = $script:UwHttpTimeoutMs
+  )
+  Assert-UwRealSystem 'Invoke-UwHttp'
+  $req = [System.Net.HttpWebRequest]::Create($Url)
+  $req.Method = $Method
+  $req.Timeout = $TimeoutMs
+  $req.ReadWriteTimeout = $TimeoutMs
+  $req.KeepAlive = $false
+  foreach ($k in $Headers.Keys) {
+    if ($k -eq 'Content-Type') { $req.ContentType = $Headers[$k] } else { $req.Headers[$k] = $Headers[$k] }
+  }
+  if ($null -ne $Body) {
+    $req.ContentLength = $Body.Length
+    $stream = $req.GetRequestStream()
+    try { $stream.Write($Body, 0, $Body.Length) } finally { $stream.Dispose() }
+  }
+  $resp = $null
+  try {
+    $resp = $req.GetResponse()
+  } catch [System.Net.WebException] {
+    if ($null -eq $_.Exception.Response) { throw }
+    $resp = $_.Exception.Response
+  }
+  try {
+    $ms = New-Object System.IO.MemoryStream
+    $rs = $resp.GetResponseStream()
+    try { $rs.CopyTo($ms) } finally { $rs.Dispose() }
+    $out = @{}
+    foreach ($k in $resp.Headers.AllKeys) { $out[$k.ToLowerInvariant()] = $resp.Headers[$k] }
+    return @{ Status = [int]$resp.StatusCode; Body = $ms.ToArray(); Headers = $out }
+  } finally {
+    $resp.Dispose()
+  }
+}
+
+# Whether someone is logged on and how many sessions (owner Q-6: never who). `quser` prints a header
+# line and one line per session; its texts are localized, so only lines are counted.
+function Get-UwSessionInfo {
+  [CmdletBinding()]
+  param()
+  Assert-UwRealSystem 'Get-UwSessionInfo'
+  try {
+    $lines = @(& quser.exe 2>$null | Where-Object { $_ -match '\S' })
+    $count = [Math]::Max(0, $lines.Count - 1)
+    return @{ loggedOn = ($count -gt 0); sessions = $count }
+  } catch {
+    try {
+      $user = (Get-CimInstance -ClassName Win32_ComputerSystem).UserName
+      if ($user) { return @{ loggedOn = $true; sessions = 1 } }
+      return @{ loggedOn = $false; sessions = 0 }
+    } catch {
+      return @{ loggedOn = $null; sessions = 0 }
+    }
+  }
+}
+
+# Freezing software (FR-308.1, ADR-047), reported in every check-in.
+function Get-UwFreezeInfo {
+  [CmdletBinding()]
+  param()
+  Assert-UwRealSystem 'Get-UwFreezeInfo'
+  try {
+    $services = @(Get-Service -Name 'DFServ', 'DfServEx' -ErrorAction SilentlyContinue | ForEach-Object Name)
+    $processes = @(Get-Process -Name 'FrzState2k', 'DFServ', 'shield', 'shdserv', 'shdtray', 'DefenderDaemon' -ErrorAction SilentlyContinue | ForEach-Object ProcessName)
+    $dfcExit = $null
+    if ($services.Count -gt 0 -or $processes -contains 'FrzState2k') {
+      # DFC.exe location is not documented for every version (ADR-047): PATH, then the usual folders.
+      $candidates = @(Get-Command 'DFC.exe' -ErrorAction SilentlyContinue | ForEach-Object Source) +
+        @("$env:WINDIR\SysWOW64\DFC.exe", "$env:WINDIR\System32\DFC.exe")
+      $dfc = @($candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1)
+      if ($dfc.Count -gt 0) {
+        & $dfc[0] get /ISFROZEN | Out-Null
+        $dfcExit = $LASTEXITCODE
+      }
+    }
+    $uwf = $null
+    try {
+      $f = Get-CimInstance -Namespace 'root\standardcimv2\embedded' -ClassName 'UWF_Filter' -ErrorAction Stop | Select-Object -First 1
+      if ($f) { $uwf = @{ CurrentEnabled = [bool]$f.CurrentEnabled; NextEnabled = [bool]$f.NextEnabled } }
+    } catch {
+      $uwf = $null # no UWF on this edition
+    }
+    return Resolve-UwFreezeState @{ Services = $services; Processes = $processes; DfcExit = $dfcExit; Uwf = $uwf; Failed = $false }
+  } catch {
+    return @{ product = $null; state = 'unverified' }
+  }
+}
+
+<#
+  Freezing software (FR-308.1, ADR-047), from facts gathered by Get-UwFreezeFact. Pure. Only what
+  ADR-047 lists: Deep Freeze state from `DFC.exe get /ISFROZEN` (exit 0 thawed, 1 frozen; third-
+  party sources), UWF from UWF_Filter.CurrentEnabled (Microsoft); Reboot Restore Rx and Shadow
+  Defender are only detected (state "não verificado"). Returns @{ product; state } with state
+  none | frozen | thawed | present_unknown | unverified.
+#>
+function Resolve-UwFreezeState {
+  [CmdletBinding()]
+  param($Facts)
+  # StrictMode: a missing key throws, so read every fact through ContainsKey.
+  $get = { param($k) if ($Facts -is [hashtable] -and $Facts.ContainsKey($k)) { $Facts[$k] } else { $null } }
+  if ($null -eq $Facts -or (& $get 'Failed')) { return @{ product = $null; state = 'unverified' } }
+  $dfcExit = & $get 'DfcExit'
+  $uwf = & $get 'Uwf'
+  $names = @(@(& $get 'Services') + @(& $get 'Processes') | Where-Object { $_ } | ForEach-Object { ([string]$_).ToLowerInvariant() })
+  $found = New-Object System.Collections.ArrayList
+  if ($names -contains 'dfserv' -or $names -contains 'dfservex' -or $names -contains 'frzstate2k') {
+    $state = 'present_unknown'
+    if ($dfcExit -eq 0) { $state = 'thawed' } elseif ($dfcExit -eq 1) { $state = 'frozen' }
+    [void]$found.Add(@{ product = 'deep_freeze'; state = $state })
+  }
+  if ($null -ne $uwf) {
+    $state = 'thawed'
+    if ($uwf.CurrentEnabled) { $state = 'frozen' }
+    [void]$found.Add(@{ product = 'uwf'; state = $state })
+  }
+  if ($names -contains 'shield' -or $names -contains 'shdserv' -or $names -contains 'shdtray') {
+    [void]$found.Add(@{ product = 'reboot_restore_rx'; state = 'present_unknown' })
+  }
+  if ($names -contains 'defenderdaemon') {
+    [void]$found.Add(@{ product = 'shadow_defender'; state = 'present_unknown' })
+  }
+  if ($found.Count -eq 0) { return @{ product = $null; state = 'none' } }
+  # The most constraining one is what matters: frozen, then unknown, then thawed.
+  foreach ($want in 'frozen', 'present_unknown', 'thawed') {
+    foreach ($f in $found) { if ($f.state -eq $want) { return $f } }
+  }
+  return $found[0]
+}
+
+
+# Power plan facts read, never changed (owner Q-3); filled in by M18-T05.
+function Get-UwPowerInfo {
+  [CmdletBinding()]
+  param()
+  Assert-UwRealSystem 'Get-UwPowerInfo'
+  $query = { param($setting) ConvertFrom-UwPowercfgOutput -Lines @(& powercfg.exe /QUERY SCHEME_CURRENT SUB_SLEEP $setting 2>$null) }
+  return ConvertTo-UwPowerInfo -Sleep (& $query 'STANDBYIDLE') -Timers (& $query 'RTCWAKE')
+}
+
+<#
+  AC and DC indexes from `powercfg /QUERY`. Labels are localized (pt-BR Windows prints Portuguese),
+  so only the hex values are read: the last two are the current AC and DC indexes (ADR-045).
+#>
+function ConvertFrom-UwPowercfgOutput {
+  [CmdletBinding()]
+  param([AllowEmptyCollection()][string[]]$Lines)
+  $hex = @($Lines | ForEach-Object { if ($_ -match ':\s*0x([0-9a-fA-F]+)\s*$') { [Convert]::ToInt64($Matches[1], 16) } })
+  if ($hex.Count -lt 2) { return $null }
+  return @{ Ac = $hex[$hex.Count - 2]; Dc = $hex[$hex.Count - 1] }
+}
+
+# What the check-in reports about the power plan (owner Q-3): sleep minutes on AC (0 = never).
+function ConvertTo-UwPowerInfo {
+  [CmdletBinding()]
+  param($Sleep, $Timers)
+  $minutes = $null
+  if ($null -ne $Sleep) { $minutes = [int][Math]::Round($Sleep.Ac / 60) }
+  $wake = 'unknown'
+  if ($null -ne $Timers) {
+    switch ([int]$Timers.Ac) {
+      0 { $wake = 'disabled' }
+      1 { $wake = 'enabled' }
+      2 { $wake = 'important_only' }
+    }
+  }
+  return @{ sleepAfterMinutes = $minutes; wakeTimers = $wake }
+}
+
+function Invoke-UwShutdown {
+  [CmdletBinding()]
+  [OutputType([int])]
+  param([Parameter(Mandatory)][string[]]$Arguments)
+  Assert-UwRealSystem 'Invoke-UwShutdown'
+  $exe = Join-Path $env:SystemRoot 'System32\shutdown.exe'
+  & $exe @Arguments | Out-Null
+  return $LASTEXITCODE
+}
+
+# Rewrites "UniWake Despertar": one-time triggers that wake the PC before each item (ADR-045).
+function Register-UwWakeTask {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)][AllowEmptyCollection()][long[]]$AtMs)
+  Assert-UwRealSystem 'Register-UwWakeTask'
+  $script = Join-Path $script:UwAgentDir 'uniwake-agent.ps1'
+  $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
+    -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$script`" -Wake"
+  $triggers = @($AtMs | ForEach-Object {
+      New-ScheduledTaskTrigger -Once -At ([DateTimeOffset]::FromUnixTimeMilliseconds($_).LocalDateTime)
+    })
+  if ($triggers.Count -eq 0) {
+    # A task needs a trigger: an instant far away keeps it registered but idle.
+    $triggers = @(New-ScheduledTaskTrigger -Once -At ([DateTime]::Now.AddYears(5)))
+  }
+  $settings = New-ScheduledTaskSettingsSet -WakeToRun -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+    -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 2)
+  $principal = New-ScheduledTaskPrincipal -UserId 'S-1-5-18' -RunLevel Highest
+  Register-ScheduledTask -TaskName 'UniWake Despertar' -Action $action -Trigger $triggers `
+    -Settings $settings -Principal $principal -Force | Out-Null
+}
+
+function Start-UwWarningTask {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param()
+  Assert-UwRealSystem 'Start-UwWarningTask'
+  if ($PSCmdlet.ShouldProcess('UniWake Aviso', 'Start-ScheduledTask')) {
+    Start-ScheduledTask -TaskName 'UniWake Aviso'
+  }
+}
+
+# The agent folder must still be owned by Administrators/SYSTEM with no write access for users
+# (ADR-042): otherwise someone could have replaced what SYSTEM runs.
+function Test-UwAgentFolder {
+  [CmdletBinding()]
+  [OutputType([bool])]
+  param([string]$Path = $script:UwAgentDir)
+  Assert-UwRealSystem 'Test-UwAgentFolder'
+  try {
+    $acl = Get-Acl -LiteralPath $Path
+    $owner = (New-Object System.Security.Principal.NTAccount($acl.Owner)).Translate(
+      [System.Security.Principal.SecurityIdentifier]).Value
+    if ($owner -notin @('S-1-5-32-544', 'S-1-5-18')) { return $false }
+    $writers = 'Write|Modify|FullControl|CreateFiles|AppendData|ChangePermissions|TakeOwnership'
+    foreach ($ace in $acl.Access) {
+      if ($ace.AccessControlType -ne 'Allow') { continue }
+      $sid = $ace.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
+      if ($sid -in @('S-1-5-32-544', 'S-1-5-18')) { continue }
+      if ([string]$ace.FileSystemRights -match $writers) { return $false }
+    }
+    return $true
+  } catch {
+    return $false
+  }
+}
+
+# ------------------------------------------------------------------ local data (ADR-045)
+
+function Get-UwPathSet {
+  [CmdletBinding()]
+  param()
+  $config = Read-UwJson (Join-Path $script:UwAgentDir 'config.json') $null
+  $data = $script:UwDataDir
+  if (-not $script:UwIgnorePersistent -and $config -and
+    ($config.PSObject.Properties.Name -contains 'persistentPath') -and $config.persistentPath) {
+    $data = [string]$config.persistentPath
+  }
+  return @{
+    Config    = Join-Path $script:UwAgentDir 'config.json'
+    Token     = Join-Path $script:UwAgentDir 'token.txt'
+    Agenda    = Join-Path $data 'agenda.json'
+    State     = Join-Path $data 'state.json'
+    Reports   = Join-Path $data 'reports.json'
+    Heartbeat = Join-Path $data 'heartbeat.json'
+  }
+}
+
+function Get-UwProp {
+  [CmdletBinding()]
+  param($Object, [string]$Name, $Default = $null)
+  if ($null -eq $Object) { return $Default }
+  if ($Object -is [hashtable]) {
+    if ($Object.ContainsKey($Name)) { return $Object[$Name] }
+    return $Default
+  }
+  if ($Object.PSObject.Properties.Name -contains $Name) { return $Object.$Name }
+  return $Default
+}
+
+# The agent's memory: clock offset, ids already handled (48 h), orders to run, receipts to send.
+function Read-UwState {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)][string]$Path)
+  $raw = Read-UwJson $Path $null
+  $done = @{}
+  $doneRaw = Get-UwProp $raw 'doneIds'
+  if ($doneRaw) { foreach ($p in $doneRaw.PSObject.Properties) { $done[$p.Name] = [long]$p.Value } }
+  return @{
+    offsetMs      = [long](Get-UwProp $raw 'offsetMs' 0)
+    doneIds       = $done
+    agendaVersion = [string](Get-UwProp $raw 'agendaVersion' '')
+    orders        = [System.Collections.ArrayList]@(Get-UwProp $raw 'orders' @())
+    acked         = [System.Collections.ArrayList]@(Get-UwProp $raw 'acked' @())
+  }
+}
+
+function Save-UwState {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][hashtable]$State, [long]$Now)
+  # Handled ids are kept 48 h: long enough for any item of the window to have passed.
+  $keep = [ordered]@{}
+  foreach ($k in $State.doneIds.Keys) {
+    if ($Now - $State.doneIds[$k] -lt 48L * 3600000) { $keep[$k] = $State.doneIds[$k] }
+  }
+  Save-UwJson $Path ([ordered]@{
+      offsetMs      = $State.offsetMs
+      doneIds       = $keep
+      agendaVersion = $State.agendaVersion
+      orders        = @($State.orders)
+      acked         = @($State.acked)
+    })
+}
+
+function Read-UwReportQueue {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)][string]$Path)
+  # Items go down the pipeline: callers wrap with @() (a returned list would nest inside it).
+  foreach ($r in @(Read-UwJson $Path @())) { if ($null -ne $r) { $r } }
+}
+
+# Queues a report; past 500 the oldest are dropped (the hub has missed them anyway).
+function Add-UwReport {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)]$Report)
+  $queue = New-Object System.Collections.ArrayList
+  foreach ($r in @(Read-UwReportQueue $Path)) { [void]$queue.Add($r) }
+  [void]$queue.Add($Report)
+  while ($queue.Count -gt $script:UwMaxQueuedReports) { $queue.RemoveAt(0) }
+  Save-UwJson $Path @($queue)
+}
+
+# A report exactly as the hub's strict contract names it (no user names, owner Q-6).
+function Format-UwReport {
+  [CmdletBinding()]
+  param(
+    [string]$Occurrence = $null,
+    [string]$Order = $null,
+    [Parameter(Mandatory)][ValidateSet('shutdown', 'restart')][string]$Action,
+    [Parameter(Mandatory)][ValidateSet('done', 'cancelled', 'skipped', 'failed')][string]$Outcome,
+    [string]$Reason = $null,
+    $PlannedAt = $null,
+    $ExecutedAt = $null,
+    [int]$Postpones = 0,
+    [hashtable]$Session = @{ loggedOn = $null; sessions = $null },
+    [bool]$WasAsleep = $false,
+    $LateMinutes = $null,
+    [bool]$NativeWarning = $false,
+    [string]$FreezeState = 'unverified',
+    [string]$Detail = $null
+  )
+  [ordered]@{
+    uuid          = Get-UwUuid
+    occurrence    = if ($Occurrence) { $Occurrence } else { $null }
+    order         = if ($Order) { $Order } else { $null }
+    action        = $Action
+    outcome       = $Outcome
+    reason        = if ($Reason) { $Reason } else { $null }
+    plannedAt     = $PlannedAt
+    executedAt    = $ExecutedAt
+    postpones     = $Postpones
+    userLoggedOn  = $Session.loggedOn
+    sessions      = $Session.sessions
+    wasAsleep     = $WasAsleep
+    lateMinutes   = $LateMinutes
+    nativeWarning = $NativeWarning
+    freezeState   = $FreezeState
+    detail        = if ($Detail) { $Detail.Substring(0, [Math]::Min(500, $Detail.Length)) } else { $null }
+  }
+}
+
+# ------------------------------------------------------------------ check-in (FR-302, ADR-043/044)
+
+function Format-UwCheckinRequest {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][string]$Nonce,
+    [Parameter(Mandatory)][long]$Clock,
+    $BootTime,
+    [Parameter(Mandatory)][hashtable]$Freeze,
+    [Parameter(Mandatory)][hashtable]$Power,
+    [Parameter(Mandatory)][hashtable]$Session,
+    [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Reports,
+    [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$AckedOrders
+  )
+  [ordered]@{
+    protocol     = $script:UwProtocol
+    nonce        = $Nonce
+    agentVersion = $script:UwAgentVersion
+    bootTime     = $BootTime
+    clock        = $Clock
+    freeze       = [ordered]@{ product = $Freeze.product; state = $Freeze.state; persistent = [bool]$Freeze.persistent }
+    power        = [ordered]@{ sleepAfterMinutes = $Power.sleepAfterMinutes; wakeTimers = $Power.wakeTimers }
+    session      = [ordered]@{ loggedOn = $Session.loggedOn; sessions = [int]$Session.sessions }
+    reports      = @($Reports | Select-Object -First $script:UwMaxReportsPerCheckin)
+    ackedOrders  = @($AckedOrders | Select-Object -First $script:UwMaxReportsPerCheckin)
+  }
+}
+
+# Keys this PC trusts: the ones in its hub list (the first came pinned by -HubKeyId).
+function Get-UwTrustedKey {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)]$Config, [Parameter(Mandatory)][string]$KeyId)
+  foreach ($h in @(Get-UwProp $Config 'hubs' @())) {
+    if ($h.keyId -eq $KeyId -and (Get-UwKeyId -N $h.publicKey.n -E $h.publicKey.e) -eq $KeyId) {
+      return $h.publicKey
+    }
+  }
+  return $null
+}
+
+<#
+  Tries each hub in the list (FR-302.1, ADR-048) and returns the first answer whose signature
+  verifies with a trusted key over this request's nonce: @{ Answer; Hub; SentAt; ReceivedAt }.
+  @{ Unauthorized = $true } when a hub refused the token; $null when no hub answered.
+#>
+function Invoke-UwCheckin {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)]$Config,
+    [Parameter(Mandatory)][string]$Token,
+    # Everything of the request but the nonce and the clock (Format-UwCheckinRequest parameters).
+    [Parameter(Mandatory)][hashtable]$Request
+  )
+  $unauthorized = $false
+  $attempts = 0
+  foreach ($hub in @(Get-UwProp $Config 'hubs' @())) {
+    foreach ($url in @($hub.urls)) {
+      if ($attempts -ge $script:UwMaxHubAttempts) { break }
+      $attempts++
+      $nonce = Get-UwNonce
+      $sentAt = Get-UwUtcNow
+      $body = [System.Text.Encoding]::UTF8.GetBytes(
+        (ConvertTo-Json -InputObject (Format-UwCheckinRequest -Nonce $nonce -Clock $sentAt @Request) -Depth 10 -Compress))
+      try {
+        $r = Invoke-UwHttp -Method 'POST' -Url "$url/agent/v1/checkin" -Body $body -Headers @{
+          'Authorization' = "Bearer $Token"
+          'Content-Type'  = 'application/json; charset=utf-8'
+        }
+      } catch {
+        continue # hub off or unreachable: next one
+      }
+      if ($r.Status -eq 401) { $unauthorized = $true; continue }
+      if ($r.Status -ne 200) { continue }
+      $keyId = [string]$r.Headers['x-uniwake-key']
+      $key = Get-UwTrustedKey -Config $Config -KeyId $keyId
+      if ($null -eq $key) { continue }
+      $sig = [string]$r.Headers['x-uniwake-signature']
+      if (-not $sig -or -not (Test-UwSignature -Body $r.Body -Nonce $nonce -Signature $sig -N $key.n -E $key.e)) {
+        continue # forged or replayed: ignore everything in it
+      }
+      try {
+        $answer = [System.Text.Encoding]::UTF8.GetString($r.Body) | ConvertFrom-Json
+      } catch {
+        continue
+      }
+      if ((Get-UwProp $answer 'protocol') -ne $script:UwProtocol) { continue }
+      return @{ Answer = $answer; Hub = $hub; Url = $url; SentAt = $sentAt; ReceivedAt = (Get-UwUtcNow) }
+    }
+  }
+  if ($unauthorized) { return @{ Unauthorized = $true } }
+  return $null
+}
+
+<#
+  The new hub list (ADR-044/048): accepted only with an epoch not older than ours; the hub that
+  answered stays in it (a hub without a known address of its own does not list itself).
+#>
+function Merge-UwHubList {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)]$Config, [Parameter(Mandatory)]$Used, [Parameter(Mandatory)]$Hubs)
+  $epoch = [int](Get-UwProp $Config 'epoch' 0)
+  if ([int]$Hubs.epoch -lt $epoch) { return $Config }
+  $list = New-Object System.Collections.ArrayList
+  foreach ($h in @($Hubs.list)) { [void]$list.Add($h) }
+  if (-not (@($list) | Where-Object { $_.keyId -eq $Used.keyId })) { [void]$list.Insert(0, $Used) }
+  # The hub that answered goes first next time.
+  $ordered = @($list | Where-Object { $_.keyId -eq $Used.keyId }) + @($list | Where-Object { $_.keyId -ne $Used.keyId })
+  $out = [ordered]@{}
+  foreach ($p in $Config.PSObject.Properties) { $out[$p.Name] = $p.Value }
+  $out['hubs'] = @($ordered)
+  $out['epoch'] = [int]$Hubs.epoch
+  return [pscustomobject]$out
+}
+
+<#
+  Applies a verified answer (FR-302..304): clock offset, acknowledged reports, orders and cancels,
+  agenda (and the wake task when it changed), new token, hub list. Returns the reports to queue
+  (cancelled orders).
+#>
+function Invoke-UwAnswer {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][hashtable]$Result,
+    [Parameter(Mandatory)][hashtable]$State,
+    [Parameter(Mandatory)][hashtable]$Paths,
+    [Parameter(Mandatory)]$Config,
+    [string[]]$SentAcks = @()
+  )
+  $a = $Result.Answer
+  $mid = [long](($Result.SentAt + $Result.ReceivedAt) / 2)
+  $State.offsetMs = [long]$a.serverTime - $mid
+  $serverNow = [long]$a.serverTime
+  $out = New-Object System.Collections.ArrayList
+
+  # Reports the hub stored leave the queue.
+  $acked = @($a.ackReports)
+  if ($acked.Count -gt 0) {
+    $queue = @(Read-UwReportQueue $Paths.Reports)
+    $left = @($queue | Where-Object { $acked -notcontains $_.uuid })
+    Save-UwJson $Paths.Reports @($left)
+  }
+  # Receipts sent in this check-in are done.
+  foreach ($u in $SentAcks) { [void]$State.acked.Remove($u) }
+
+  foreach ($o in @($a.orders)) {
+    if ($o.action -eq 'cancel') {
+      $pending = @($State.orders | Where-Object { $_.uuid -eq $o.cancels })
+      foreach ($p in $pending) {
+        [void]$State.orders.Remove($p)
+        $State.doneIds[[string]$o.cancels] = $serverNow
+        [void]$out.Add((Format-UwReport -Order $o.cancels -Action $p.action -Outcome 'cancelled' -Detail 'cancelado no painel'))
+      }
+      $State.doneIds[[string]$o.uuid] = $serverNow
+      continue
+    }
+    if ($State.doneIds.ContainsKey([string]$o.uuid)) { continue } # delivered twice (two hubs)
+    if (-not (@($State.orders) | Where-Object { $_.uuid -eq $o.uuid })) { [void]$State.orders.Add($o) }
+    if ($State.acked -notcontains $o.uuid) { [void]$State.acked.Add([string]$o.uuid) }
+  }
+
+  if ([string]$a.agenda.version -ne $State.agendaVersion) {
+    Save-UwJson $Paths.Agenda $a.agenda
+    $State.agendaVersion = [string]$a.agenda.version
+    $wake = @(@($a.agenda.items) | ForEach-Object {
+        [long]$_.at - [long]$_.warningMinutes * $script:UwMinute - $script:UwMinute - $State.offsetMs
+      } | Where-Object { $_ -gt $serverNow - $State.offsetMs } | Select-Object -First 30)
+    Register-UwWakeTask -AtMs ([long[]]$wake)
+  }
+
+  $newToken = Get-UwProp $a 'newToken'
+  if ($newToken) { [System.IO.File]::WriteAllText($Paths.Token, [string]$newToken) }
+
+  $merged = Merge-UwHubList -Config $Config -Used $Result.Hub -Hubs $a.hubs
+  Save-UwJson $Paths.Config $merged
+  return , $out
+}
+
+# ------------------------------------------------------------------ agenda rules (ADR-045)
+
+<#
+  What to do now with the agenda, in order (ADR-045): items already handled or outside the window
+  are ignored; booted after T → never run ("máquina estava desligada"); slept through the warning
+  and woke late → run only if at most 60 min late and before the next wake, else skip; otherwise
+  run once the warning time has come. Returns @{ Kind = 'run'|'skip'; Item; Reason; LateMinutes;
+  WasAsleep } or $null.
+#>
+function Get-UwDueItem {
+  [CmdletBinding()]
+  param(
+    $Agenda,
+    [Parameter(Mandatory)][hashtable]$State,
+    [Parameter(Mandatory)][long]$Now,
+    $BootTime,
+    $LastHeartbeat
+  )
+  if ($null -eq $Agenda) { return $null }
+  $from = [long]$Agenda.window.from
+  $to = [long]$Agenda.window.to
+  $wakes = @(@($Agenda.nextWakes) | ForEach-Object { [long]$_ })
+  foreach ($item in @(@($Agenda.items) | Sort-Object { [long]$_.at })) {
+    $at = [long]$item.at
+    if ($State.doneIds.ContainsKey([string]$item.occurrence)) { continue }
+    if ($at -lt $from -or $at -gt $to) { continue }
+    $warnStart = $at - [long]$item.warningMinutes * $script:UwMinute
+    if ($Now -lt $warnStart) { return $null } # the next one is not due yet
+    if ($null -ne $BootTime -and [long]$BootTime -gt $at) {
+      return @{ Kind = 'skip'; Item = $item; Reason = 'was_off'; LateMinutes = $null; WasAsleep = $false }
+    }
+    $asleep = $null -ne $LastHeartbeat -and [long]$LastHeartbeat -lt $warnStart -and
+      ($Now - [long]$LastHeartbeat) -gt $script:UwSleepGapMs
+    if ($Now -gt $at + $script:UwMinute) {
+      $late = [int][Math]::Floor(($Now - $at) / $script:UwMinute)
+      $nextWake = @($wakes | Where-Object { $_ -gt $at } | Sort-Object | Select-Object -First 1)
+      $beforeWake = $nextWake.Count -eq 0 -or $Now -lt $nextWake[0]
+      if ($late -le $script:UwLateWakeMaxMinutes -and $beforeWake) {
+        return @{ Kind = 'run'; Item = $item; Reason = $null; LateMinutes = $late; WasAsleep = $asleep }
+      }
+      return @{ Kind = 'skip'; Item = $item; Reason = 'late_wake'; LateMinutes = $late; WasAsleep = $asleep }
+    }
+    return @{ Kind = 'run'; Item = $item; Reason = $null; LateMinutes = $null; WasAsleep = $asleep }
+  }
+  return $null
+}
+
+# ------------------------------------------------------------------ warning and shutdown (FR-304, ADR-046)
+
+function Get-UwUiPathSet {
+  [CmdletBinding()]
+  param()
+  @{
+    Request  = Join-Path $script:UwUiDir 'request\request.json'
+    Response = Join-Path $script:UwUiDir 'response'
+  }
+}
+
+# The warning text (FR-304.1a): the shutdown time, plus the postpone suffix while postpones remain.
+function Format-UwWarning {
+  [CmdletBinding()]
+  [OutputType([string])]
+  param(
+    [Parameter(Mandatory)]$Messages,
+    [Parameter(Mandatory)][string]$Time,
+    [int]$PostponesLeft = 0
+  )
+  $text = ([string]$Messages.warning).Replace('{hora}', $Time)
+  if ($PostponesLeft -gt 0) { $text += ' ' + ([string]$Messages.postpone).Replace('{n}', [string]$PostponesLeft) }
+  return $text
+}
+
+# `shutdown /c` takes at most 512 characters, and never the postpone suffix.
+function Get-UwShutdownComment {
+  [CmdletBinding()]
+  [OutputType([string])]
+  param([Parameter(Mandatory)]$Messages, [Parameter(Mandatory)][string]$Time)
+  $text = Format-UwWarning -Messages $Messages -Time $Time
+  return $text.Substring(0, [Math]::Min(512, $text.Length))
+}
+
+<#
+  Responses the user's window wrote for this request (ADR-046). SYSTEM only reads here: it never
+  writes or deletes in this user-writable folder, skips links (reparse points) and files over
+  4 KB, and accepts only the current request id. Each response id counts once.
+#>
+function Read-UwUiResponse {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][string]$Folder,
+    [Parameter(Mandatory)][string]$RequestId,
+    [Parameter(Mandatory)][hashtable]$Seen
+  )
+  $out = New-Object System.Collections.ArrayList
+  if (-not (Test-Path -LiteralPath $Folder)) { return , $out }
+  # At most the 50 newest files: a flood of files in the users' folder cannot stall the warning.
+  $files = @(Get-ChildItem -LiteralPath $Folder -File -Force -ErrorAction SilentlyContinue |
+      Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 50)
+  foreach ($f in $files) {
+    if ($f.Attributes -band [System.IO.FileAttributes]::ReparsePoint) { continue }
+    if ($f.Length -gt 4096) { continue }
+    try {
+      $r = [System.IO.File]::ReadAllText($f.FullName, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+    } catch {
+      continue
+    }
+    if ([string](Get-UwProp $r 'requestId') -ne $RequestId) { continue }
+    $id = [string](Get-UwProp $r 'responseId')
+    if (-not $id -or $Seen.ContainsKey($id)) { continue }
+    $Seen[$id] = $true
+    [void]$out.Add($r)
+  }
+  return , $out
+}
+
+# The request file lives in a SYSTEM-only folder (users read it): writing and deleting there is safe.
+function Write-UwUiRequest {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)][string]$Path, [AllowNull()]$Request)
+  if ($null -eq $Request) {
+    if (Test-Path -LiteralPath $Path) { Remove-Item -LiteralPath $Path -Force }
+    return
+  }
+  Save-UwJson $Path $Request
+}
+
+<#
+  Runs one shutdown/restart (an agenda item or an order): the warning (window with "Adiar" when a
+  user is logged on, the native warning as the fallback), cancel checks, then shutdown.exe. Returns
+  the report, or $null when the job was cancelled through a check-in (that path already reported).
+  -Poll is a check-in; cancels arrive through $State.doneIds.
+#>
+function Invoke-UwExecution {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][hashtable]$Job,
+    [Parameter(Mandatory)][hashtable]$State,
+    [Parameter(Mandatory)]$Messages,
+    [Parameter(Mandatory)][scriptblock]$Poll,
+    [Parameter(Mandatory)][hashtable]$Freeze
+  )
+  $policy = $Job.Policy
+  $postponesLeft = 0
+  if ($policy.allowPostpone) { $postponesLeft = [int]$policy.postponeMax }
+  $postpones = 0
+  $T = [long]$Job.At
+  $session = Get-UwSessionInfo
+  $ui = Get-UwUiPathSet
+  $requestId = Get-UwUuid
+  $seen = @{}
+  $native = $false
+  $window = $false
+  $flag = '/s'
+  if ($Job.Action -eq 'restart') { $flag = '/r' }
+  $report = @{
+    Occurrence = $Job.Occurrence; Order = $Job.Order; Action = $Job.Action; PlannedAt = $Job.PlannedAt
+    Session = $session; WasAsleep = [bool]$Job.WasAsleep; LateMinutes = $Job.LateMinutes; FreezeState = $Freeze.state
+  }
+
+  if ($session.loggedOn) {
+    Write-UwUiRequest -Path $ui.Request -Request (Format-UwUiRequest -RequestId $requestId -Job $Job -T $T `
+        -PostponesLeft $postponesLeft -State $State -Messages $Messages)
+    try { Start-UwWarningTask } catch { Write-Verbose "warning task: $_" }
+    # The window proves it is up with an "alive" response within 20 s; otherwise the native warning.
+    for ($i = 0; $i -lt 20 -and -not $window; $i++) {
+      foreach ($r in (Read-UwUiResponse -Folder $ui.Response -RequestId $requestId -Seen $seen)) {
+        if ($r.kind -eq 'alive') { $window = $true }
+      }
+      if (-not $window) { Wait-UwSecond 1 }
+    }
+    if (-not $window) {
+      $left = ($T - ((Get-UwUtcNow) + $State.offsetMs)) / 1000
+      $seconds = [int][Math]::Max(30, [Math]::Min(600, $left))
+      $comment = Get-UwShutdownComment -Messages $Messages -Time (Format-UwTime ($T - $State.offsetMs))
+      $code = Invoke-UwShutdown -Arguments @($flag, '/t', [string]$seconds, '/c', $comment)
+      Write-UwUiRequest -Path $ui.Request -Request $null
+      if ($code -ne 0) {
+        return Format-UwReport @report -Outcome 'failed' -Reason 'error' -NativeWarning $true `
+          -Detail "shutdown.exe saiu com código $code"
+      }
+      $native = $true
+      $T = (Get-UwUtcNow) + $State.offsetMs + $seconds * 1000L
+    }
+  }
+
+  $lastPoll = (Get-UwUtcNow) + $State.offsetMs
+  while ($true) {
+    $now = (Get-UwUtcNow) + $State.offsetMs
+    if ($null -ne $Job.Order -and $State.doneIds.ContainsKey([string]$Job.Order)) {
+      # Cancelled in the panel (FR-304.4): stop a native countdown; the check-in reported it.
+      if ($native) { [void](Invoke-UwShutdown -Arguments @('/a')) }
+      Write-UwUiRequest -Path $ui.Request -Request $null
+      return $null
+    }
+    if ($window) {
+      foreach ($r in (Read-UwUiResponse -Folder $ui.Response -RequestId $requestId -Seen $seen)) {
+        # Limits are enforced here, not by the window: a tampered file changes nothing (AC-304-05).
+        if ($r.kind -eq 'postpone' -and $postponesLeft -gt 0) {
+          $postponesLeft--
+          $postpones++
+          $T += [long]$policy.postponeMinutes * $script:UwMinute
+          Write-UwUiRequest -Path $ui.Request -Request (Format-UwUiRequest -RequestId $requestId -Job $Job -T $T `
+              -PostponesLeft $postponesLeft -State $State -Messages $Messages)
+        }
+      }
+    }
+    if ($native) {
+      if ($now -ge $T) { break } # Windows is shutting down by itself
+    } elseif ($now -ge $T - 30000) {
+      break
+    }
+    if ($now - $lastPoll -ge 30000) {
+      try { [void](& $Poll) } catch { Write-Verbose "poll: $_" }
+      $lastPoll = (Get-UwUtcNow) + $State.offsetMs
+    }
+    Wait-UwSecond 2
+  }
+
+  Write-UwUiRequest -Path $ui.Request -Request $null
+  if ($native) {
+    return Format-UwReport @report -Outcome 'done' -ExecutedAt ((Get-UwUtcNow) + $State.offsetMs) `
+      -Postpones $postpones -NativeWarning $true
+  }
+  $comment = Get-UwShutdownComment -Messages $Messages -Time (Format-UwTime ($T - $State.offsetMs))
+  $code = Invoke-UwShutdown -Arguments @($flag, '/t', '30', '/c', $comment)
+  if ($code -ne 0) {
+    return Format-UwReport @report -Outcome 'failed' -Reason 'error' -Postpones $postpones `
+      -Detail "shutdown.exe saiu com código $code"
+  }
+  return Format-UwReport @report -Outcome 'done' -ExecutedAt ((Get-UwUtcNow) + $State.offsetMs) -Postpones $postpones
+}
+
+function Format-UwUiRequest {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][string]$RequestId,
+    [Parameter(Mandatory)][hashtable]$Job,
+    [Parameter(Mandatory)][long]$T,
+    [Parameter(Mandatory)][int]$PostponesLeft,
+    [Parameter(Mandatory)][hashtable]$State,
+    [Parameter(Mandatory)]$Messages
+  )
+  [ordered]@{
+    requestId       = $RequestId
+    action          = $Job.Action
+    at              = $T - $State.offsetMs
+    postponesLeft   = $PostponesLeft
+    postponeMinutes = [int]$Job.Policy.postponeMinutes
+    message         = Format-UwWarning -Messages $Messages -Time (Format-UwTime ($T - $State.offsetMs)) -PostponesLeft $PostponesLeft
+  }
+}
+
+# ------------------------------------------------------------------ self-update (ADR-044)
+
+<#
+  Replaces an agent script whose SHA-256 differs from the one in the signed answer, after checking
+  the downloaded bytes against it (write temp, verify, move). A mismatch changes nothing.
+#>
+function Sync-UwScript {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)]$Scripts, [Parameter(Mandatory)][string]$HubUrl)
+  foreach ($name in 'uniwake-agent.ps1', 'uniwake-aviso.ps1') {
+    $want = [string](Get-UwProp (Get-UwProp $Scripts $name) 'sha256' '')
+    if (-not $want) { continue }
+    $path = Join-Path $script:UwAgentDir $name
+    if (Test-Path -LiteralPath $path) {
+      if ((Get-UwSha256Hex -Bytes ([System.IO.File]::ReadAllBytes($path))) -eq $want) { continue }
+    }
+    try {
+      $r = Invoke-UwHttp -Method 'GET' -Url "$HubUrl/agent/v1/scripts/$name"
+    } catch {
+      continue
+    }
+    if ($r.Status -ne 200 -or (Get-UwSha256Hex -Bytes $r.Body) -ne $want) { continue }
+    [System.IO.File]::WriteAllBytes("$path.tmp", $r.Body)
+    Move-Item -LiteralPath "$path.tmp" -Destination $path -Force
+  }
+}
+
+# ------------------------------------------------------------------ one run
+
+<#
+  One run of the task (every minute, at start-up, or woken by "UniWake Despertar"). Exit codes:
+  0 ok, 2 not prepared (no config or token), 3 agent folder changed (refuses to run), 4 token refused
+  by every hub that answered.
+#>
+function Invoke-UwAgent {
+  [CmdletBinding()]
+  param()
+  $script:UwRealSystem = $true
+  if (-not (Test-UwAgentFolder)) { return 3 }
+  # M18-D: SYSTEM writes the agenda in the persistent folder; a folder users can write (a
+  # ThawSpace often is) would let them redirect those writes with links. Locked down by the
+  # preparation; if it is not (anymore), the agent's own folder is used instead.
+  $config = Read-UwJson (Join-Path $script:UwAgentDir 'config.json') $null
+  $persistent = Get-UwProp $config 'persistentPath'
+  if ($persistent -and (Test-Path -LiteralPath $persistent) -and -not (Test-UwAgentFolder -Path $persistent)) {
+    $script:UwIgnorePersistent = $true
+  }
+  return Invoke-UwRun
+}
+
+# Default warning texts until the first answer arrives (owner Q-8).
+$script:UwDefaultMessages = [pscustomobject]@{
+  warning  = 'Este computador será desligado às {hora} pela equipe de TI. Salve seus arquivos: o que não for salvo será perdido.'
+  postpone = 'Você pode adiar mais {n} vez(es).'
+}
+
+# Heartbeat, check-in, then the next order or agenda item (orders first).
+function Invoke-UwRun {
+  [CmdletBinding()]
+  param()
+  $paths = Get-UwPathSet
+  $config = Read-UwJson $paths.Config $null
+  if ($null -eq $config -or -not (Test-Path -LiteralPath $paths.Token)) { return 2 }
+  $state = Read-UwState $paths.State
+  $lastBeat = Get-UwProp (Read-UwJson $paths.Heartbeat $null) 'at'
+  Save-UwJson $paths.Heartbeat ([ordered]@{ at = (Get-UwUtcNow) })
+  $ctx = @{
+    Paths = $paths; Config = $config; State = $state; Last = $null
+    Boot = (Get-UwBootTime); Freeze = (Get-UwFreezeInfo); Power = (Get-UwPowerInfo); Session = (Get-UwSessionInfo)
+  }
+  # FR-308.4: data kept in a folder that survives freezing (ThawSpace, UWF exclusion) when configured.
+  $persistent = Get-UwProp $config 'persistentPath'
+  $ctx.Freeze = @{ product = $ctx.Freeze.product; state = $ctx.Freeze.state; persistent = [bool]$persistent }
+  # No GetNewClosure(): it runs the block in another module, without this script's functions.
+  $script:UwPollContext = $ctx
+  $poll = { Invoke-UwPoll -Context $script:UwPollContext }
+
+  $first = & $poll
+  if ($null -ne $first -and $first.ContainsKey('Unauthorized')) { return 4 }
+  if ($null -ne $ctx.Last) {
+    try { Sync-UwScript -Scripts $ctx.Last.Answer.scripts -HubUrl $ctx.Last.Url } catch { Write-Verbose "update: $_" }
+  }
+  $messages = $script:UwDefaultMessages
+  if ($null -ne $ctx.Last) { $messages = $ctx.Last.Answer.message }
+
+  $now = (Get-UwUtcNow) + $state.offsetMs
+  $job = Get-UwNextJob -State $state -Paths $paths -Now $now -Boot $ctx.Boot -LastBeat $lastBeat `
+    -Session $ctx.Session -Freeze $ctx.Freeze
+  if ($null -ne $job) {
+    $id = $job.Occurrence
+    if ($job.Kind -eq 'order') { $id = $job.Order }
+    $report = Invoke-UwExecution -Job $job -State $state -Messages $messages -Poll $poll -Freeze $ctx.Freeze
+    $state.doneIds[[string]$id] = (Get-UwUtcNow) + $state.offsetMs
+    foreach ($o in @($state.orders | Where-Object { $_.uuid -eq $job.Order })) { [void]$state.orders.Remove($o) }
+    if ($null -ne $report) {
+      Add-UwReport $paths.Reports $report
+      Save-UwState $paths.State $state ((Get-UwUtcNow) + $state.offsetMs)
+      try { [void](& $poll) } catch { Write-Verbose "final report: $_" } # best effort before Windows stops
+    }
+  }
+  Save-UwState $paths.State $state ((Get-UwUtcNow) + $state.offsetMs)
+  return 0
+}
+
+# One check-in with the queued reports and pending receipts; applies the verified answer.
+function Invoke-UwPoll {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)][hashtable]$Context)
+  $paths = $Context.Paths
+  $token = ([System.IO.File]::ReadAllText($paths.Token)).Trim()
+  $cfg = Read-UwJson $paths.Config $Context.Config
+  $queue = @(Read-UwReportQueue $paths.Reports)
+  $acks = @($Context.State.acked)
+  $request = @{
+    BootTime = $Context.Boot; Freeze = $Context.Freeze; Power = $Context.Power; Session = $Context.Session
+    Reports = $queue; AckedOrders = $acks
+  }
+  $result = Invoke-UwCheckin -Config $cfg -Token $token -Request $request
+  if ($null -eq $result -or $result.ContainsKey('Unauthorized')) { return $result }
+  $extra = Invoke-UwAnswer -Result $result -State $Context.State -Paths $paths -Config $cfg -SentAcks ([string[]]$acks)
+  foreach ($r in $extra) { Add-UwReport $paths.Reports $r }
+  $Context.Last = $result
+  Save-UwState $paths.State $Context.State ([long]$result.Answer.serverTime)
+  return $result
+}
+
+<#
+  The next job: a pending order (FR-305) or the due agenda item (FR-303, ADR-045). Skipped items
+  are reported and marked here. The job is marked handled before it runs, so a crash during the
+  warning never runs it twice.
+#>
+function Get-UwNextJob {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][hashtable]$State,
+    [Parameter(Mandatory)][hashtable]$Paths,
+    [Parameter(Mandatory)][long]$Now,
+    $Boot,
+    $LastBeat,
+    [Parameter(Mandatory)][hashtable]$Session,
+    [Parameter(Mandatory)][hashtable]$Freeze
+  )
+  $order = @($State.orders | Select-Object -First 1)
+  if ($order.Count -gt 0) {
+    $o = $order[0]
+    return @{
+      Kind = 'order'; Order = [string]$o.uuid; Occurrence = $null; Action = [string]$o.action
+      At = $Now + [long]$o.warningMinutes * $script:UwMinute; PlannedAt = $null
+      Policy = $o; WasAsleep = $false; LateMinutes = $null
+    }
+  }
+  $hubBoot = $null
+  if ($null -ne $Boot) { $hubBoot = [long]$Boot + $State.offsetMs }
+  $hubBeat = $null
+  if ($null -ne $LastBeat) { $hubBeat = [long]$LastBeat + $State.offsetMs }
+  $due = Get-UwDueItem -Agenda (Read-UwJson $Paths.Agenda $null) -State $State -Now $Now -BootTime $hubBoot -LastHeartbeat $hubBeat
+  if ($null -eq $due) { return $null }
+  $item = $due.Item
+  $State.doneIds[[string]$item.occurrence] = $Now
+  if ($due.Kind -eq 'skip') {
+    $detail = 'máquina estava desligada'
+    if ($due.Reason -eq 'late_wake') { $detail = "pulado: acordou $($due.LateMinutes) min após o horário" }
+    Add-UwReport $Paths.Reports (Format-UwReport -Occurrence $item.occurrence -Action 'shutdown' -Outcome 'skipped' `
+        -Reason $due.Reason -PlannedAt ([long]$item.at) -Session $Session -WasAsleep $due.WasAsleep `
+        -LateMinutes $due.LateMinutes -FreezeState $Freeze.state -Detail $detail)
+    Save-UwState $Paths.State $State $Now
+    return $null
+  }
+  Save-UwState $Paths.State $State $Now
+  $at = [long]$item.at
+  # Late (slept through it): a fresh warning from now, never a shutdown without one.
+  if ($null -ne $due.LateMinutes) { $at = $Now + [long]$item.warningMinutes * $script:UwMinute }
+  return @{
+    Kind = 'item'; Order = $null; Occurrence = [string]$item.occurrence; Action = 'shutdown'
+    At = $at; PlannedAt = [long]$item.at; Policy = $item
+    WasAsleep = [bool]$due.WasAsleep; LateMinutes = $due.LateMinutes
+  }
+}
+
+# Dot-sourcing (tests) only loads the functions above.
+if ($MyInvocation.InvocationName -ne '.') {
+  if ($Wake) { Write-Verbose 'Woken by UniWake Despertar for an agenda item.' }
+  exit (Invoke-UwAgent)
+}

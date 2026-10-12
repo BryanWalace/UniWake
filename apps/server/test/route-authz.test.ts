@@ -92,7 +92,10 @@ describe('route-table authorization (IMP-014, constitution §5)', () => {
       '/api/update/check',
       '/api/update/install',
       '/api/team', // Modo equipe (FR-201.5): pairing, revocation and leaving are admin actions
+      '/api/migration', // v1.4 Backup e migração (spec §6c): export, import, standby
     ];
+    // v1.3 (plan §15.4): revoking a machine's remote shutdown is an admin action.
+    const ADMIN_ROUTES = new Set(['POST /api/devices/:id/agent/revoke']);
     const PUBLIC = new Set([
       'GET /api/health',
       'GET /api/auth/setup-status',
@@ -103,7 +106,8 @@ describe('route-table authorization (IMP-014, constitution §5)', () => {
     const expected = (method: string, url: string) =>
       PUBLIC.has(`${method} ${url}`)
         ? 'public'
-        : ADMIN_PREFIXES.some((p) => url === p || url.startsWith(`${p}/`))
+        : ADMIN_ROUTES.has(`${method} ${url}`) ||
+            ADMIN_PREFIXES.some((p) => url === p || url.startsWith(`${p}/`))
           ? 'admin'
           : 'operator';
     const wrong = hub.panel.routeTable
@@ -116,10 +120,10 @@ describe('route-table authorization (IMP-014, constitution §5)', () => {
     );
   });
 
-  it('agent listener exposes nothing beyond health, enrollment and the script (ADR-011)', async () => {
+  it('agent listener exposes nothing beyond health, enrollment, scripts and check-in (ADR-011/043)', async () => {
     for (const r of hub.agent.routeTable) {
       expect(AGENT_ALLOWED.has(`${r.method} ${r.url}`), `${r.method} ${r.url}`).toBe(true);
-      expect(['public', 'enrollment']).toContain(r.auth);
+      expect(['public', 'enrollment', 'agent']).toContain(r.auth);
     }
     expect(await checkRouteTable(hub.agent, { host: '10.0.3.15:47101' })).toEqual([]);
   });

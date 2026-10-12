@@ -11,7 +11,10 @@
        desligamento, Ethernet com eficiência energética desligada);
     5. libera o ping (ICMPv4) nas redes de domínio e privadas;
     6. mostra um resumo e a lista de verificação da BIOS;
-    7. cadastra o computador no UniWake.
+    7. cadastra o computador no UniWake;
+    8. com o comando da versão 1.3 (-HubKeyId), instala o desligamento remoto: duas tarefas
+       agendadas do Windows e os scripts do agente (nenhum programa é instalado), ativa os
+       temporizadores de ativação e só lê o tempo de suspensão.
   Um registro de tudo fica em %ProgramData%\UniWake-Prepare\.
   Códigos de saída: 0 tudo certo, 1 alguma etapa falhou, 2 cadastro falhou, 3 sem administrador.
 .PARAMETER HubUrl
@@ -20,6 +23,14 @@
   Código da sala, ex.: LAB3.
 .PARAMETER Token
   Código de cadastro gerado no painel.
+.PARAMETER HubKeyId
+  Identificação da chave do UniWake (vem no comando do painel): confere que a resposta veio dele.
+.PARAMETER PersistentPath
+  Pasta que sobrevive ao congelamento (ex.: ThawSpace do Deep Freeze, T:\UniWake) para a agenda.
+.PARAMETER UwfExclude
+  Em computadores com o Filtro de Gravação Unificado (UWF), exclui a pasta de dados do agente.
+.PARAMETER RemoveAgent
+  Remove o desligamento remoto deste computador (tarefas e arquivos do agente).
 .PARAMETER SkipEnrollment
   Só prepara o computador, sem cadastrá-lo.
 .PARAMETER NoFirewallChange
@@ -34,7 +45,11 @@ param(
   [string]$RoomCode = '',
   [string]$Token = '',
   [switch]$SkipEnrollment,
-  [switch]$NoFirewallChange
+  [switch]$NoFirewallChange,
+  [string]$HubKeyId = '',
+  [string]$PersistentPath = '',
+  [switch]$UwfExclude,
+  [switch]$RemoveAgent
 )
 
 Set-StrictMode -Version 3.0
@@ -45,6 +60,7 @@ $script:UwStatus = @{
   NotApplies = 'NÃO SE APLICA'
   Manual     = 'MANUAL'
   Planned    = 'PLANEJADO'
+  Attention  = 'ATENÇÃO'
 }
 $script:UwSteps = New-Object System.Collections.Generic.List[object]
 
@@ -377,7 +393,7 @@ function Get-UwErrorMessage {
 
 <# FR-007.1 step 7 / FR-007.2: report this computer to the hub. Returns $false on failure. #>
 function Invoke-UwEnrollStep {
-  param([object]$Nic, [object[]]$Adapters, [string]$HubUrl, [string]$RoomCode, [string]$Token)
+  param([object]$Nic, [object[]]$Adapters, [string]$HubUrl, [string]$RoomCode, [string]$Token, [string]$HubKeyId = '')
   $name = 'Cadastro no UniWake'
   if (-not $Nic) {
     Add-UwStep $name $script:UwStatus.Failed 'sem placa de rede cabeada para cadastrar'
@@ -408,12 +424,562 @@ function Invoke-UwEnrollStep {
   }
   $uri = '{0}/agent/enroll' -f $HubUrl.TrimEnd('/')
   try {
-    $r = Send-UwEnrollment -Uri $uri -Token $Token -Json (ConvertTo-Json $body -Compress -Depth 4)
+    if ($HubKeyId) {
+      # v1.3: also ask for this computer's agent token; the answer is signed over this nonce.
+      $script:UwEnrollNonce = Get-UwNonce
+      $body['agent'] = [ordered]@{ protocol = 1; nonce = $script:UwEnrollNonce }
+      $script:UwEnrollAnswer = Send-UwAgentEnrollment -Uri $uri -Token $Token -Json (ConvertTo-Json $body -Compress -Depth 4)
+      $r = [Text.Encoding]::UTF8.GetString($script:UwEnrollAnswer.Body) | ConvertFrom-Json
+    } else {
+      $r = Send-UwEnrollment -Uri $uri -Token $Token -Json (ConvertTo-Json $body -Compress -Depth 4)
+    }
     Add-UwStep $name $script:UwStatus.Ok "$($r.message)"
     return $true
   } catch {
     Add-UwStep $name $script:UwStatus.Failed (Get-UwErrorMessage $_)
     return $false
+  }
+}
+
+# ------------------------------------------------------------------ remote shutdown (v1.3, FR-301, ADR-042..047)
+
+$script:UwAgentRoot = Join-Path $env:ProgramData 'UniWake'
+$script:UwAgentScripts = @('uniwake-agent.ps1', 'uniwake-aviso.ps1')
+$script:UwEnrollAnswer = $null
+$script:UwEnrollNonce = ''
+
+# Pure helpers (also in the agent; both are checked against the shared signature fixture).
+function ConvertFrom-UwBase64Url {
+  param([string]$Text)
+  $b64 = $Text.Replace('-', '+').Replace('_', '/')
+  switch ($b64.Length % 4) {
+    2 { $b64 += '==' }
+    3 { $b64 += '=' }
+  }
+  , [Convert]::FromBase64String($b64)
+}
+
+function ConvertTo-UwBase64Url {
+  param([byte[]]$Bytes)
+  [Convert]::ToBase64String($Bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+}
+
+function Get-UwSha256Hex {
+  param([byte[]]$Bytes)
+  $sha = [Security.Cryptography.SHA256]::Create()
+  try { -join ($sha.ComputeHash($Bytes) | ForEach-Object { $_.ToString('x2') }) } finally { $sha.Dispose() }
+}
+
+# RFC 7638 thumbprint of the hub's key: what -HubKeyId pins (ADR-044).
+function Get-UwKeyId {
+  param([string]$N, [string]$E)
+  $sha = [Security.Cryptography.SHA256]::Create()
+  try {
+    ConvertTo-UwBase64Url ($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes('{"e":"' + $E + '","kty":"RSA","n":"' + $N + '"}')))
+  } finally {
+    $sha.Dispose()
+  }
+}
+
+function Test-UwSignature {
+  param([byte[]]$Body, [string]$Nonce, [string]$Signature, [string]$N, [string]$E)
+  try {
+    $prefix = [Text.Encoding]::UTF8.GetBytes("uniwake-agent-v1`n$Nonce`n")
+    $data = New-Object byte[] ($prefix.Length + $Body.Length)
+    [Array]::Copy($prefix, 0, $data, 0, $prefix.Length)
+    [Array]::Copy($Body, 0, $data, $prefix.Length, $Body.Length)
+    $p = New-Object Security.Cryptography.RSAParameters
+    $p.Modulus = ConvertFrom-UwBase64Url $N
+    $p.Exponent = ConvertFrom-UwBase64Url $E
+    $rsa = New-Object Security.Cryptography.RSACng
+    try {
+      $rsa.ImportParameters($p)
+      return $rsa.VerifyData($data, [Convert]::FromBase64String($Signature),
+        [Security.Cryptography.HashAlgorithmName]::SHA256, [Security.Cryptography.RSASignaturePadding]::Pkcs1)
+    } finally {
+      $rsa.Dispose()
+    }
+  } catch {
+    return $false
+  }
+}
+
+function Get-UwNonce {
+  $bytes = New-Object byte[] 16
+  $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+  try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
+  ConvertTo-UwBase64Url $bytes
+}
+
+<#
+  AC and DC indexes from `powercfg /QUERY <scheme> <subgroup> <setting>`. The labels are localized
+  (pt-BR Windows prints Portuguese), so only the hex values are read: the last two are the current
+  AC and DC indexes (ADR-045).
+#>
+function ConvertFrom-UwPowercfgOutput {
+  param([string[]]$Lines)
+  $hex = @($Lines | ForEach-Object { if ($_ -match ':\s*0x([0-9a-fA-F]+)\s*$') { [Convert]::ToInt64($Matches[1], 16) } })
+  if ($hex.Count -lt 2) { return $null }
+  return @{ Ac = $hex[$hex.Count - 2]; Dc = $hex[$hex.Count - 1] }
+}
+
+# System access for the step (mocked in tests).
+
+<# Enrollment that keeps the exact answer bytes and headers: the agent part is signed (ADR-044). #>
+function Send-UwAgentEnrollment {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param([string]$Uri, [string]$Token, [string]$Json)
+  if (-not $PSCmdlet.ShouldProcess($Uri, 'Cadastrar este computador')) { return $null }
+  $r = Invoke-WebRequest -Method Post -Uri $Uri -UseBasicParsing -TimeoutSec 30 -Headers @{ Authorization = "Bearer $Token" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($Json)) -ErrorAction Stop
+  $headers = @{}
+  foreach ($k in $r.Headers.Keys) { $headers[$k.ToLowerInvariant()] = [string]$r.Headers[$k] }
+  return @{ Body = $r.RawContentStream.ToArray(); Headers = $headers }
+}
+
+function Get-UwAgentScriptContent {
+  param([string]$Uri)
+  , (Invoke-WebRequest -Uri $Uri -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop).RawContentStream.ToArray()
+}
+
+<#
+  C:\ProgramData lets users create folders, so the agent folder is taken over and locked down
+  (ADR-042): owner Administrators, no inherited rules, Administrators and SYSTEM full control.
+  ui\request: users may read; ui\response: users may create files and change only their own.
+#>
+function Initialize-UwAgentFolder {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param([string]$Root)
+  if (-not $PSCmdlet.ShouldProcess($Root, 'Criar a pasta do agente com permissões restritas')) { return }
+  $admins = New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')
+  $system = New-Object Security.Principal.SecurityIdentifier('S-1-5-18')
+  $users = New-Object Security.Principal.SecurityIdentifier('S-1-5-32-545')
+  $creator = New-Object Security.Principal.SecurityIdentifier('S-1-3-0')
+  $inherit = [Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'
+  $none = [Security.AccessControl.PropagationFlags]::None
+  $lock = {
+    param($path, $extra)
+    if (-not (Test-Path -LiteralPath $path)) { New-Item -ItemType Directory -Force -Path $path | Out-Null }
+    $acl = New-Object Security.AccessControl.DirectorySecurity
+    $acl.SetOwner($admins)
+    $acl.SetAccessRuleProtection($true, $false)
+    foreach ($sid in $admins, $system) {
+      $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($sid, 'FullControl', $inherit, $none, 'Allow')))
+    }
+    foreach ($rule in $extra) { $acl.AddAccessRule($rule) }
+    Set-Acl -LiteralPath $path -AclObject $acl
+  }
+  & $lock $Root @()
+  & $lock (Join-Path $Root 'agent') @()
+  & $lock (Join-Path $Root 'agent\data') @()
+  $read = New-Object Security.AccessControl.FileSystemAccessRule($users, 'ReadAndExecute', $inherit, $none, 'Allow')
+  & $lock (Join-Path $Root 'ui') @($read)
+  & $lock (Join-Path $Root 'ui\request') @($read)
+  $create = New-Object Security.AccessControl.FileSystemAccessRule($users, 'ReadAndExecute, CreateFiles', 'None', $none, 'Allow')
+  $own = New-Object Security.AccessControl.FileSystemAccessRule($creator, 'Modify', $inherit, 'InheritOnly', 'Allow')
+  & $lock (Join-Path $Root 'ui\response') @($create, $own)
+}
+
+<# Writes one agent file; only the warning script is readable by users (ADR-046). #>
+function Write-UwAgentFile {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param([string]$Path, [byte[]]$Bytes, [switch]$UsersRead)
+  if (-not $PSCmdlet.ShouldProcess($Path, 'Gravar arquivo do agente')) { return }
+  [IO.File]::WriteAllBytes("$Path.tmp", $Bytes)
+  Move-Item -LiteralPath "$Path.tmp" -Destination $Path -Force
+  if ($UsersRead) {
+    $acl = Get-Acl -LiteralPath $Path
+    $users = New-Object Security.Principal.SecurityIdentifier('S-1-5-32-545')
+    $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($users, 'ReadAndExecute', 'Allow')))
+    Set-Acl -LiteralPath $Path -AclObject $acl
+  }
+}
+
+
+<#
+  The three tasks of ADR-042/045/046: "UniWake" (SYSTEM, at start-up and every minute, never wakes
+  the PC), "UniWake Despertar" (SYSTEM, wakes the PC; triggers written by the agent) and
+  "UniWake Aviso" (logged-on users, shows the warning).
+#>
+function Register-UwAgentTask {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param([string]$AgentDir)
+  if (-not $PSCmdlet.ShouldProcess('UniWake, UniWake Despertar, UniWake Aviso', 'Registrar tarefas agendadas')) { return }
+  $agent = Join-Path $AgentDir 'uniwake-agent.ps1'
+  $aviso = Join-Path $AgentDir 'uniwake-aviso.ps1'
+  $run = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$agent`""
+  $system = New-ScheduledTaskPrincipal -UserId 'S-1-5-18' -RunLevel Highest
+  $base = @{ AllowStartIfOnBatteries = $true; DontStopIfGoingOnBatteries = $true; StartWhenAvailable = $true; MultipleInstances = 'IgnoreNew' }
+
+  $every = New-ScheduledTaskTrigger -Once -At ([DateTime]::Now.AddMinutes(1)) -RepetitionInterval (New-TimeSpan -Minutes 1)
+  $settings = New-ScheduledTaskSettingsSet @base -ExecutionTimeLimit (New-TimeSpan -Hours 2)
+  Register-ScheduledTask -TaskName 'UniWake' -Action (New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $run) `
+    -Trigger @((New-ScheduledTaskTrigger -AtStartup), $every) -Settings $settings -Principal $system -Force | Out-Null
+
+  $wakeSettings = New-ScheduledTaskSettingsSet @base -WakeToRun -ExecutionTimeLimit (New-TimeSpan -Hours 2)
+  Register-ScheduledTask -TaskName 'UniWake Despertar' -Action (New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "$run -Wake") `
+    -Trigger (New-ScheduledTaskTrigger -Once -At ([DateTime]::Now.AddYears(5))) -Settings $wakeSettings -Principal $system -Force | Out-Null
+
+  $users = New-ScheduledTaskPrincipal -GroupId 'S-1-5-32-545'
+  $avisoAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$aviso`""
+  Register-ScheduledTask -TaskName 'UniWake Aviso' -Action $avisoAction -Trigger (New-ScheduledTaskTrigger -AtLogOn) `
+    -Settings (New-ScheduledTaskSettingsSet @base -ExecutionTimeLimit (New-TimeSpan -Hours 3)) -Principal $users -Force | Out-Null
+}
+
+function Start-UwAgentTask {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param()
+  if ($PSCmdlet.ShouldProcess('UniWake', 'Executar a tarefa agora (primeira consulta)')) { Start-ScheduledTask -TaskName 'UniWake' }
+}
+
+function Unregister-UwAgentTask {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param()
+  foreach ($name in 'UniWake', 'UniWake Despertar', 'UniWake Aviso') {
+    if ((Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue) -and $PSCmdlet.ShouldProcess($name, 'Remover tarefa agendada')) {
+      Unregister-ScheduledTask -TaskName $name -Confirm:$false
+    }
+  }
+}
+
+<#
+  D-M20-01: only the agent's own folders go. %ProgramData%\UniWake is also the data folder of an
+  UniWake installed on the same PC (database, backups), so the root is removed only when empty.
+#>
+function Remove-UwAgentFolder {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param([string]$Root)
+  if (-not $PSCmdlet.ShouldProcess($Root, 'Remover arquivos do agente (pastas agent e ui)')) { return }
+  foreach ($sub in 'agent', 'ui') {
+    $path = Join-Path $Root $sub
+    if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
+  }
+  if ((Test-Path -LiteralPath $Root) -and @(Get-ChildItem -LiteralPath $Root -Force).Count -eq 0) {
+    Remove-Item -LiteralPath $Root -Force
+  }
+}
+
+function Get-UwPowercfg {
+  param([string]$Subgroup, [string]$Setting)
+  ConvertFrom-UwPowercfgOutput -Lines @(& powercfg.exe /QUERY SCHEME_CURRENT $Subgroup $Setting 2>$null)
+}
+
+function Set-UwWakeTimer {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param()
+  if (-not $PSCmdlet.ShouldProcess('Plano de energia ativo', 'Permitir temporizadores de ativação (na tomada)')) { return }
+  & powercfg.exe /SETACVALUEINDEX SCHEME_CURRENT SUB_SLEEP RTCWAKE 1 | Out-Null
+  & powercfg.exe /SETACTIVE SCHEME_CURRENT | Out-Null
+}
+
+# Freezing software on this computer (FR-308.1, ADR-047).
+function Get-UwFreezeState {
+  try {
+    $services = @(Get-Service -Name 'DFServ', 'DfServEx' -ErrorAction SilentlyContinue | ForEach-Object Name)
+    $processes = @(Get-Process -Name 'FrzState2k', 'DFServ', 'shield', 'shdserv', 'shdtray', 'DefenderDaemon' -ErrorAction SilentlyContinue | ForEach-Object ProcessName)
+    $dfcExit = $null
+    if ($services.Count -gt 0 -or $processes -contains 'FrzState2k') {
+      # DFC.exe location is not documented for every version (ADR-047): PATH, then the usual folders.
+      $candidates = @(Get-Command 'DFC.exe' -ErrorAction SilentlyContinue | ForEach-Object Source) +
+        @("$env:WINDIR\SysWOW64\DFC.exe", "$env:WINDIR\System32\DFC.exe")
+      $dfc = @($candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1)
+      if ($dfc.Count -gt 0) {
+        & $dfc[0] get /ISFROZEN | Out-Null
+        $dfcExit = $LASTEXITCODE
+      }
+    }
+    $uwf = $null
+    try {
+      $f = Get-CimInstance -Namespace 'root\standardcimv2\embedded' -ClassName 'UWF_Filter' -ErrorAction Stop | Select-Object -First 1
+      if ($f) { $uwf = @{ CurrentEnabled = [bool]$f.CurrentEnabled; NextEnabled = [bool]$f.NextEnabled } }
+    } catch {
+      $uwf = $null # no UWF on this edition
+    }
+    return Resolve-UwFreezeState @{ Services = $services; Processes = $processes; DfcExit = $dfcExit; Uwf = $uwf; Failed = $false }
+  } catch {
+    return @{ product = $null; state = 'unverified' }
+  }
+}
+
+<#
+  Freezing software (FR-308.1, ADR-047), from facts gathered by Get-UwFreezeFact. Pure. Only what
+  ADR-047 lists: Deep Freeze state from `DFC.exe get /ISFROZEN` (exit 0 thawed, 1 frozen; third-
+  party sources), UWF from UWF_Filter.CurrentEnabled (Microsoft); Reboot Restore Rx and Shadow
+  Defender are only detected (state "não verificado"). Returns @{ product; state } with state
+  none | frozen | thawed | present_unknown | unverified.
+#>
+function Resolve-UwFreezeState {
+  [CmdletBinding()]
+  param($Facts)
+  # StrictMode: a missing key throws, so read every fact through ContainsKey.
+  $get = { param($k) if ($Facts -is [hashtable] -and $Facts.ContainsKey($k)) { $Facts[$k] } else { $null } }
+  if ($null -eq $Facts -or (& $get 'Failed')) { return @{ product = $null; state = 'unverified' } }
+  $dfcExit = & $get 'DfcExit'
+  $uwf = & $get 'Uwf'
+  $names = @(@(& $get 'Services') + @(& $get 'Processes') | Where-Object { $_ } | ForEach-Object { ([string]$_).ToLowerInvariant() })
+  $found = New-Object System.Collections.ArrayList
+  if ($names -contains 'dfserv' -or $names -contains 'dfservex' -or $names -contains 'frzstate2k') {
+    $state = 'present_unknown'
+    if ($dfcExit -eq 0) { $state = 'thawed' } elseif ($dfcExit -eq 1) { $state = 'frozen' }
+    [void]$found.Add(@{ product = 'deep_freeze'; state = $state })
+  }
+  if ($null -ne $uwf) {
+    $state = 'thawed'
+    if ($uwf.CurrentEnabled) { $state = 'frozen' }
+    [void]$found.Add(@{ product = 'uwf'; state = $state })
+  }
+  if ($names -contains 'shield' -or $names -contains 'shdserv' -or $names -contains 'shdtray') {
+    [void]$found.Add(@{ product = 'reboot_restore_rx'; state = 'present_unknown' })
+  }
+  if ($names -contains 'defenderdaemon') {
+    [void]$found.Add(@{ product = 'shadow_defender'; state = 'present_unknown' })
+  }
+  if ($found.Count -eq 0) { return @{ product = $null; state = 'none' } }
+  # The most constraining one is what matters: frozen, then unknown, then thawed.
+  foreach ($want in 'frozen', 'present_unknown', 'thawed') {
+    foreach ($f in $found) { if ($f.state -eq $want) { return $f } }
+  }
+  return $found[0]
+}
+
+$script:UwFreezeProducts = @{
+  deep_freeze = 'Deep Freeze'; uwf = 'Filtro de Gravação Unificado (UWF)'
+  reboot_restore_rx = 'Reboot Restore Rx'; shadow_defender = 'Shadow Defender'
+}
+
+<# The pt-BR "Congelamento" text of FR-308.1. #>
+function Format-UwFreezeLabel {
+  param($Freeze)
+  $product = ''
+  if ($Freeze.product) { $product = ": $($script:UwFreezeProducts[[string]$Freeze.product])" }
+  switch ($Freeze.state) {
+    'none' { return 'não detectado' }
+    'frozen' { return "detectado (congelada)$product" }
+    'thawed' { return "detectado (descongelada)$product" }
+    'present_unknown' { return "detectado (estado não verificado)$product" }
+    default { return 'não verificado' }
+  }
+}
+
+function Add-UwUwfExclusion {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param([string]$Path)
+  if (-not $PSCmdlet.ShouldProcess($Path, 'Excluir do Filtro de Gravação Unificado (UWF)')) { return 0 }
+  & uwfmgr.exe file add-exclusion $Path | Out-Null
+  return $LASTEXITCODE
+}
+
+<# Owner Administrators, no inherited rules, Administrators and SYSTEM only (ADR-042, M18-D). #>
+# D-M19-01: a persistent folder is locked down, so it must be a folder of its own, never a Windows
+# folder or one that already holds other files (their users would lose access).
+$script:UwPersistMarker = 'uniwake-pasta-persistente.txt'
+$script:UwReservedFolders = @('windows', 'users', 'programdata', 'recovery', 'boot', 'perflogs', 'efi')
+
+function Test-UwPersistentPathSafe {
+  param([string]$Path)
+  if ($Path -notmatch '^[A-Za-z]:\\[A-Za-z0-9._\\-]{1,120}$') { return 'caminho inválido' }
+  $parts = @($Path.Substring(3).Split('\') | Where-Object { $_ -ne '' })
+  if ($parts.Count -eq 0) { return 'use uma pasta, não a raiz do disco' }
+  foreach ($p in $parts) {
+    if ($p -match '^\.+$') { return 'o caminho não pode ter "." nem ".."' }
+  }
+  # Windows ignores trailing dots: "Windows." is "Windows".
+  if ($script:UwReservedFolders -contains $parts[0].TrimEnd('.').ToLowerInvariant()) { return 'é uma pasta do Windows' }
+  return $null
+}
+
+function Get-UwFolderState {
+  param([string]$Path)
+  if (-not (Test-Path -LiteralPath $Path)) { return 'missing' }
+  $item = Get-Item -LiteralPath $Path -Force
+  if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { return 'in_use' }
+  if (Test-Path -LiteralPath (Join-Path $Path $script:UwPersistMarker)) { return 'ours' }
+  if (@(Get-ChildItem -LiteralPath $Path -Force | Select-Object -First 1).Count -eq 0) { return 'empty' }
+  return 'in_use'
+}
+
+<#
+  Why a -PersistentPath cannot be used, or $null when it can (D-M19-01).
+#>
+function Get-UwPersistentRefusal {
+  param([string]$Path)
+  $why = Test-UwPersistentPathSafe $Path
+  if ($why) { return "$Path não foi usada ($why)" }
+  if (-not (Test-UwPersistentPath $Path)) { return "$Path não existe neste computador" }
+  if ((Get-UwFolderState $Path) -eq 'in_use') {
+    return "$Path já tem arquivos que não são do UniWake (use uma pasta nova, como T:\UniWake)"
+  }
+  return $null
+}
+
+function Protect-UwFolder {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param([string]$Path, [switch]$Marker)
+  if (-not $PSCmdlet.ShouldProcess($Path, 'Restringir a pasta a Administradores e SYSTEM')) { return }
+  if (-not (Test-Path -LiteralPath $Path)) { New-Item -ItemType Directory -Force -Path $Path | Out-Null }
+  $acl = New-Object Security.AccessControl.DirectorySecurity
+  $acl.SetOwner((New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')))
+  $acl.SetAccessRuleProtection($true, $false)
+  foreach ($sid in 'S-1-5-32-544', 'S-1-5-18') {
+    $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule(
+          (New-Object Security.Principal.SecurityIdentifier($sid)), 'FullControl',
+          [Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit', 'None', 'Allow')))
+  }
+  Set-Acl -LiteralPath $Path -AclObject $acl
+  if ($Marker) {
+    Set-Content -LiteralPath (Join-Path $Path $script:UwPersistMarker) -Encoding UTF8 -Value 'Pasta do UniWake (agenda do desligamento remoto). Não apague.'
+  }
+}
+
+function Test-UwPersistentPath {
+  param([string]$Path)
+  $root = [IO.Path]::GetPathRoot($Path)
+  return [bool]($root -and (Test-Path -LiteralPath $root))
+}
+
+<#
+  FR-301.1 / Q-3: wake timers enabled on AC (idempotent), sleep timeout only read. Two summary lines.
+#>
+function Invoke-UwPowerPlanStep {
+  $timers = Get-UwPowercfg 'SUB_SLEEP' 'RTCWAKE'
+  if ($null -eq $timers) {
+    Add-UwStep 'Temporizadores de ativação' $script:UwStatus.Failed 'não foi possível ler o plano de energia (powercfg)'
+  } elseif ($timers.Ac -eq 1) {
+    Add-UwStep 'Temporizadores de ativação' $script:UwStatus.Ok 'já estavam ativados'
+  } elseif ($WhatIfPreference) {
+    Add-UwStep 'Temporizadores de ativação' $script:UwStatus.Planned 'ativar na tomada'
+  } else {
+    try {
+      Set-UwWakeTimer
+      Add-UwStep 'Temporizadores de ativação' $script:UwStatus.Ok 'ativados (na tomada)'
+    } catch {
+      Add-UwStep 'Temporizadores de ativação' $script:UwStatus.Failed $_.Exception.Message
+    }
+  }
+  $sleep = Get-UwPowercfg 'SUB_SLEEP' 'STANDBYIDLE'
+  $text = 'desconhecida'
+  if ($null -ne $sleep) {
+    if ($sleep.Ac -eq 0) { $text = 'nunca' } else { $text = "após $([Math]::Round($sleep.Ac / 60)) min" }
+  }
+  Add-UwStep 'Suspensão (na tomada)' $script:UwStatus.Ok $text
+}
+
+<#
+  FR-301.1: the "Desligamento remoto" step. Needs the agent part of the enrollment answer, signed
+  by the hub key pinned in the command (-HubKeyId). Writes the agent scripts (hashes from the
+  signed answer), the token and the hub list, registers the tasks and starts the first check-in.
+#>
+function Invoke-UwRemoteShutdownStep {
+  param([string]$HubUrl, [string]$HubKeyId, [string]$Nonce, [string]$PersistentPath, [switch]$UwfExclude)
+  $name = 'Desligamento remoto'
+  if (-not $HubKeyId) {
+    Add-UwStep $name $script:UwStatus.NotApplies 'comando antigo: copie o comando atualizado em "Preparar máquinas" para ativar o desligamento remoto'
+    return
+  }
+  if ($WhatIfPreference) {
+    Add-UwStep $name $script:UwStatus.Planned "pasta $script:UwAgentRoot, tarefas UniWake, UniWake Despertar e UniWake Aviso"
+    Invoke-UwPowerPlanStep
+    return
+  }
+  $raw = $script:UwEnrollAnswer
+  if ($null -eq $raw) {
+    Add-UwStep $name $script:UwStatus.NotApplies 'o cadastro não foi feito'
+    return
+  }
+  $answer = [Text.Encoding]::UTF8.GetString($raw.Body) | ConvertFrom-Json
+  if (-not ($answer.PSObject.Properties.Name -contains 'agent')) {
+    $why = 'o UniWake não oferece desligamento remoto (atualize o UniWake para a versão 1.3 ou mais nova)'
+    if ($answer.PSObject.Properties.Name -contains 'agentUnavailable') { $why = [string]$answer.agentUnavailable }
+    Add-UwStep $name $script:UwStatus.NotApplies $why
+    return
+  }
+  $a = $answer.agent
+  $sig = [string]$raw.Headers['x-uniwake-signature']
+  $keyOk = $a.keyId -eq $HubKeyId -and (Get-UwKeyId $a.hubKey.n $a.hubKey.e) -eq $HubKeyId -and [string]$raw.Headers['x-uniwake-key'] -eq $HubKeyId
+  if (-not $keyOk -or -not $sig -or -not (Test-UwSignature $raw.Body $Nonce $sig $a.hubKey.n $a.hubKey.e)) {
+    Add-UwStep $name $script:UwStatus.Failed 'a resposta não confere com a chave do comando copiado do painel (rede não confiável?). Nada foi instalado.'
+    return
+  }
+  try {
+    $files = @{}
+    foreach ($s in $script:UwAgentScripts) {
+      $bytes = Get-UwAgentScriptContent ('{0}/agent/v1/scripts/{1}' -f $HubUrl.TrimEnd('/'), $s)
+      if ((Get-UwSha256Hex $bytes) -ne [string]$a.scripts.$s.sha256) {
+        Add-UwStep $name $script:UwStatus.Failed "o arquivo $s chegou alterado (não confere com o UniWake). Nada foi instalado."
+        return
+      }
+      $files[$s] = $bytes
+    }
+    Initialize-UwAgentFolder -Root $script:UwAgentRoot
+    $dir = Join-Path $script:UwAgentRoot 'agent'
+    foreach ($s in $script:UwAgentScripts) {
+      Write-UwAgentFile -Path (Join-Path $dir $s) -Bytes $files[$s] -UsersRead:($s -eq 'uniwake-aviso.ps1')
+    }
+    Write-UwAgentFile -Path (Join-Path $dir 'token.txt') -Bytes ([Text.Encoding]::ASCII.GetBytes([string]$a.token))
+    $refusal = if ($PersistentPath) { Get-UwPersistentRefusal $PersistentPath } else { $null }
+    $config = [ordered]@{
+      protocol = 1; epoch = 0
+      persistentPath = $(if ($PersistentPath -and -not $refusal) { $PersistentPath } else { $null })
+      hubs = @([ordered]@{ instanceId = $null; urls = @($HubUrl.TrimEnd('/')); keyId = $HubKeyId; publicKey = $a.hubKey })
+    }
+    Write-UwAgentFile -Path (Join-Path $dir 'config.json') -Bytes ([Text.Encoding]::UTF8.GetBytes((ConvertTo-Json $config -Depth 6 -Compress)))
+    Register-UwAgentTask -AgentDir $dir
+    Invoke-UwPowerPlanStep
+    $freeze = Get-UwFreezeState
+    Add-UwStep 'Congelamento' $script:UwStatus.Ok (Format-UwFreezeLabel $freeze)
+    Invoke-UwPersistenceStep -Freeze $freeze -PersistentPath $PersistentPath -Refusal $refusal -UwfExclude:$UwfExclude -DataDir (Join-Path $dir 'data')
+    if ($freeze.state -eq 'frozen') {
+      Add-UwStep $name 'ATENÇÃO' ("a máquina está congelada ($($freeze.product)): descongele (Thawed / modo manutenção), execute o comando de novo e congele outra vez")
+    } else {
+      Start-UwAgentTask
+      Add-UwStep $name $script:UwStatus.Ok 'tarefas instaladas; a primeira consulta ao UniWake começou'
+    }
+  } catch {
+    Add-UwStep $name $script:UwStatus.Failed $_.Exception.Message
+  }
+}
+
+<#
+  FR-308.4: where the agenda survives a frozen restart — the -PersistentPath folder (e.g. a Deep
+  Freeze ThawSpace) or, with -UwfExclude on a UWF computer, an exclusion of the agent's data folder
+  (takes effect after the next restart, Microsoft Learn).
+#>
+function Invoke-UwPersistenceStep {
+  param($Freeze, [string]$PersistentPath, [string]$Refusal, [switch]$UwfExclude, [string]$DataDir)
+  if ($PersistentPath) {
+    if (-not $Refusal) {
+      # SYSTEM writes there: locked down like the agent folder (M18-D), or users could redirect it.
+      Protect-UwFolder -Path $PersistentPath -Marker
+      Add-UwStep 'Pasta persistente' $script:UwStatus.Ok "agenda e relatórios em $PersistentPath"
+    } else {
+      Add-UwStep 'Pasta persistente' $script:UwStatus.Attention "$($Refusal): a agenda fica na pasta do agente"
+    }
+  }
+  if ($UwfExclude) {
+    if ($Freeze.product -ne 'uwf') {
+      Add-UwStep 'Exclusão do UWF' $script:UwStatus.NotApplies 'o UWF não está neste computador'
+    } else {
+      $code = Add-UwUwfExclusion -Path $DataDir
+      if ($code -eq 0) {
+        Add-UwStep 'Exclusão do UWF' $script:UwStatus.Ok "$DataDir (vale depois de reiniciar)"
+      } else {
+        Add-UwStep 'Exclusão do UWF' $script:UwStatus.Failed "uwfmgr saiu com código $code"
+      }
+    }
+  }
+}
+
+<# FR-301.3: -RemoveAgent takes the tasks, scripts and token away (revoke it in the panel too). #>
+function Invoke-UwRemoveAgent {
+  try {
+    Unregister-UwAgentTask
+    Remove-UwAgentFolder -Root $script:UwAgentRoot
+    $status = $script:UwStatus.Ok
+    if ($WhatIfPreference) { $status = $script:UwStatus.Planned }
+    Add-UwStep 'Remover desligamento remoto' $status 'tarefas e arquivos do agente removidos. No painel, use "Revogar desligamento remoto" nesta máquina.'
+    return 0
+  } catch {
+    Add-UwStep 'Remover desligamento remoto' $script:UwStatus.Failed $_.Exception.Message
+    return 1
   }
 }
 
@@ -452,12 +1018,28 @@ function Invoke-UwPrepare {
     [string]$RoomCode = '',
     [string]$Token = '',
     [switch]$SkipEnrollment,
-    [switch]$NoFirewallChange
+    [switch]$NoFirewallChange,
+    [string]$HubKeyId = '',
+    [string]$PersistentPath = '',
+    [switch]$UwfExclude,
+    [switch]$RemoveAgent
   )
   $script:UwSteps.Clear()
+  $script:UwEnrollAnswer = $null
   if (-not (Test-UwElevated)) {
     Write-Host 'Abra o PowerShell como Administrador e execute novamente.' -ForegroundColor Red
     return 3
+  }
+  if ($RemoveAgent) {
+    $log = Open-UwTranscript
+    try {
+      $code = Invoke-UwRemoveAgent
+      Write-UwSummary
+      Write-Host "Registro desta execução: $log"
+      return $code
+    } finally {
+      Close-UwTranscript
+    }
   }
   if (-not $SkipEnrollment -and ($HubUrl -eq '' -or $RoomCode -eq '' -or $Token -eq '')) {
     Write-Host 'Faltam -HubUrl, -RoomCode e -Token: copie o comando completo em "Preparar máquinas" no painel, ou use -SkipEnrollment.' -ForegroundColor Red
@@ -487,7 +1069,10 @@ function Invoke-UwPrepare {
     if ($SkipEnrollment) {
       Add-UwStep 'Cadastro no UniWake' $script:UwStatus.NotApplies 'ignorado (-SkipEnrollment)'
     } else {
-      $enrolled = Invoke-UwEnrollStep -Nic $pick.Chosen -Adapters $adapters -HubUrl $HubUrl -RoomCode $RoomCode -Token $Token
+      $enrolled = Invoke-UwEnrollStep -Nic $pick.Chosen -Adapters $adapters -HubUrl $HubUrl -RoomCode $RoomCode -Token $Token -HubKeyId $HubKeyId
+      if ($enrolled) {
+        Invoke-UwRemoteShutdownStep -HubUrl $HubUrl -HubKeyId $HubKeyId -Nonce $script:UwEnrollNonce -PersistentPath $PersistentPath -UwfExclude:$UwfExclude
+      }
     }
     Write-UwSummary
     Write-Host "Registro desta execução: $log"
@@ -502,5 +1087,5 @@ function Invoke-UwPrepare {
 
 # Dot-sourcing (tests) only loads the functions above.
 if ($MyInvocation.InvocationName -ne '.') {
-  exit (Invoke-UwPrepare -HubUrl $HubUrl -RoomCode $RoomCode -Token $Token -SkipEnrollment:$SkipEnrollment -NoFirewallChange:$NoFirewallChange)
+  exit (Invoke-UwPrepare -HubUrl $HubUrl -RoomCode $RoomCode -Token $Token -SkipEnrollment:$SkipEnrollment -NoFirewallChange:$NoFirewallChange -HubKeyId $HubKeyId -PersistentPath $PersistentPath -UwfExclude:$UwfExclude -RemoveAgent:$RemoveAgent)
 }

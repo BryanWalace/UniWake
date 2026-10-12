@@ -18,8 +18,17 @@ export class SqliteSchedulerRepo implements SchedulerRepo {
     this.schedules = new SqliteSchedulesRepo(db);
   }
 
+  /**
+   * Enabled **wake** schedules only (ADR-048, M16-D): a shutdown schedule is executed by each lab
+   * PC from its agenda; the hub must never wake machines at its time.
+   */
   enabledSchedules(): ScheduleRecord[] {
-    return this.schedules.list().filter((s) => s.enabled);
+    const shutdown = new Set(
+      this.db
+        .all<{ id: number }>("SELECT id FROM schedules WHERE action <> 'wake'")
+        .map((r) => r.id),
+    );
+    return this.schedules.list().filter((s) => s.enabled && !shutdown.has(s.id));
   }
 
   exceptions() {

@@ -145,6 +145,11 @@ function ScheduleRow({
         <div className="min-w-56 flex-1">
           <h2 className="text-lg font-bold">
             {s.name}{' '}
+            <span
+              className={`rounded px-1.5 text-xs font-semibold ${s.action === 'shutdown' ? 'bg-rose-100 text-rose-900' : 'bg-blue-100 text-blue-900'}`}
+            >
+              {s.action === 'shutdown' ? 'Desligar' : 'Ligar'}
+            </span>{' '}
             {!s.enabled && (
               <span className="rounded bg-slate-200 px-1.5 text-xs font-semibold text-slate-800">
                 inativo
@@ -155,6 +160,8 @@ function ScheduleRow({
             {weekdaysLabel(s.weekdays)} às {s.timeLocal}
             {s.timezone !== DEFAULT_TZ && ` (${s.timezone})`} · {s.targetLabel}
             {s.onlyOffline && ' · só as desligadas'}
+            {s.power &&
+              ` · aviso de ${s.power.warningMinutes} min${s.power.allowPostpone ? `, até ${s.power.postponeMax}× adiar ${s.power.postponeMinutes} min` : ', sem adiar'}`}
           </p>
           {s.needsReconfirm && (
             <p className="mt-1 text-sm font-semibold text-amber-900">

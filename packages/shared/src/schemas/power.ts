@@ -1,0 +1,139 @@
+/** Manual shutdown and restart from the panel (FR-305, plan §15.4). */
+import { z } from 'zod';
+import type { PowerPolicy } from '../agent/checkin';
+import { wakeTargetSchema } from './wake';
+
+/**
+ * Warning option (owner Q-7): "Aviso: 1 min" without postpone (default) or "5 min com adiamento"
+ * (the schedules' defaults from the settings).
+ */
+export const POWER_WARNING_OPTIONS = ['short', 'standard'] as const;
+
+export const powerRequestSchema = z.object({
+  action: z.enum(['shutdown', 'restart']),
+  target: wakeTargetSchema,
+  warning: z.enum(POWER_WARNING_OPTIONS).default('short'),
+  /** SR-10: must equal the number of machines that will receive the order. */
+  confirm: z.object({ count: z.number().int().min(0) }).optional(),
+  /** FR-305: also shut down machines flagged "Nunca desligar por agendamento". */
+  confirmProtected: z.boolean().default(false),
+});
+export type PowerRequest = z.input<typeof powerRequestSchema>;
+export type PowerRequestParams = z.output<typeof powerRequestSchema>;
+
+export interface PowerDeviceRef {
+  deviceId: number;
+  name: string;
+}
+
+export interface PowerPreview {
+  action: 'shutdown' | 'restart';
+  /** Machines that will receive the order. */
+  count: number;
+  rooms: { roomId: number | null; name: string; count: number }[];
+  needsConfirmation: boolean;
+  /** Prepared with v1.2 (or never with the agent): excluded, need the new preparation. */
+  needsPreparation: PowerDeviceRef[];
+  /** "Desligamento remoto revogado": excluded. */
+  revoked: PowerDeviceRef[];
+  /** "Desligamento remoto perdido" (online, not checking in): excluded (AC-309-01). */
+  lost: PowerDeviceRef[];
+  /** Ready machines whose last check-in said a user was logged on (Q-7). */
+  withUser: number;
+  /** Ready machines the monitor sees offline: their order waits until they check in (≤ 2 h). */
+  offline: number;
+  /** Flagged "Nunca desligar por agendamento": included only with an extra confirmation. */
+  protected: PowerDeviceRef[];
+  policy: PowerPolicy;
+}
+
+/**
+ * Per-machine state of a manual job (pt-BR labels in the panel):
+ * pending (enviada), received (recebida), confirming (executou; aguardando confirmar pela rede),
+ * done (desligou / reiniciou), not_confirmed (não confirmou), cancelled, expired, failed.
+ */
+export const POWER_DEVICE_STATES = [
+  'pending',
+  'received',
+  'confirming',
+  'done',
+  'not_confirmed',
+  'cancelled',
+  'expired',
+  'failed',
+] as const;
+export type PowerDeviceState = (typeof POWER_DEVICE_STATES)[number];
+
+export interface PowerJobDevice extends PowerDeviceRef {
+  state: PowerDeviceState;
+  postpones: number;
+  detail: string | null;
+}
+
+/** FR-309 readiness (pt-BR labels in `AGENT_READINESS_LABELS`). */
+export const AGENT_READINESS = ['ready', 'needs_preparation', 'revoked', 'lost'] as const;
+export type AgentReadinessState = (typeof AGENT_READINESS)[number];
+export const AGENT_READINESS_LABELS: Record<AgentReadinessState, string> = {
+  ready: 'Pronta para desligar',
+  needs_preparation: 'Precisa do novo preparo',
+  revoked: 'Desligamento remoto revogado',
+  lost: 'Desligamento remoto perdido: provável congelamento ou tarefa removida',
+};
+
+/** What the panel shows about a machine's agent (FR-309, FR-308.1, owner Q-3). */
+export interface DeviceAgentInfo {
+  deviceId: number;
+  readiness: AgentReadinessState;
+  agentVersion: string | null;
+  lastCheckin: number | null;
+  freezeProduct: string | null;
+  freezeState: string | null;
+  persistentArea: boolean;
+  /** AC sleep timeout read by the agent: 0 = never, null = unknown. */
+  sleepAfterMinutes: number | null;
+  wakeTimers: string | null;
+  /** Q-6: only whether someone was logged on and how many sessions. */
+  userLoggedOn: boolean | null;
+  sessions: number | null;
+  clockOffsetMs: number | null;
+  tokenRotatedAt: number | null;
+}
+
+export interface PowerJob {
+  id: number;
+  action: 'shutdown' | 'restart';
+  label: string;
+  createdAt: number;
+  createdBy: string | null;
+  policy: PowerPolicy;
+  expiresAt: number;
+  counts: Record<PowerDeviceState, number>;
+  devices: PowerJobDevice[];
+}
+
+/** One machine's result for one scheduled shutdown (FR-307; pt-BR labels in the panel). */
+export interface PowerOccurrenceDevice extends PowerDeviceRef {
+  result: 'done' | 'was_off' | 'late_wake' | 'cancelled' | 'failed' | 'probably_done' | 'no_report';
+  postpones: number;
+  wasAsleep: boolean;
+  lateMinutes: number | null;
+  nativeWarning: boolean;
+  userLoggedOn: boolean | null;
+}
+
+/** One scheduled shutdown aggregated over the machines' reports (AC-307-01). */
+export interface PowerOccurrence {
+  occurrence: string;
+  scheduleId: number | null;
+  /** null when the schedule was deleted meanwhile. */
+  scheduleName: string | null;
+  plannedAt: number | null;
+  counts: Record<PowerOccurrenceDevice['result'] | 'postponed', number>;
+  maxPostpones: number;
+  devices: PowerOccurrenceDevice[];
+}
+
+export interface PowerHistory {
+  occurrences: PowerOccurrence[];
+  jobs: PowerJob[];
+}

@@ -17,6 +17,7 @@ const PC: Device = {
   tagIds: [7],
   notes: 'Mesa do fundo',
   enabled: true,
+  neverScheduledShutdown: false,
   manufacturer: null,
   model: null,
   serial: null,
@@ -70,6 +71,9 @@ const DIAG: DeviceDiagnostics = {
 
 function deviceApi(over: Partial<Device> = {}, diag: Partial<DeviceDiagnostics> = {}): FakeApi {
   return loggedInApi()
+    .on('GET', '/api/devices/5/agent', {
+      body: { deviceId: 5, readiness: 'needs_preparation', agentVersion: null, lastCheckin: null },
+    })
     .on('GET', '/api/devices/5/diagnostics', { body: { ...DIAG, ...diag } })
     .on('GET', '/api/devices/5', { body: { ...PC, ...over } })
     .on('GET', '/api/rooms', {
@@ -404,5 +408,70 @@ describe('Testar WoL desta máquina (FR-007.4)', () => {
     await user.click(await screen.findByRole('button', { name: 'Testar WoL' }));
     await user.click(await screen.findByRole('button', { name: 'Começar teste' }));
     expect(await screen.findByRole('alert')).toBeInTheDocument();
+  });
+});
+
+describe('"Desligamento remoto" card (M19-T03, FR-309, owner Q-3/Q-6)', () => {
+  const AGENT = {
+    deviceId: 5,
+    readiness: 'ready',
+    agentVersion: '1.3.0',
+    lastCheckin: at(9),
+    freezeProduct: 'deep_freeze',
+    freezeState: 'frozen',
+    persistentArea: true,
+    sleepAfterMinutes: 30,
+    wakeTimers: 'enabled',
+    userLoggedOn: true,
+    sessions: 2,
+    clockOffsetMs: 5 * 60_000,
+    tokenRotatedAt: null,
+  };
+
+  it('shows the agent details without user names and lets an admin revoke it', async () => {
+    const api = deviceApi()
+      .on('GET', '/api/devices/5/agent', { body: AGENT })
+      .on('POST', '/api/devices/5/agent/revoke', { body: { ...AGENT, readiness: 'revoked' } });
+    const user = userEvent.setup();
+    renderApp('/dispositivos/5');
+    const card = await screen.findByRole('region', { name: 'Desligamento remoto' });
+    expect(await within(card).findByText('Pronta para desligar')).toBeInTheDocument();
+    expect(card).toHaveTextContent('1.3.0');
+    expect(card).toHaveTextContent('Deep Freeze');
+    expect(card).toHaveTextContent('após 30 minutos');
+    expect(card).toHaveTextContent('ativados');
+    expect(card).toHaveTextContent('sim (2 sessões)');
+    expect(card).toHaveTextContent('5 min atrasado');
+    await user.click(within(card).getByRole('button', { name: 'Revogar desligamento remoto' }));
+    const dialog = await screen.findByRole('dialog', {
+      name: /Revogar desligamento remoto de LAB1-PC05/,
+    });
+    await user.click(within(dialog).getByRole('button', { name: 'Revogar' }));
+    await waitFor(() =>
+      expect(api.calls.some((c) => c.path === '/api/devices/5/agent/revoke')).toBe(true),
+    );
+  });
+
+  it('asks for the new preparation when the machine has no agent', async () => {
+    deviceApi().on('GET', '/api/devices/5/agent', {
+      body: { ...AGENT, readiness: 'needs_preparation', agentVersion: null, lastCheckin: null },
+    });
+    renderApp('/dispositivos/5');
+    const card = await screen.findByRole('region', { name: 'Desligamento remoto' });
+    expect(await within(card).findByText(/comando atualizado de "Preparar/)).toBeInTheDocument();
+    expect(within(card).queryByRole('button', { name: /Revogar/ })).not.toBeInTheDocument();
+    expect(
+      within(card).getByRole('link', { name: /Como resolver: Desligar computadores/ }),
+    ).toHaveAttribute('href', '/ajuda/remote-shutdown');
+  });
+
+  it('shows an error with a retry when the agent cannot be read', async () => {
+    deviceApi().on('GET', '/api/devices/5/agent', {
+      status: 500,
+      body: { code: 'INTERNAL_ERROR', message: 'Erro interno inesperado.' },
+    });
+    renderApp('/dispositivos/5');
+    const card = await screen.findByRole('region', { name: 'Desligamento remoto' });
+    expect(await within(card).findByText('Erro interno inesperado.')).toBeInTheDocument();
   });
 });

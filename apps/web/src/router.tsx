@@ -11,6 +11,7 @@ import { DevicesPage } from './features/devices/DevicesPage';
 import { DiscoveryPage } from './features/devices/DiscoveryPage';
 import { PreparePage } from './features/enrollment/PreparePage';
 import { HelpIndexPage, HelpPage } from './features/help/HelpPage';
+import { MigrationPage } from './features/migration/MigrationPage';
 import { ImportPage } from './features/devices/ImportPage';
 import { RoomPage } from './features/rooms/RoomPage';
 import { HistoryPage, JobPage } from './features/wake/HistoryPage';
@@ -48,6 +49,7 @@ export const routes: RouteObject[] = [
       { path: 'saude', element: <HealthPage /> },
       { path: 'equipe', element: <TeamPage /> },
       { path: 'equipe/conflitos', element: <ConflictsPage /> },
+      { path: 'backup', element: <MigrationPage /> },
       { path: 'ajuda', element: <HelpIndexPage /> },
       { path: 'ajuda/:topico', element: <HelpPage /> },
       { path: '*', element: <NotFound /> },

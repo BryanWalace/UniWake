@@ -5,7 +5,8 @@
  */
 import type { FastifyInstance } from 'fastify';
 
-export const AUTH_LEVELS = ['public', 'operator', 'admin', 'enrollment'] as const;
+/** `enrollment` and `agent` routes check their own bearer token (enrollment / per-machine). */
+export const AUTH_LEVELS = ['public', 'operator', 'admin', 'enrollment', 'agent'] as const;
 export type AuthLevel = (typeof AUTH_LEVELS)[number];
 
 export interface RouteEntry {

@@ -3,3 +3,4 @@ export * from './errors';
 export * from './mac';
 export * from './schemas';
 export * from './settings';
+export * from './agent';

@@ -1,3 +1,4 @@
+import { Link } from 'react-router';
 import { Banner } from '../../components/Banner';
 import { t } from '../../i18n/pt-BR';
 import { PauseBanner } from '../schedules/Pause';
@@ -21,6 +22,17 @@ export function GlobalBanners() {
         </Banner>
       )}
       <PauseBanner />
+      {d?.standby && (
+        <Banner tone="danger">
+          <strong>Este UniWake está em espera</strong> depois de importar o arquivo de{' '}
+          {d.standby.from}: os agendamentos estão parados e as máquinas dos laboratórios não recebem
+          ordens daqui.{' '}
+          <Link to="/backup" className="underline">
+            Revise e ative em Backup e migração
+          </Link>
+          .
+        </Banner>
+      )}
       {d?.demo ? (
         <Banner tone="warning">
           <strong>Modo demonstração.</strong> As máquinas são simuladas e nenhum pacote real é

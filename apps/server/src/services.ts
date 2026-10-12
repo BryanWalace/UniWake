@@ -6,6 +6,12 @@ import type { WakeTarget } from '@uniwake/shared';
 import { AuditService } from './application/audit/audit-service';
 import { AuthService } from './application/auth/auth-service';
 import { BackupService } from './application/backups/backup-service';
+import { ExportService } from './application/migration/export-service';
+import { ImportService } from './application/migration/import-service';
+import { AutoExportService } from './application/migration/auto-export';
+import { nodeExportFolder } from './adapters/export-folder';
+import { SqliteMigrationStateRepo } from './db/repositories/migration-repo';
+import { applyImport, hasPreparedMachines, previewImport } from './db/sync/import';
 import { UsersService } from './application/auth/users-service';
 import { CsvImportService } from './application/devices/csv-import-service';
 import { DashboardService } from './application/dashboard/dashboard-service';
@@ -76,6 +82,7 @@ import { SqliteTestWolRepo } from './db/repositories/test-wol-repo';
 import { SqliteUpdateAutoSkip } from './db/repositories/update-skip-repo';
 import { SqliteUpdateStateStore } from './db/repositories/update-state-repo';
 import { hostname } from 'node:os';
+import { exportCodec } from './adapters/export-codec';
 import { DevSecretProtector } from './adapters/secret-protector';
 import { NodeSyncNetwork } from './adapters/sync-network';
 import { MissedRunsService } from './application/team/missed-runs';
@@ -85,7 +92,25 @@ import { TeamLease } from './application/team/team-lease';
 import { TeamService } from './application/team/team-service';
 import type { SecretProtector, SyncEndpoint, SyncNetwork } from './application/ports';
 import { SqliteTeamRepo } from './db/repositories/team-repo';
-import { SqliteReplicaStore } from './db/sync/apply';
+import { SqliteHubKeysRepo } from './db/repositories/hub-keys-repo';
+import { HubKeyService } from './application/power/hub-key';
+import { AgentTokensService } from './application/power/agent-tokens';
+import { AgentService, type AgentScripts } from './application/power/agent-service';
+import { SqliteDeviceAgentsRepo } from './db/repositories/device-agents-repo';
+import {
+  agentRows,
+  deviceExtras,
+  occurrenceReports,
+  recentPowerJobIds,
+  SqlitePowerJobsRepo,
+  SqlitePowerRepo,
+} from './db/repositories/power-repo';
+import { PowerStatusService } from './application/power/power-status';
+import { PowerOrdersService } from './application/power/power-orders';
+import { AgendaService } from './application/power/agenda-service';
+import { scheduleRunUuid, uuidV5 } from './db/sync/uuid';
+import { createHash, randomUUID } from 'node:crypto';
+import { changesSince, SqliteReplicaStore } from './db/sync/apply';
 import { changeLog, configureChangeLog } from './db/sync/change-log';
 import type { HttpServices } from './http/context';
 
@@ -136,6 +161,8 @@ export interface ServiceOptions {
   oui?: () => OuiTable;
   /** prepare-target.ps1 as served by the agent listener (FR-007.3); absent = not installed. */
   prepareScript?: PrepareScript;
+  /** Lab-PC agent scripts (v1.3); absent = none (API tests that do not enroll agents). */
+  agentScripts?: AgentScripts;
   /** Modo equipe (FR-201..204): team port and, in tests, where announcements go. */
   team?: {
     port: number;
@@ -159,6 +186,13 @@ export interface Services extends HttpServices {
   scheduler: Scheduler;
   monitor: MonitorService;
   probes: ProbeQueue;
+  /** Signs answers to lab PCs (v1.3, ADR-044); `init()` runs at hub start. */
+  hubKey: HubKeyService;
+  agentTokens: AgentTokensService;
+  /** Lab PCs' shutdown agendas (FR-303.1). */
+  agenda: AgendaService;
+  /** v1.4 daily export to a folder (FR-405). */
+  autoExport: AutoExportService;
 }
 
 export function createServices(
@@ -172,6 +206,7 @@ export function createServices(
   configureChangeLog(db, () => clock.now());
   const audit = new AuditService(new SqliteAuditRepo(db), clock);
   const settings = new SettingsService(new SqliteSettingsRepo(db), clock);
+  const migrationState = new SqliteMigrationStateRepo(db);
   const usersRepo = new SqliteUsersRepo(db);
   const sessionsRepo = new SqliteSessionsRepo(db);
   const auth = new AuthService(usersRepo, sessionsRepo, settings, audit, clock, tx);
@@ -218,6 +253,10 @@ export function createServices(
     demo: opts.demo === true,
     lastSweepAt: () => monitor.lastSweep?.startedAt ?? null,
     pause: () => scheduler.pauseState(),
+    standby: () => {
+      const s = migrationState.standby();
+      return s ? { since: s.since, from: s.from } : null;
+    },
     notices: () => notices.list(),
   });
 
@@ -307,14 +346,20 @@ export function createServices(
     tag: (id: number) => tagsRepo.get(id) !== undefined,
     device: (id: number) => devicesRepo.get(id) !== undefined,
   };
+  const schedulesRepo = new SqliteSchedulesRepo(db);
   const schedules = new SchedulesService({
-    repo: new SqliteSchedulesRepo(db),
+    repo: schedulesRepo,
     refs,
     describeTargets: (targets) => wake.describeTargets(targets),
     settings,
     audit,
     clock,
     transaction: tx,
+    tagUuids: {
+      toUuid: (id) => (tagsRepo.get(id) ? changeLog(db).uuidOf('tag', id) : null),
+      toId: (uuid) =>
+        db.get<{ id: number }>('SELECT id FROM tags WHERE uuid = ?', [uuid])?.id ?? null,
+    },
   });
 
   const schedulerRepo = new SqliteSchedulerRepo(db);
@@ -331,9 +376,10 @@ export function createServices(
   });
   // ---------------------------------------------------------------- Modo equipe (v1.2)
   const replica = new SqliteReplicaStore(db);
+  const protector = ports.secrets ?? new DevSecretProtector();
   const team = new TeamService({
     repo: new SqliteTeamRepo(db),
-    protector: ports.secrets ?? new DevSecretProtector(),
+    protector,
     clock,
     audit,
     logger: ports.logger.child({ module: 'team' }),
@@ -384,6 +430,7 @@ export function createServices(
     repo: schedulerRepo,
     lease,
     teamMode: () => team.inTeam(),
+    standby: () => migrationState.standby() !== null,
     onMissedRun: (r) => notices.missedRun(r),
     refs,
     startWake: (req, actor, opts) => wake.start(req, actor, opts),
@@ -421,7 +468,12 @@ export function createServices(
       })
     : null;
   backupsRef.current = backups;
+  // Remote shutdown counts for the health page; the status service is built further down.
+  const late: { powerStatus?: PowerStatusService; hubKey?: HubKeyService } = {};
   const health = new HealthService({
+    lastAutoExport: () => migrationState.lastAutoExport(),
+    powerCounts: () =>
+      late.powerStatus?.counts() ?? { ready: 0, needs_preparation: 0, revoked: 0, lost: 0 },
     clock,
     logger: ports.logger.child({ module: 'health' }),
     version: opts.version ?? '0.0.0-dev',
@@ -467,6 +519,13 @@ export function createServices(
     transaction: tx,
     agentPort: opts.running?.agentPort ?? 47101,
     onMoved: (move) => notices.onDeviceMoved(move),
+    hubKeyId: () => {
+      try {
+        return late.hubKey?.keyId() ?? null;
+      } catch {
+        return null; // not loaded yet
+      }
+    },
   });
 
   const update = new UpdateService({
@@ -538,9 +597,150 @@ export function createServices(
     logger: ports.logger.child({ module: 'discovery' }),
   });
 
+  const hubKey = new HubKeyService({
+    repo: new SqliteHubKeysRepo(db),
+    protector,
+    clock,
+    logger: ports.logger.child({ module: 'hub-key' }),
+  });
+  late.hubKey = hubKey;
+  const agentTokens = new AgentTokensService({
+    repo: new SqliteDeviceAgentsRepo(db),
+    audit,
+    clock,
+    transaction: tx,
+  });
+  const powerRepo = new SqlitePowerRepo(db);
+  const agenda = new AgendaService({
+    schedules: () => schedulesRepo.list(),
+    exceptions: () => schedulesRepo.exceptions(),
+    pause: () => schedulerRepo.pause(),
+    device: (id) => powerRepo.agendaDevice(id),
+    refs,
+    dataVersion: () => powerRepo.dataVersion(),
+    occurrenceId: scheduleRunUuid,
+    digest: (t) => createHash('sha256').update(t).digest('hex'),
+    clock,
+  });
+  const power = new PowerOrdersService({
+    store: new SqlitePowerJobsRepo(db),
+    resolve: (target) => wake.resolveForPower(target),
+    settings,
+    audit,
+    events,
+    clock,
+    transaction: tx,
+    newUuid: () => randomUUID(),
+  });
+  const powerStatus = new PowerStatusService({
+    agents: (ids) => agentRows(db, ids),
+    occurrenceReports: (since) => occurrenceReports(db, since),
+    deviceExtras: (ids) => deviceExtras(db, ids),
+    schedules: () => schedulesRepo.list(),
+    refs,
+    resolve: (target) => wake.resolveForPower(target),
+    occurrenceId: scheduleRunUuid,
+    recentJobIds: (limit) => recentPowerJobIds(db, limit),
+    orders: power,
+    clock,
+  });
+  late.powerStatus = powerStatus;
+  const agentPort = opts.running?.agentPort ?? 47101;
+  const agent = new AgentService({
+    tokens: agentTokens,
+    hubKey,
+    scripts: opts.agentScripts ?? { get: () => null },
+    store: powerRepo,
+    agenda,
+    settings,
+    clock,
+    transaction: tx,
+    hub: (host) => {
+      // The address the machine used reaches this hub; otherwise the one chosen for enrollment.
+      const fromHost =
+        host && /^\d{1,3}(\.\d{1,3}){3}:\d{1,5}$/.test(host) ? `http://${host}` : null;
+      const chosen = settings.get('enrollment.hubAddress');
+      const self = changeLog(db).instanceId();
+      // ADR-048: the team's hubs (their agent listener on the default port) with their keys.
+      team.publishSigningKey(hubKey.keyId(), hubKey.publicKey());
+      const peers = team.inTeam()
+        ? team.members().flatMap((m) => {
+            if (m.instanceId === self || m.revokedAt !== null) return [];
+            if (!m.signingKeyId || !m.signingPublicJwk) return [];
+            const p = team.peer(m.instanceId);
+            const address = p?.manualAddress ?? p?.address ?? null;
+            if (!address || !/^\d{1,3}(\.\d{1,3}){3}$/.test(address)) return [];
+            return [
+              {
+                instanceId: m.instanceId,
+                url: `http://${address}:47101`,
+                keyId: m.signingKeyId,
+                publicKey: JSON.parse(m.signingPublicJwk) as { n: string; e: string },
+              },
+            ];
+          })
+        : [];
+      return {
+        instanceId: self,
+        epoch: team.epoch() ?? 0,
+        selfUrl: fromHost ?? (chosen ? `http://${chosen}:${agentPort}` : null),
+        peers,
+      };
+    },
+    cancelId: (orderUuid) => uuidV5(`power-cancel:${orderUuid}`),
+    version: opts.version ?? '0.0.0-dev',
+  });
+
+  const exporter = new ExportService({
+    changes: () => changesSince(db, 0).entries,
+    hubKey: async () => hubKey.exportKey(),
+    self: () => team.self(),
+    codec: exportCodec,
+    settings,
+    audit,
+    clock,
+    version: opts.version ?? '0.0.0-dev',
+  });
+
+  const autoExport = new AutoExportService({
+    exporter,
+    settings,
+    clock,
+    folder: nodeExportFolder,
+    state: migrationState,
+    self: () => team.self(),
+    logger: ports.logger.child({ module: 'auto-export' }),
+  });
+  const importer = new ImportService({
+    codec: exportCodec,
+    store: {
+      preview: (entries, replace) => previewImport(db, entries, { replace, now: clock.now() }),
+      apply: (entries, replace, after) =>
+        applyImport(db, entries, { replace, now: clock.now() }, after),
+      hasPreparedMachines: () => hasPreparedMachines(db),
+    },
+    state: migrationState,
+    inTeam: () => team.inTeam(),
+    hubKey,
+    backups,
+    audit,
+    clock,
+    logger: ports.logger.child({ module: 'import' }),
+    newId: () => randomUUID(),
+  });
+
   return {
     db,
     clock,
+    hubKey,
+    exporter,
+    importer,
+    autoExport,
+    agentTokens,
+    agent,
+    agenda,
+    power,
+    powerStatus,
     audit,
     settings,
     auth,

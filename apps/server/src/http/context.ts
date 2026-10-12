@@ -18,6 +18,8 @@ import type { EnrollmentService } from '../application/enrollment/enrollment-ser
 import type { EventsBus } from '../application/events-bus';
 import type { Clock } from '../application/ports';
 import type { BackupService } from '../application/backups/backup-service';
+import type { ExportService } from '../application/migration/export-service';
+import type { ImportService } from '../application/migration/import-service';
 import type { HealthService } from '../application/health/health-service';
 import type { NetworkPreviewService } from '../application/network/network-preview';
 import type { LogSource } from '../application/ports';
@@ -32,6 +34,11 @@ import type { TestWolService } from '../application/test-wol/test-wol-service';
 import type { UpdateCoordinator } from '../application/update/update-coordinator';
 import type { UpdateService } from '../application/update/update-service';
 import type { WakeService } from '../application/wake/wake-service';
+import type { AgentService } from '../application/power/agent-service';
+import type { HubKeyService } from '../application/power/hub-key';
+import type { PowerOrdersService } from '../application/power/power-orders';
+import type { PowerStatusService } from '../application/power/power-status';
+import type { AgentTokensService } from '../application/power/agent-tokens';
 
 export interface HttpServices {
   auth: AuthService;
@@ -63,8 +70,19 @@ export interface HttpServices {
   pairing: PairingService;
   sync: SyncService;
   missedRuns: MissedRunsService;
+  /** v1.3 lab-PC agent (FR-301..303) and the key that signs its answers (ADR-044). */
+  agent: AgentService;
+  hubKey: HubKeyService;
+  /** Manual "Desligar" / "Reiniciar" (FR-305). */
+  power: PowerOrdersService;
+  /** Readiness, agent details and shutdown history (FR-307, FR-309). */
+  powerStatus: PowerStatusService;
+  agentTokens: AgentTokensService;
   /** null when the hub has no backups directory (API tests). */
   backups: BackupService | null;
+  /** v1.4 "Backup e migração" (spec §6c). */
+  exporter: ExportService;
+  importer: ImportService;
   /** Hub only: the log viewer source (FR-016). */
   logs?: LogSource;
   /** Present on the hub: stores an uploaded PFX for LAN HTTPS (ADR-012). */

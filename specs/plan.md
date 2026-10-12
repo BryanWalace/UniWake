@@ -1,9 +1,9 @@
 # UniWake — Technical Plan
 
-Version: **1.2** · Date: 2026-10-09 · Owner: Architect
+Version: **1.4** · Date: 2026-10-12 · Owner: Architect
 History: v0.1 draft → reviewed in `specs/reviews/phase-2-*.md` → consolidated as v1.0 → v1.1
 (Phase 6: §5.2 sync-ready data, §7.2 lease, ADR-030..034) → v1.2 (Phase 7: §14 team mode,
-ADR-035..040).
+ADR-035..040) → v1.3 (Phase 9: §15 shutdown, ADR-042..048; §6.2 amended) → v1.4 (Phase 11: §16 backup e migração, ADR-049..052).
 Inputs: `specs/constitution.md` v1.1, `specs/spec.md` v1.0, ADR-001..026.
 
 ---
@@ -256,12 +256,14 @@ empty in v1.0).
 | POST `/api/notices/:id/wake-missed` | operator | FR-204.2 |
 | GET `/*` except `/api/*`, `/agent/*` | public | SPA files, `index.html` fallback |
 
-### 6.2 Agent listener — exactly three routes
+### 6.2 Agent listener — exactly five routes (three until v1.2; ADR-043)
 | Method & path | Auth | Purpose |
 |---|---|---|
 | GET `/api/health` | public | `{status}` |
-| POST `/agent/enroll` | enrollment (token) | FR-007.2 |
+| POST `/agent/enroll` | enrollment (token) | FR-007.2 (+ agent token when asked, §15.5) |
 | GET `/agent/prepare-target.ps1` | public | script bytes |
+| POST `/agent/v1/checkin` | agent token | FR-302 (v1.3, §15.4) |
+| GET `/agent/v1/scripts/:name` | public | agent scripts (v1.3) |
 
 ### 6.3 SSE events
 `device.status` `{deviceId, status, latencyMs, lastSeenAt}` · `counters` `{global, rooms[]}` ·
@@ -292,7 +294,7 @@ prefix is not used because loopback is HTTP (browsers reject `__Host-` without `
 `PAUSE_REASON_REQUIRED`, `ENROLL_TOKEN_INVALID`, `ENROLL_TOKEN_EXPIRED`, `ENROLL_TOKEN_REVOKED`,
 `ENROLL_TOKEN_EXHAUSTED`, `ENROLL_ROOM_MISMATCH`, `PREPARE_SCRIPT_MISSING`, `UPDATE_NOT_AVAILABLE`, `UPDATE_IN_PROGRESS`,
 `UPDATE_BLOCKED_BY_SCHEDULE`, `UPDATE_DISK_SPACE`, `CHECKSUM_MISMATCH`, `DOWNLOAD_FAILED`,
-`BACKUP_NOT_FOUND`, `RESTORE_CONFIRMATION_MISMATCH`, `TEAM_NOT_IN_TEAM`, `TEAM_ALREADY_MEMBER`, `TEAM_REPLACE_CONFIRM`, `TEAM_PAIRING_NO_CODE`, `TEAM_PAIRING_WRONG_CODE`, `TEAM_PAIRING_LOCKED`, `TEAM_PAIRING_UNREACHABLE`, `TEAM_PAIRING_FAILED`, `TEAM_MEMBER_NOT_FOUND`, `TEAM_CANNOT_REVOKE_SELF`, `MISSED_RUN_NOT_FOUND` (v1.2, §14),
+`BACKUP_NOT_FOUND`, `RESTORE_CONFIRMATION_MISMATCH`, `TEAM_NOT_IN_TEAM`, `TEAM_ALREADY_MEMBER`, `TEAM_REPLACE_CONFIRM`, `TEAM_PAIRING_NO_CODE`, `TEAM_PAIRING_WRONG_CODE`, `TEAM_PAIRING_LOCKED`, `TEAM_PAIRING_UNREACHABLE`, `TEAM_PAIRING_FAILED`, `TEAM_MEMBER_NOT_FOUND`, `TEAM_CANNOT_REVOKE_SELF`, `MISSED_RUN_NOT_FOUND` (v1.2, §14), `AGENT_TOKEN_INVALID`, `AGENT_RATE_LIMITED`, `AGENT_PROTOCOL_UNSUPPORTED`, `AGENT_SCRIPTS_MISSING`, `POWER_TARGET_EMPTY`, `POWER_NOT_READY`, `POWER_PROTECTED_CONFIRMATION`, `POWER_JOB_NOT_FOUND` (v1.3, §15.4), `EXPORT_PASSWORD_REQUIRED`, `IMPORT_TOO_LARGE`, `IMPORT_NOT_UNIWAKE`, `IMPORT_DAMAGED`, `IMPORT_NEWER`, `IMPORT_PASSWORD_REQUIRED`, `IMPORT_BAD_PASSWORD`, `IMPORT_IN_TEAM`, `IMPORT_EXPIRED`, `IMPORT_REPLACE_INCOMPLETE`, `MIGRATION_UNDO_UNAVAILABLE`, `AGENT_STANDBY` (v1.4, §16.4),
 `INTERNAL_ERROR`.
 
 ## 7. Key flows
@@ -555,3 +557,230 @@ fields) → `rekey {epoch, key}` if one side is newer, then close; else client `
 Pairing: code 6 digits, 5 min, 5 attempts, one open code; pairing connection 30 s total. Sync:
 handshake 10 s, request 30 s, 64 MB per message; a pull returns every change since the cursor (one
 entry per entity: a team with 5 000 devices is a few MB), so references never span two batches.
+
+## 15. Shutdown (v1.3; spec §6b; ADR-042..048)
+
+### 15.1 Overview
+```
+ lab PC (no program installed)                          hub (any team member)
+ ┌──────────────────────────────────────┐              ┌───────────────────────────────┐
+ │ task "UniWake" (SYSTEM, 1 min) ──────┼── HTTP ─────▶│ POST /agent/v1/checkin :47101 │
+ │   uniwake-agent.ps1                  │◀─ signed ────┤  orders, agenda, hubs, hashes │
+ │   agenda.json / state / reports      │              │ agenda generator (cached)     │
+ │ task "UniWake Despertar" (WakeToRun) │              │ power orders / reports        │
+ │ task "UniWake Aviso" (Users) ◀─ files─┤              │ signing key (DPAPI)           │
+ │ shutdown.exe /s /t 30                │              └───────────────────────────────┘
+ └──────────────────────────────────────┘
+```
+The hub never runs a shutdown command and never connects to lab PCs. The scheduler still executes
+only wake schedules; shutdown schedules exist only as agenda items.
+
+### 15.2 Modules
+```
+packages/shared/src/agent/     checkin.ts (request/answer Zod schemas, protocol 1), agenda.ts
+                               (item, report outcomes), fixtures/agent/*.json (contract fixtures,
+                               used by Vitest and Pester)
+apps/server/src/application/power/
+  agenda-service.ts     loads schedules/exceptions/pause/devices and calls domain/agenda.ts
+                        (pure: window, items, nextWakes; reuses domain/schedule.ts expansion)
+  agent-checkin.ts      authenticate token → apply reports/acks → collect orders → agenda (cache)
+                        → hub list → script hashes → rotation → answer
+  agent-tokens.ts       issue/rotate/revoke, hash compare (timingSafeEqual)
+  power-orders.ts       manual orders (preview reuses wake target resolution + SR-10), cancel,
+                        expiry, live job (orders + monitor offline confirmation)
+  power-history.ts      aggregate reports per occurrence / job; "sem relatório" inference
+  readiness.ts          per-device state: pronta / precisa do novo preparo / perdido / revogado
+  signing.ts            Signer port use: sign(nonce, body) → {keyId, signature}
+apps/server/src/adapters/
+  rsa-signer.ts         node:crypto RSA-3072 generate/sign; private key via SecretProtector (DPAPI)
+apps/server/src/http/routes/agent.ts   + checkin and scripts routes, per-token/IP rate limits
+apps/server/src/http/routes/power.ts   panel API (below)
+apps/server/src/application/demo/      simulated agents (FR-310)
+scripts/agent/uniwake-agent.ps1        SYSTEM agent (check-in, verify, agenda, executor, reports,
+                                       despertar triggers, self-update)
+scripts/agent/uniwake-aviso.ps1        user-session warning window (WinForms) + file channel
+scripts/prepare-target.ps1             + Invoke-UwRemoteShutdownStep, freeze detection,
+                                       -HubKeyId, -PersistentPath, -UwfExclude, -RemoveAgent
+apps/web/src/features/power/           Desligar/Reiniciar dialog + job drawer, readiness badges,
+                                       freeze field, revoke, schedule form "Ação"
+```
+Ports added: `Signer` (application never imports `node:crypto` key handling directly).
+Every external call in the PowerShell scripts goes through a small wrapper (`Invoke-UwShutdown`,
+`Invoke-UwQuser`, `Invoke-UwDfc`, `Get-UwUwfFilter`, `Register-UwTask`, `Invoke-UwHttp`,
+`Get-UwBootTime`, `Get-UwNow`) so Pester mocks them; a test fails if any wrapper runs unmocked.
+
+### 15.3 Data (migration 006)
+| Table / change | Kind | Columns |
+|---|---|---|
+| `schedules` + | replicated (existing `schedule`) | action `wake`/`shutdown` (default `wake`), warning_minutes NULL, allow_postpone NULL, postpone_max NULL, postpone_minutes NULL (all NULL for wake schedules), exclude_tags JSON (tag UUIDs, default `[]`; unknown UUIDs ignored) |
+| `devices` + | replicated (existing `device`) | never_scheduled_shutdown (0/1) |
+| `device_agents` | replicated `device_agent` (uuid = device uuid) | device_id, token_hash, pending_token_hash NULL, issued_at, rotated_at, revoked_at NULL, agent_version, protocol, freeze_product, freeze_state, persistent (bool), sleep_after_minutes NULL (0 = never), wake_timers, seen_coarse_at (exact, written at most every 30 min), rev, updated_by_instance, updated_at |
+| `power_orders` | replicated `power_order` | id, uuid, job_uuid, device_id, action `shutdown`/`restart`/`cancel`, warning_minutes, allow_postpone, postpone_max, postpone_minutes, state (`pending`,`delivered`,`warning`,`executed`,`cancelled`,`expired`,`failed`; pt-BR labels in the UI), created_at, expires_at, delivered_at, delivered_by_instance, executed_at, detail, rev… (creator is on the job) |
+| `power_reports` | replicated `power_report` (insert-only, uuid from the PC) | id, uuid, device_id, occurrence_uuid NULL, order_uuid NULL, action, outcome (`done`,`cancelled`,`skipped`,`failed`), reason NULL, planned_at, executed_at NULL, postpones, user_logged_on, session_count, was_asleep, late_minutes NULL, native_warning, freeze_state, detail, received_at — **no user name column** (LGPD, Q-6) |
+| `power_jobs` | replicated `power_job` | id, uuid, action, target JSON, warning_minutes, allow_postpone, postpone_max, postpone_minutes, created_by, created_at (counts derived from orders) |
+| `agent_seen` | machine-local | device_id PK, seen_at, ip, boot_time, clock_offset_ms, user_logged_on, session_count |
+| `hub_keys` | machine-local | key_id PK, public_jwk (`{n, e}`), private_blob (DPAPI), created_at, retired_at NULL |
+| `team_members` + | replicated (existing) | signing_key_id, signing_public_jwk |
+
+Settings (`power.*`, shared scope, group "Desligar"): defaultWarningMinutes 5 (0–30), postponeMax 2
+(0–5), postponeMinutes 15 (5–60) — defaults of new shutdown schedules and of the manual "5 min com
+adiamento" option —, warningMessage (must keep `{hora}`), postponeMessage (must keep `{n}`)
+(FR-304.1a). Owner-fixed values are constants in `packages/shared/src/agent/constants.ts`, not
+settings: `AGENDA_DAYS` 14, `LATE_WAKE_MAX_MINUTES` 60, `LOST_AFTER_MINUTES` 15,
+`MANUAL_WARNING_MINUTES` 1, `TOKEN_ROTATION_DAYS` 30, `ORDER_EXPIRY_MINUTES` 120. Machine scope:
+none new. Migration 006 resets `rev` of schedules and devices to 0 so the start-up baseline
+re-logs them with the new snapshot shape (ADR-048). Team `PROTOCOL_VERSION` → 2. Apply order
+(§14.4) gains `device_agent` after `device`, then `power_job`, `power_order`, `power_report`. Retention: reports and orders follow history retention (180 d), pruned per PC
+(tombstones not needed for insert-only rows older than retention; each PC prunes alike).
+
+### 15.4 Routes
+Agent listener (amends §6.2 → five routes):
+
+| Method & path | Auth | Purpose |
+|---|---|---|
+| GET `/api/health` | public | `{status}` |
+| POST `/agent/enroll` | enrollment token | FR-007.2; + agent token, hub key, script hashes (signed) when asked |
+| GET `/agent/prepare-target.ps1` | public | script bytes |
+| POST `/agent/v1/checkin` | agent token | FR-302 |
+| GET `/agent/v1/scripts/:name` | public | `uniwake-agent.ps1`, `uniwake-aviso.ps1` bytes |
+
+Panel (`/api`):
+
+| Method & path | Role | FR |
+|---|---|---|
+| POST `/api/power/preview` · POST `/api/power/jobs` · GET `/api/power/jobs/:id` · POST `/api/power/jobs/:id/cancel` | operator | FR-305 |
+| GET `/api/power/history` (also merged into `/api/history`) | viewer | FR-307 |
+| GET `/api/devices/:id/agent` · POST `/api/devices/:id/agent/revoke` | viewer / admin | FR-302.2, FR-309 |
+| `/api/schedules` (existing) with `action` and power fields | operator | FR-306 |
+| GET `/api/settings/prepare-command` (existing) adds `-HubKeyId`, optional `-PersistentPath` | admin | FR-301, FR-308.4 |
+
+SSE: `power.job` `{jobId, counts}`, `power.device` `{jobId, deviceId, state}`, `agent.status`
+`{deviceId, readiness}`. Error codes: `POWER_TARGET_EMPTY`, `POWER_NOT_READY` (all excluded),
+`POWER_JOB_NOT_FOUND`, `POWER_PROTECTED_CONFIRMATION` (409, FR-305), `AGENT_TOKEN_INVALID` (agent listener, 401, no detail),
+`AGENT_RATE_LIMITED`, `AGENT_PROTOCOL_UNSUPPORTED`.
+
+### 15.5 Flows
+- **Enrollment (agent):** script sends `agent: {protocol: 1}` + nonce → hub upserts the device,
+  issues a token (revoking any previous one), answers signed → script verifies key id =
+  `-HubKeyId`, signature, nonce → downloads scripts, checks hashes → writes token, `hub.json`
+  (keys + URLs), tasks → first check-in runs immediately (`Start-ScheduledTask "UniWake"`).
+- **Check-in (hub):** rate limit → token lookup by hash (active or pending; pending promotes) →
+  Zod → insert reports (ignore known UUIDs), ack them → update `agent_seen`, `device_agents`
+  (coarse) → orders `pendente` for the device → mark `entregue` → agenda from cache (key: device +
+  data version) → hubs list (team) → hashes → rotation → JSON body → sign → send.
+- **Agent run:** lock (task IgnoreNew) → heartbeat → load state → check folder ACL → check-in
+  (each hub in list order, one 5 s timeout per request, at most 3 attempts; stop at first verified answer) → apply answer
+  (orders, agenda, hubs, token, self-update) → rewrite "UniWake Despertar" if agenda version
+  changed → evaluate rules (ADR-045) → if something is due: warning flow (ADR-046), polling the hub
+  every 30 s for cancel → report → `shutdown` wrapper.
+- **Live job (panel):** order states from check-ins; `executada` + monitor offline within 5 min →
+  "desligou"; still online → "não confirmou"; postpones shown from the warning-phase check-ins.
+- **History:** per occurrence UUID, reports grouped by outcome; devices targeted with no report
+  after 24 h → "sem relatório" or the inference of FR-307.
+- **Team mode (ADR-048):** no lease. Every hub can answer any machine; the order/report entities
+  replicate; agenda versions are content hashes, so two hubs with the same data give the same
+  version.
+
+### 15.6 Testing
+| Layer | What | Tool |
+|---|---|---|
+| Agenda generator | holidays, pause, DST-free BR tz, scoping, nextWakes, validity | Vitest + fixtures shared with Pester |
+| Check-in | auth, revoked, rate limits, dedupe, rotation (and no rotation when frozen), signature verifies, size limits | Vitest `fastify.inject` |
+| Signing interop | Node signs, Windows PowerShell 5.1 verifies (spike, then a CI-Win Pester test) | Pester on `windows-latest` |
+| Agent executor | expiry, boot rule, sleep rule + 60 min cap, clock offset, postpone limits, cancel, fallback warning, report queue, self-update hash mismatch | Pester with mocked wrappers and a fake clock |
+| Prepare step | tasks/ACL/token, idempotency, `-WhatIf`, `-RemoveAgent`, freeze fixtures (none, DF frozen, DF thawed, UWF on/next-off, RRx, SD), owner/ACL tampering | Pester + `FakeSystem.ps1` |
+| Panel | schedule form action, Desligar/Reiniciar dialog, drawer, readiness badges, revoke | Vitest RTL + Playwright E2E (demo) |
+| Load | 500 simulated agents, 60 s period | Vitest perf (NFR-301) |
+| Real PCs | wake timer, user-session window, freeze products | [manual] V3 checklist (owner) |
+
+Constitution §5 rule (v1.3): no test runs `shutdown.exe`, registers a real scheduled task or
+changes the power plan; the scripts' wrappers are mocked and a guard throws on an unmocked call.
+
+### 15.7 Limits and timeouts
+Check-in body ≤ 64 KB, answer ≤ 256 KB (7 days × few items); reports per request ≤ 50; agenda ≤ 200
+items; orders expire after 120 min; agent HTTP 5 s per request (HttpWebRequest has one timeout, no separate connect timeout), ≤ 3 attempts per run (amended in V3-T01);
+UI request/response files ≤ 4 KB; local report queue ≤ 500 lines.
+
+### 15.8 Risks
+| ID | Risk | Likelihood | Impact | Mitigation |
+|---|---|---|---|---|
+| RK-19 | Wake timers blocked by plan/GPO/firmware → sleeping PCs miss shutdown | Medium | Medium | Prepare enables RTCWAKE (Q-3); late-wake rule; report "estava em suspensão" |
+| RK-20 | Group-principal task does not appear in the user's session on some builds | Medium | Medium | Spike M18-T01; native-warning fallback |
+| RK-21 | Freezing software erases tasks/agenda | High where used | Medium | Detection, ATENÇÃO, persistent path, "perdido" heuristic, help page |
+| RK-22 | Lab hub spoofing orders shutdown of all labs | Low | High | Signed answers with nonce (ADR-044) |
+| RK-23 | User-writable ProgramData paths → privilege escalation | Medium | Critical | Owner/ACL hardening, SYSTEM never writes/deletes in Users folders, reparse checks (ADR-042/046) |
+| RK-24 | AV/EDR flags a SYSTEM PowerShell task every minute | Medium | Medium | Plain readable scripts, no obfuscation/encoded commands, documented paths; help page |
+| RK-25 | Unsaved work lost (`/t` implies `/f`) | Medium | Medium | Warning text, postpone, Q-2 |
+
+## 16. Backup e migração (v1.4; spec §6c; ADR-049..052)
+
+### 16.1 Overview
+A `.uniwake` file is the team-sync snapshot of the chosen sections, gzip-compressed, with a
+manifest and an optional password-encrypted secret part. Import reuses the sync applier (merge) or
+a scoped wipe + applier (replace) in one transaction, previewed by a rolled-back run. An imported
+copy is "em espera" until activated.
+
+### 16.2 Modules
+| Module | Responsibility |
+|---|---|
+| `application/migration/document.ts` | sections ↔ entities, manifest, canonical JSON + checksum, format converters, limits (no I/O; uses node:crypto, so not in domain/) |
+| `application/migration/export-service.ts` | build document from snapshots (`ReplicaStore`-like reader), secrets via `SecretBox`, file name |
+| `application/migration/import-service.ts` | parse/verify, decrypt, preview (rollback), apply merge/replace, key import rule, standby, audit, pre-import backup |
+| `application/migration/secret-box.ts` | argon2id + AES-256-GCM with AAD (node:crypto) |
+| `application/migration/standby.ts` | `system_state.standby`; scheduler and agent route consult it |
+| `application/migration/auto-export.ts` | daily timer, folder write + rotation, health status |
+| `adapters/export-files.ts` | gzip/gunzip with size guard, atomic folder writes |
+| `http/routes/migration.ts` | export download, import inspect/preview/apply, standby activate |
+| `main.ts` | `--export` / `--import` CLI |
+| `web/features/migration/*` | page "Backup e migração", import wizard, standby banner |
+
+### 16.3 Data
+No new replicated entity. `system_state` keys `standby` (`{ since, from, by }`) and
+`export.lastAuto` (`{ at, ok, error }`). New machine settings `export.auto*` (ADR-052, group
+"Exportação automática"). Backup kind `pre-import`. Pending imports live in memory (id → parsed
+document, 15 min, one per admin session), never on disk.
+
+### 16.4 Routes (admin only)
+| Route | Purpose |
+|---|---|
+| `POST /api/migration/export` `{ sections, password? }` | returns `application/octet-stream` with `Content-Disposition` |
+| `POST /api/migration/import` (raw body ≤ 50 MB) | parse + checksum → `{ importId, manifest }` |
+| `POST /api/migration/import/:id/preview` `{ mode, password? }` | counts and conflicts (rolled back) |
+| `POST /api/migration/import/:id/apply` `{ mode, password?, confirm: 'IMPORTAR' }` | backup → apply → standby → audit |
+| `GET /api/migration/state` | standby, last automatic export, last import (for "Desfazer") |
+| `POST /api/migration/standby/activate` `{ confirm: 'ATIVAR' }` | leave standby |
+| `POST /api/migration/undo` `{ confirm }` | restore the `pre-import` backup (FR-014 flow) |
+
+### 16.5 Flows
+- **Export:** sections → entities → snapshots of current rows (same functions as sync, so exports
+  equal what a peer would receive) → `data`; secret sections → JSON → SecretBox(AAD = checksum) →
+  gzip.
+- **Import:** gunzip with guard → JSON → `format` check/convert → checksum → (password) decrypt →
+  team check → mode rules → preview or: `pre-import` backup → transaction { replace wipe? →
+  `applyRemote(entries, { now, origin: 'import' })` → key import? → standby } → audit → SSE
+  refresh.
+- **Standby:** scheduler tick skips when `standby`; agent check-in → 503 `AGENT_STANDBY`;
+  banner via `GET /api/migration/state` (polled with the global banners).
+
+### 16.6 Testing
+| Layer | What |
+|---|---|
+| Format | canonical checksum, sections ↔ entities, converters (format 0 fixture), newer refused, limits, zip-bomb guard |
+| Crypto | round trip, wrong password, flipped byte, AAD swap, no plaintext secret in file |
+| Import | two harness hubs: export → preview (DB unchanged) → merge/replace, conflicts, key rule, team refusal, standby, undo request, crash mid-import (transaction) |
+| CLI | `--export`/`--import` with fake health probe, exit codes |
+| Auto export | fake clock + temp folder: write, rotate, failure → health |
+| Panel | page, wizard (main + loading/empty/error), banner; E2E export → import between two demo hubs |
+| Perf | NFR-401 with 500 devices |
+
+### 16.7 Limits
+File ≤ 50 MB compressed, ≤ 200 MB inflated; password 10–256 characters; one pending import per
+session, 15 min; argon2id m = 64 MiB, t = 3, p = 1, one derivation at a time (queue, D11-02).
+
+### 16.8 Risks
+| ID | Risk | Mitigation |
+|---|---|---|
+| RK-26 | Two live copies (old and new PC) run the same schedules | Standby until activation (ADR-051) |
+| RK-27 | Stolen export with secrets | Password-only secrets, strong KDF, AAD; automatic exports never carry secrets |
+| RK-28 | Replace on the wrong PC | Preview, typed confirmation, `pre-import` backup + undo |
+| RK-29 | Network share not writable by LocalSystem | Health warning with the error; README (computer account) |

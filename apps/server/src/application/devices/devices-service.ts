@@ -28,6 +28,7 @@ export interface DeviceWrite {
   roomId: number | null;
   notes: string | null;
   enabled: boolean;
+  neverScheduledShutdown?: boolean;
 }
 
 export interface DeviceFilter {
@@ -133,6 +134,7 @@ export class DevicesService {
           roomId: data.roomId ?? null,
           notes: data.notes ?? null,
           enabled: data.enabled ?? true,
+          neverScheduledShutdown: data.neverScheduledShutdown ?? false,
         },
         this.clock.now(),
       );
@@ -169,6 +171,7 @@ export class DevicesService {
           roomId: patch.roomId !== undefined ? patch.roomId : cur.roomId,
           notes: patch.notes !== undefined ? patch.notes : cur.notes,
           enabled: patch.enabled ?? cur.enabled,
+          neverScheduledShutdown: patch.neverScheduledShutdown ?? cur.neverScheduledShutdown,
         },
         this.clock.now(),
       );

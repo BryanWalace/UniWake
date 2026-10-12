@@ -42,6 +42,8 @@ test.describe('accessibility sweep (NFR-07)', () => {
       ['/logs', 'Logs do serviço'],
       ['/equipe', 'Modo equipe'],
       ['/equipe/conflitos', 'Conflitos resolvidos'],
+      ['/backup', 'Backup e migração'],
+      ['/ajuda/backup-migration', null],
       ['/ajuda/team-mode', null],
     ] as const) {
       await page.goto(path);

@@ -13,7 +13,7 @@ import { PrepareScriptFile } from './adapters/prepare-script';
 import { createFileLogger } from './adapters/logger';
 import { JsonConfigFile } from './adapters/config-file';
 import { applyPendingRestore, snapshotBefore } from './db/backups';
-import { baselineChangeLog, configureChangeLog } from './db/sync/change-log';
+import { baselineChangeLog, changeLog, configureChangeLog } from './db/sync/change-log';
 import { ensureInstance, rotateInstance } from './db/sync/instance';
 import type { HostChecks, TimeCheck } from './application/health/health-service';
 import { LogFileReader } from './adapters/log-reader';
@@ -29,6 +29,9 @@ import { SqliteSchedulerRepo } from './db/repositories/scheduler-repo';
 import { CompositeProber, PingExeIcmp, powershellSpawner, PsHelperIcmp } from './adapters/icmp';
 import { OsNetworkInterfaces } from './adapters/network-interfaces';
 import { NodeProcessRunner } from './adapters/process-runner';
+import { AgentScriptFiles } from './adapters/agent-scripts';
+import { DemoAgentsService } from './application/demo/demo-agents';
+import { SqliteDemoAgentStore } from './db/repositories/power-repo';
 import { DevSecretProtector, DpapiSecretProtector } from './adapters/secret-protector';
 import { NodeSyncNetwork } from './adapters/sync-network';
 import type { SecretProtector, SyncEndpoint } from './application/ports';
@@ -82,6 +85,8 @@ export interface HubOptions {
   updateLauncher?: UpdateLauncher | null;
   /** scripts/prepare-target.ps1 served to target PCs (FR-007.3); null = not available. */
   prepareScriptPath?: string | null;
+  /** scripts\agent (v1.3): uniwake-agent.ps1 and uniwake-aviso.ps1. */
+  agentScriptsDir?: string | null;
   /** Health checks that leave the process (main.ts on a real install); none in tests. */
   hostChecks?: HostChecks | null;
   timeCheck?: TimeCheck | null;
@@ -284,6 +289,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       backupsDir: opts.ports ? null : paths.backups,
       requestRestart: () => opts.requestRestart?.(),
       prepareScript: new PrepareScriptFile(opts.prepareScriptPath ?? null),
+      agentScripts: new AgentScriptFiles(opts.agentScriptsDir ?? null),
       releaseSource: opts.releaseSource ?? null,
       team: {
         port: config.syncPort,
@@ -392,6 +398,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
   }
 
   let started = false;
+  let demoAgents: DemoAgentsService | null = null;
 
   async function listen(app: FastifyInstance, name: string, host: string, port: number) {
     try {
@@ -469,13 +476,29 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       services.testWol.recover();
       // Before the first scheduler tick: team mode changes how missed runs are handled (FR-204.2).
       await services.team.init();
+      // ADR-044: the key that signs answers to lab PCs (made on the first start of v1.3).
+      await services.hubKey.init();
+      services.team.publishSigningKey(services.hubKey.keyId(), services.hubKey.publicKey());
       services.scheduler.start();
       await services.sync.start();
       services.monitor.start();
       services.dashboard.start();
       services.retention.start();
       services.health.start();
+      // FR-310: simulated lab-PC agents, demo mode only (nothing leaves the process).
+      if (sim) {
+        demoAgents = new DemoAgentsService({
+          store: new SqliteDemoAgentStore(db),
+          agenda: (id) => services.agenda.forDevice(id),
+          setPower: (mac, on) => sim.setPower(mac, on),
+          events: services.events,
+          clock,
+          instanceId: () => changeLog(db).instanceId(),
+        });
+        demoAgents.start();
+      }
       services.backups?.start();
+      services.autoExport.start();
       services.update.start();
       services.updates.start();
       await services.updates.recordOutcome(paths.updates);
@@ -485,11 +508,13 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       );
     },
     async stop() {
+      demoAgents?.stop();
       services.updates.stop();
       services.update.stop();
       services.scheduler.stop();
       services.health.stop();
       services.backups?.stop();
+      services.autoExport.stop();
       services.testWol.stop();
       services.runner.stop();
       services.dashboard.stop();

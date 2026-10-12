@@ -1,7 +1,7 @@
 /** All panel-listener routes (plan §6.1). Shared by the hub and API tests. */
 import type { FastifyInstance } from 'fastify';
 import type { HttpServices } from './context';
-import { enrollRoute, prepareScriptRoute } from './routes/agent';
+import { agentScriptsRoute, checkinRoute, enrollRoute, prepareScriptRoute } from './routes/agent';
 import { auditRoutes } from './routes/audit';
 import { authRoutes } from './routes/auth';
 import { backupRoutes } from './routes/backups';
@@ -21,6 +21,8 @@ import { testWolRoutes } from './routes/test-wol';
 import { updateRoutes } from './routes/update';
 import { userRoutes } from './routes/users';
 import { wakeRoutes } from './routes/wake';
+import { migrationRoutes } from './routes/migration';
+import { powerRoutes } from './routes/power';
 import { registerSessionAuth } from './session-auth';
 
 export async function registerPanelRoutes(app: FastifyInstance, s: HttpServices): Promise<void> {
@@ -40,19 +42,26 @@ export async function registerPanelRoutes(app: FastifyInstance, s: HttpServices)
   settingsRoutes(app, s);
   logRoutes(app, s);
   backupRoutes(app, s);
+  migrationRoutes(app, s);
   enrollmentRoutes(app, s);
   testWolRoutes(app, s);
   updateRoutes(app, s);
   discoveryRoutes(app, s);
   teamRoutes(app, s);
+  powerRoutes(app, s);
 }
 
-/** Agent listener: exactly health, enrollment and the script download (ADR-011). */
+/**
+ * Agent listener (ADR-011, ADR-043): health, enrollment, the prepare script and, from v1.3, the
+ * agent check-in and agent scripts.
+ */
 export function registerAgentRoutes(
   app: FastifyInstance,
-  s: Pick<HttpServices, 'enrollment'>,
+  s: Pick<HttpServices, 'enrollment' | 'agent' | 'hubKey' | 'importer'>,
 ): void {
   healthRoutes(app);
   prepareScriptRoute(app, s);
   enrollRoute(app, s);
+  checkinRoute(app, s);
+  agentScriptsRoute(app, s);
 }

@@ -1,7 +1,184 @@
 # NEXT — handoff
 
-Atualizado: 2026-10-09 · Branch de trabalho: **`dev`** (ADR-030) · **`main` = `9d7cc31`** · **release v1.2.0 publicada**
-(estável, pedida pelo dono; `releases/latest` = v1.2.0, download e SHA-256 conferidos)
+Atualizado: 2026-10-12 · Branch de trabalho: **`dev`** (ADR-030) · **`main` = `9d7cc31`** · **release v1.2.0 publicada**
+(estável; `releases/latest` = v1.2.0). As v1.3 e v1.4 estão só na `dev`: nada foi para a `main`, nenhuma tag.
+
+## v1.4 "Backup e migração" — pronta na `dev`, aguardando seu teste
+
+Feito de M21 a M24 e validado (Fase 12), com CI na `dev`. Nada foi para a `main`, nenhuma tag.
+
+- **Página "Backup e migração"** (administradores): exporta um arquivo `.uniwake` com as partes
+  escolhidas (Cadastro, Agendamentos, Configurações gerais, Usuários, Desligamento remoto,
+  Histórico). Usuários e Desligamento remoto só saem com senha (argon2id + AES-256-GCM).
+  Configurações deste PC nunca vão no arquivo.
+- **Importar** com prévia (novos, atualizados, sem mudança, conflitos, removidos), **Mesclar** ou
+  **Substituir**, confirmação digitando `IMPORTAR`, backup automático antes e **Desfazer
+  importação**.
+- **Em espera:** depois de importar, o PC não roda agendamentos nem manda ordens às máquinas até
+  você clicar em **Ativar este UniWake** (evita o PC antigo e o novo agirem ao mesmo tempo).
+- **Exportação automática** diária para uma pasta (pode ser da rede) e **linha de comando**
+  (`--export` / `--import`).
+- **Decisões que tomei sozinho (pode mudar qualquer uma):** A-1 o arquivo é JSON compactado (gzip),
+  não zip; A-2 segredos só com senha; A-3 PC em Modo equipe não importa; A-4 PC importado fica em
+  espera até ativar; A-5 a exportação automática nunca leva segredos (não guardo senha). Estão nos
+  ADR-049 a 052.
+- Correções no caminho: "Substituir" apagaria o histórico local das máquinas (corrigido para
+  atualizar no lugar); entrar numa equipe deixava pedidos de desligamento antigos para trás.
+
+### Como testar o backup e a migração (passo a passo)
+
+Use o PC da TI com a versão de teste `1.4.0-dev.N` (mesmo caminho do item 0 da v1.3 abaixo) e,
+se puder, um segundo PC (pode ser uma máquina virtual) para o "PC novo".
+
+**1. Exportar com senha**
+1. Painel → **Backup e migração** → em **Exportar** deixe as partes marcadas, digite uma senha
+   (10+ caracteres) duas vezes → **Exportar**. O navegador baixa `UniWake-<PC>-<data>.uniwake`.
+2. Guarde a senha: sem ela não dá para importar Usuários e Desligamento remoto.
+
+**2. Importar no PC novo (Substituir)**
+1. Instale a mesma versão de teste no PC novo e crie o primeiro usuário.
+2. **Backup e migração** → **Importar** → escolha o arquivo → digite a senha → **Substituir** →
+   **Ver prévia**. Confira os números (máquinas, agendamentos).
+3. Digite `IMPORTAR` → **Importar**. O painel pede login: entre com um usuário do PC antigo.
+4. Esperado: salas, máquinas e agendamentos iguais; faixa vermelha "Este UniWake está em espera" em
+   todas as páginas; em **Saúde do sistema** a versão certa.
+
+**3. Em espera e ativar**
+1. Confirme que nenhum agendamento roda no PC novo enquanto estiver em espera.
+2. Desligue o UniWake do PC antigo (`services.msc` → UniWake → Parar).
+3. No PC novo: **Backup e migração** → **Ativar este UniWake** → digite `ATIVAR`.
+4. Se o PC novo tiver **outro endereço** na rede, rode de novo o comando de **Preparar máquinas**
+   nas máquinas preparadas para desligar (elas guardam o endereço do PC antigo).
+5. Para voltar atrás: **Desfazer importação** → digite `DESFAZER` (o serviço reinicia com o banco de
+   antes).
+
+**4. Exportação automática numa pasta da rede**
+1. **Configurações → Exportação automática**: ligue, informe a pasta (ex.: `\\servidor\uniwake`),
+   horário e quantos manter → **Salvar**.
+2. Na pasta compartilhada, dê permissão de **gravação à conta do computador** do PC da TI (ex.:
+   `DOMINIO\PC-TI$`), não ao seu usuário: o serviço roda como Sistema Local.
+3. Para testar sem esperar a madrugada, ponha o horário para daqui a 2 minutos e confira o arquivo
+   na pasta. Se falhar, **Saúde do sistema** mostra o motivo. **Me diga se funcionou** (isso não dá
+   para testar aqui: depende da rede da instituição).
+
+**5. Linha de comando (opcional)**
+- PowerShell como Administrador, em `C:\Program Files\UniWake\versions\<versão>`:
+  `& .\node.exe .\server.mjs --export D:\teste.uniwake` (funciona com o serviço rodando).
+
+**O que me mandar:** se a prévia bateu com o que você esperava, se o login com o usuário antigo
+funcionou, se a exportação automática gravou na pasta da rede, e qualquer mensagem de erro.
+
+## v1.3 "Desligar computadores" — pronta na `dev`, aguardando seu teste em PCs reais
+
+Tudo de M16 a M20 e a validação (Fase 10) estão prontos, com CI na `dev`:
+
+- **Painel:** botões **Desligar** e **Reiniciar** na sala, na máquina e na seleção; resumo antes de
+  confirmar (quantas recebem, quantas têm alguém usando, quais precisam do novo preparo); painel
+  lateral com o andamento; **Ação: Desligar** nos agendamentos (aviso, adiamentos, etiquetas
+  excluídas); "Nunca desligar por agendamento" na máquina; selo de prontidão em Dispositivos; quadro
+  **Desligamento remoto** na página da máquina (com "Revogar"); desligamentos no **Histórico**;
+  opções de Deep Freeze/UWF em **Preparar máquinas**; duas páginas de ajuda; README.
+- **Máquinas dos laboratórios:** o comando de preparo instala três tarefas do Windows (UniWake,
+  UniWake Despertar, UniWake Aviso) e scripts PowerShell simples; nada é baixado de fora, nenhuma
+  porta é aberta, nenhuma senha compartilhada. Elas consultam o UniWake a cada minuto e desligam no
+  horário mesmo com o PC da TI desligado.
+- **Revisões e correções desta reta final:** a "Pasta persistente" aceitava pastas do Windows (o
+  preparo trancaria as permissões delas) → agora recusa; `-RemoveAgent` apagaria
+  `C:\ProgramData\UniWake` inteira (no PC da TI isso é o banco e os backups!) → agora remove só as
+  pastas do agente; o agente tentava todos os PCs da equipe a cada minuto → no máximo 3 tentativas.
+- **Medição de carga:** 500 máquinas consultando a cada minuto custam 2,4 ms por consulta no hub
+  (meta: 5 ms).
+
+Ficou para você confirmar em PCs reais (não dá para testar aqui sem desligar máquinas de verdade):
+a janela de aviso aparecer na sessão do usuário (spike M18-T01), o temporizador de ativação tirar o
+PC da suspensão, Deep Freeze/UWF de verdade e o tempo da tarefa com o hub desligado (NFR-302).
+Itens **não verificados**: local do `DFC.exe` do Deep Freeze e se ele pede senha; `powercfg` em
+Windows que não seja pt-BR; PCs com Modern Standby.
+
+### Como testar o desligamento em PCs reais (passo a passo)
+
+Use **um PC de laboratório de teste** (fora de aula) e o seu PC da TI. Nada disso exige programa
+extra nas máquinas.
+
+**0. Instalar a versão de teste no PC da TI**
+1. GitHub → **Actions** → o último "CI" verde da branch `dev` → em **Artifacts**, baixe
+   **UniWake-Setup-dev** (`UniWake-Setup-1.3.0-dev.N.exe` + `.sha256`).
+2. Confira o SHA-256: `Get-FileHash .\UniWake-Setup-1.3.0-dev.N.exe` (PowerShell) e compare com o
+   arquivo `.sha256`.
+3. Instale por cima da 1.2.0 (um backup é feito antes). Essa versão de teste só se atualiza sozinha
+   para uma release estável mais nova.
+4. Abra o painel → **Saúde do sistema**: versão `1.3.0-dev.N`.
+
+**1. Preparar o PC de teste**
+1. **Preparar máquinas** → escolha a sala → **Gerar código** → **Copiar comando**.
+2. No PC de teste: botão direito em Iniciar → **Terminal (Administrador)** → cole → Enter.
+3. No resumo, confira: **Desligamento remoto: OK**, **Temporizadores de ativação**, **Congelamento**.
+   Tire um print do resumo.
+4. Abra o **Agendador de Tarefas** → Biblioteca: devem existir **UniWake**, **UniWake Despertar** e
+   **UniWake Aviso**.
+5. No painel, em até 1 minuto: **Dispositivos** mostra "Pronta para desligar" nessa máquina; a página
+   dela mostra o quadro **Desligamento remoto** (última consulta, versão, suspensão, temporizadores).
+
+**2. Desligar sem ninguém logado**
+1. Faça logoff no PC de teste (tela de login).
+2. No painel, na página da máquina: **Desligar** → confirme.
+3. Esperado: desliga em ~1 min (consulta + 30 s); o painel lateral termina em **Desligou**.
+
+**3. Desligar com alguém usando (o teste mais importante)**
+1. Ligue o PC de teste (**Ligar** no painel) e entre com um usuário comum (não administrador).
+2. **Desligar** → em "Aviso na tela", escolha **5 min com adiamento**.
+3. Esperado: aparece a **janela do UniWake** com a mensagem, a hora e o botão **Adiar**. Clique em
+   **Adiar** uma vez: o painel mostra o adiamento; depois desliga.
+4. **Me diga exatamente o que apareceu.** Se em vez da janela aparecer o aviso padrão do Windows
+   ("Você será desconectado…", sem Adiar), é o plano B (ADR-046) funcionando, e eu preciso ajustar a
+   tarefa "UniWake Aviso" (M18-T01).
+5. Repita com **Aviso: 1 min** e clique em **Cancelar o que ainda não executou** no painel lateral antes do fim: não deve
+   desligar.
+
+**4. Reiniciar**
+- **Reiniciar** na página da máquina → ela reinicia e volta a aparecer como ligada.
+
+**5. Agendamento com o PC da TI desligado**
+1. **Agendamentos** → Novo → **Ação: Desligar**, a sala do PC de teste, horário daqui a ~10 min.
+2. Espere 1–2 min (a máquina recebe a agenda) e **pare o UniWake**: `services.msc` → UniWake →
+   Parar (ou desligue o PC da TI).
+3. Esperado: no horário o PC de teste mostra o aviso e desliga sozinho.
+4. Ligue o UniWake de novo, ligue o PC de teste → em até 1 min o **Histórico** mostra a ocorrência
+   ("1/1 desligou").
+
+**6. Suspensão + temporizador de ativação**
+1. Crie um agendamento Desligar para daqui a ~10 min.
+2. Coloque o PC de teste em **suspensão** (Iniciar → Energia → Suspender) antes do horário.
+3. Esperado: ele acorda sozinho no horário e desliga. Se não acordar, me mande o que a página da
+   máquina mostra em "Temporizadores de ativação" e o modelo do PC.
+
+**7. Tempo da tarefa com o hub desligado (NFR-302)**
+- Com o serviço UniWake parado, no PC de teste: Agendador de Tarefas → **UniWake** → aba
+  **Histórico** (habilite em "Ativar Histórico de Todas as Tarefas" se estiver desabilitado): veja a
+  duração entre "Tarefa iniciada" e "Tarefa concluída". Esperado: menos de 2 s com o serviço parado
+  e até ~15 s com o PC da TI desligado.
+
+**8. Deep Freeze ou UWF (se tiver uma máquina assim)**
+1. Prepare com a máquina **descongelada**; congele de novo.
+2. A página da máquina deve mostrar "Congelamento: detectado (congelada): Deep Freeze" ou "detectado
+   (estado não verificado)". Me diga qual, e onde fica o `DFC.exe` nessa máquina.
+3. Se tiver ThawSpace (ex.: `T:`): em **Preparar máquinas → Laboratório com Deep Freeze ou
+   similar**, informe `T:\UniWake`, **Atualizar comando**, rode de novo (descongelada) e repita o
+   passo 5 depois de reiniciar a máquina congelada.
+
+**9. Revogar e remover**
+1. Na página da máquina (como administrador): **Revogar desligamento remoto** → a máquina passa a
+   "Desligamento revogado" e **Desligar** não a inclui mais.
+2. Para remover tudo: baixe o `prepare-target.ps1` em **Preparar máquinas** e rode
+   `.\prepare-target.ps1 -RemoveAgent` como Administrador. As três tarefas e a pasta
+   `C:\ProgramData\UniWake\agent` somem.
+
+**O que me mandar:** prints do resumo do preparo e do quadro "Desligamento remoto", o que apareceu
+no passo 3, e qualquer passo que não deu o resultado esperado (com o horário, para eu cruzar com os
+logs em **Logs**). Não publique IPs, MACs ou nomes reais em issues públicas.
+
+Depois do seu teste: eu corrijo o que aparecer. A v1.3 só vai para a `main` quando você disser
+"pode subir a dev para a main", e a tag só se você pedir.
 
 ## ✅ Merge feito (2026-10-09)
 Antes do merge: `npm run verify` (807 testes), 23 E2E, PSScriptAnalyzer + 28 Pester, CI verde na `dev`
@@ -172,24 +349,25 @@ WoL real por modelo de PC, reinício sem ninguém logado, VLANs, HTTPS na rede) 
 ## Agent notes (English)
 
 ### Current state
-- Branch `dev`, ahead of `main` (`7297341`). v1.0/v1.1 (M1–M9, Phase 5), M10 (sync-ready data),
-  Phase 6/7 specs, M11–M15 and Phase 8 (`specs/validation.md` §v1.2, `specs/reviews/v1.2-final.md`)
-  are done. Owner instruction of 2026-10-09: build v1.2 + README + community files, then STOP. Do not
-  start v1.3/v1.4 until the owner says so. Never merge into `main` or tag unless asked (ADR-030).
-- Team mode lives in `apps/server/src/application/team/*`, `adapters/sync-network.ts`,
-  `adapters/secret-protector.ts`, `db/sync/*`, `db/repositories/team-repo.ts`,
-  `apps/web/src/features/team/*`; tests `apps/server/test/team-*.test.ts`, `sync-*.test.ts`,
-  `e2e/team.spec.ts`.
-- CI on `dev` uploads the test installer artifact `UniWake-Setup-dev` (ADR-041,
-  `DEV_VERSION_BASE` in `ci.yml`; bump it when v1.3 work starts).
+- **2026-10-12: v1.3 and v1.4 complete on `dev`** (M16–M24, Phases 10–12: `specs/validation.md`
+  §v1.3/§v1.4, `specs/reviews/v1.3-final.md`, `v1.4-final.md`, reviews M16–M23). Not merged, not
+  tagged. CLAUDE.md stop point reached: final report given; waiting for the owner's real-PC
+  checklists above (v1.4 and v1.3) and for "pode subir a dev para a main".
+- v1.4 lives in `apps/server/src/application/migration/*` (document, secret-box, export, import,
+  auto-export), `db/sync/import.ts`, `db/repositories/migration-repo.ts`, migration 007,
+  `http/routes/migration.ts`, `cli/migration-cli.ts` (+ `main.ts` flags), `apps/web/src/features/migration/*`;
+  tests `apps/server/test/{export-format,secret-box,migration-*,breakit-m21,breakit-m22,auto-export}.test.ts`,
+  `perf/migration.perf.test.ts`, web `migration-page.test.tsx`, `e2e/migration.spec.ts`.
+- Architect assumptions A-1..A-5 (ADR-049..052) are open to the owner's change.
+- Remote shutdown (v1.3): `application/power/*`, `scripts/agent/*`, `scripts/prepare-target.ps1` step 8.
+- CI on `dev` uploads `UniWake-Setup-dev` (`DEV_VERSION_BASE` 1.4.0, ADR-041).
 
-### Next steps (only after the owner replies)
-1. Fix whatever the two-PC checklist finds (tests first).
-2. Done 2026-10-09: `main` = `52bdd85` (merge of `dev`). Next merges the same way, only on the
-   owner's explicit request. Tag only if asked.
-3. After a release: README download buttons → `releases/latest/download/UniWake-Setup.exe`.
-4. Then v1.3 (roadmap §C: agent + shutdown, starting with the ADR comparing WMI/WinRM/Task
-   Scheduler/agent) → v1.4 (§D), each through the full SDD loop.
+### Next steps
+1. Fix whatever the owner's checklists find (tests first). If the warning window does not show in
+   the user session, revisit the "UniWake Aviso" task (ADR-046, M18-T01).
+2. On "pode subir a dev para a main": green verify, merge `dev` → `main`; tag only if asked
+   (release notes for 1.3.0/1.4.0 to write then).
+3. Roadmap after v1.4: RM-1..RM-8 (spec §11); nothing started.
 
 ### Working conventions
 - Commit via the verify-gated helper (scratchpad `commit-task.sh <TASK|-> <msg-file>`: prettier →
@@ -210,3 +388,11 @@ WoL real por modelo de PC, reinício sem ninguém logado, VLANs, HTTPS na rede) 
   Windows). README screenshots are the owner's own photos with network data covered by solid boxes
   (names, IPs, MACs, enrollment command); check any new picture the same way before committing.
 - The GitHub API allows 60 unauthenticated requests/hour: poll CI sparingly.
+- R-M16-01: Vitest workers sometimes die natively (0xC0000409; Git Bash shows exit 127) on this PC.
+  Server tests run in `forks` so the crash names one file; the helper reruns verify once only for that
+  signature. Run Vitest from `C:/git/UniWake` (uppercase drive): from `c:` it loads modules twice
+  and every file fails with "failed to find the current suite".
+- Tests can never start `ping.exe` to a non-loopback host or any `shutdown.exe`: the guard in
+  `apps/server/test/setup/network-guard.ts` throws (constitution §5).
+- Node runs repo `.ts` scripts with type stripping; files with parameter properties need
+  `--experimental-transform-types`.

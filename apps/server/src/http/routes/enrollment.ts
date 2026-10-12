@@ -32,6 +32,9 @@ export function enrollmentRoutes(app: FastifyInstance, s: HttpServices): void {
   r.post(
     '/api/enrollment/command',
     { config: operator, schema: { body: enrollmentCommandSchema } },
-    async (req) => s.enrollment.command(req.body, actorOf(req)),
+    async (req) => {
+      await s.hubKey.ensure(); // the command pins the hub key (-HubKeyId, ADR-044)
+      return s.enrollment.command(req.body, actorOf(req));
+    },
   );
 }

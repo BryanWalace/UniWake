@@ -5,17 +5,28 @@
  * Absent value in the DB = default. `storage: 'config'` keys live in config.json (bootstrap).
  */
 import { z } from 'zod';
+import {
+  DEFAULT_POSTPONE_MESSAGE,
+  DEFAULT_WARNING_MESSAGE,
+  POSTPONE_MAX_LIMIT,
+  POSTPONE_MINUTES_MAX,
+  POSTPONE_MINUTES_MIN,
+  WARNING_MINUTES_MAX,
+} from './agent/constants';
+import { POSTPONE_COUNT_PLACEHOLDER, WARNING_TIME_PLACEHOLDER } from './agent/messages';
 
 export const SETTINGS_GROUPS = {
   wake: 'Ligação (Wake-on-LAN)',
   monitor: 'Monitoramento',
   scheduler: 'Agendamentos',
+  power: 'Desligar computadores',
   update: 'Atualizações',
   security: 'Segurança',
   panel: 'Acesso ao painel',
   enrollment: 'Preparar máquinas',
   retention: 'Retenção de dados',
   backup: 'Backups',
+  export: 'Exportação automática',
   bootstrap: 'Serviço (requer reinício)',
 } as const;
 export type SettingsGroup = keyof typeof SETTINGS_GROUPS;
@@ -60,6 +71,21 @@ function def<S extends z.ZodType>(
 const int = (min: number, max: number) => z.number().int().min(min).max(max);
 const port = int(1, 65535);
 export const timeOfDaySchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use o formato HH:mm');
+
+/** A local folder (`D:\pasta`) or a network share (`\\servidor\pasta`), or empty (FR-405). */
+export const exportFolderSchema = z.union([
+  z.literal(''),
+  z
+    .string()
+    .trim()
+    .max(240)
+    .regex(
+      // Windows folder or share; an absolute POSIX path only matters for development and CI.
+      /^(([A-Za-z]:\\|\\\\[^\\/:*?"<>|\s]+\\[^\\/:*?"<>|]+)[^:*?"<>|]*|\/[^:*?"<>|]*)$/,
+      'Use uma pasta como D:\\Exportacoes ou \\\\servidor\\pasta.',
+    )
+    .refine((p) => [...p].every((c) => c.charCodeAt(0) >= 32), 'Caractere inválido na pasta.'),
+]);
 
 export function isValidTimeZone(tz: string): boolean {
   try {
@@ -336,6 +362,67 @@ export const SETTING_DEFS = {
     input: 'text',
     requiresRestart: true,
   }),
+  // Power (v1.3, FR-304): defaults of new shutdown schedules and of the manual "5 min com
+  // adiamento" option, and the warning texts.
+  'power.defaultWarningMinutes': def(int(0, WARNING_MINUTES_MAX), 5, {
+    group: 'power',
+    scope: 'shared',
+    label: 'Aviso antes de desligar (padrão)',
+    help: 'Usado em novos agendamentos de desligar e na opção "5 min com adiamento" do Desligar manual.',
+    input: 'number',
+    unit: 'min',
+    min: 0,
+    max: WARNING_MINUTES_MAX,
+  }),
+  'power.postponeMax': def(int(0, POSTPONE_MAX_LIMIT), 2, {
+    group: 'power',
+    scope: 'shared',
+    label: 'Quantas vezes o usuário pode adiar (padrão)',
+    input: 'number',
+    min: 0,
+    max: POSTPONE_MAX_LIMIT,
+  }),
+  'power.postponeMinutes': def(int(POSTPONE_MINUTES_MIN, POSTPONE_MINUTES_MAX), 15, {
+    group: 'power',
+    scope: 'shared',
+    label: 'Duração de cada adiamento (padrão)',
+    input: 'number',
+    unit: 'min',
+    min: POSTPONE_MINUTES_MIN,
+    max: POSTPONE_MINUTES_MAX,
+  }),
+  'power.warningMessage': def(
+    z
+      .string()
+      .trim()
+      .min(1)
+      .max(300)
+      .refine((s) => s.includes(WARNING_TIME_PLACEHOLDER), 'Mantenha {hora} no texto do aviso'),
+    DEFAULT_WARNING_MESSAGE,
+    {
+      group: 'power',
+      scope: 'shared',
+      label: 'Texto do aviso',
+      help: '{hora} é trocado pelo horário do desligamento. Diga que o que não for salvo será perdido.',
+      input: 'text',
+    },
+  ),
+  'power.postponeMessage': def(
+    z
+      .string()
+      .trim()
+      .min(1)
+      .max(300)
+      .refine((s) => s.includes(POSTPONE_COUNT_PLACEHOLDER), 'Mantenha {n} no texto'),
+    DEFAULT_POSTPONE_MESSAGE,
+    {
+      group: 'power',
+      scope: 'shared',
+      label: 'Texto quando ainda dá para adiar',
+      help: 'Acrescentado ao aviso; {n} é trocado pelo número de adiamentos restantes.',
+      input: 'text',
+    },
+  ),
   // Enrollment
   'enrollment.tokenExpiryHours': def(int(1, 168), 8, {
     group: 'enrollment',
@@ -400,6 +487,35 @@ export const SETTING_DEFS = {
     group: 'backup',
     scope: 'machine',
     label: 'Backups diários mantidos',
+    input: 'number',
+    min: 1,
+    max: 365,
+  }),
+  // Automatic exports (v1.4, FR-405, ADR-052): this PC only; files never carry secrets.
+  'export.autoEnabled': def(z.boolean(), false, {
+    group: 'export',
+    scope: 'machine',
+    label: 'Exportar automaticamente todo dia',
+    help: 'Gera um arquivo .uniwake sem Usuários e sem Desligamento remoto.',
+    input: 'boolean',
+  }),
+  'export.autoFolder': def(exportFolderSchema, '', {
+    group: 'export',
+    scope: 'machine',
+    label: 'Pasta das exportações',
+    help: 'Ex.: D:\\UniWake-exportacoes ou \\\\servidor\\pasta. Numa pasta da rede, a conta do computador precisa poder gravar.',
+    input: 'text',
+  }),
+  'export.autoTime': def(timeOfDaySchema, '02:45', {
+    group: 'export',
+    scope: 'machine',
+    label: 'Horário da exportação',
+    input: 'time',
+  }),
+  'export.autoKeep': def(int(1, 365), 14, {
+    group: 'export',
+    scope: 'machine',
+    label: 'Exportações mantidas na pasta',
     input: 'number',
     min: 1,
     max: 365,

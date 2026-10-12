@@ -24,6 +24,9 @@ export interface MemberRow {
   verifier: string;
   joinedAt: number;
   revokedAt: number | null;
+  /** v1.3: the member hub's signing key (ADR-044/048), published by that PC itself. */
+  signingKeyId?: string | null;
+  signingPublicJwk?: string | null;
 }
 
 export interface PeerRow {
@@ -59,6 +62,8 @@ export interface TeamRepo {
   member(instanceId: string): MemberRow | undefined;
   /** Inserts or updates a member through the change log (replicated). */
   saveMember(m: MemberRow): void;
+  /** Sets a member's signing key through the change log (replicated). */
+  setSigningKey(instanceId: string, keyId: string, publicJwk: string): void;
   peers(): PeerRow[];
   peer(instanceId: string): PeerRow | undefined;
   savePeer(p: Partial<PeerRow> & { instanceId: string }): void;
@@ -321,6 +326,17 @@ export class TeamService {
   }
 
   // ---------------------------------------------------------------- members (admin)
+  /**
+   * Publishes this hub's signing key in its own member row (ADR-048), so the other team PCs can
+   * tell lab PCs to trust it. Writes only when it changed.
+   */
+  publishSigningKey(keyId: string, publicKey: { n: string; e: string }): void {
+    if (!this.inTeam()) return;
+    const self = this.d.repo.member(this.self().instanceId);
+    if (!self || self.signingKeyId === keyId) return;
+    this.d.repo.setSigningKey(self.instanceId, keyId, JSON.stringify(publicKey));
+  }
+
   members(): MemberRow[] {
     return this.d.repo.members();
   }

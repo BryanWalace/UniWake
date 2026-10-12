@@ -9,7 +9,29 @@ const b64 = (max: number) =>
 const uuid = z.string().regex(/^[0-9a-f-]{36}$/);
 const name = z.string().min(1).max(64);
 
-export const PROTOCOL_VERSION = 1;
+/**
+ * 2 since v1.3 (ADR-048): a v1.2 PC would read a shutdown schedule as a wake schedule, so PCs on
+ * different protocol versions never pair or sync; they only tell the user to update.
+ */
+export const PROTOCOL_VERSION = 2;
+
+/** The protocol version a message claims, read without trusting the rest of it. */
+export function protocolVersionOf(raw: unknown): number | null {
+  if (typeof raw !== 'object' || raw === null || !('v' in raw)) return null;
+  const v = raw.v;
+  return typeof v === 'number' && Number.isInteger(v) ? v : null;
+}
+
+/** Enough of an announcement from any version to say "update" to a member on another version. */
+export const announcementHeader = z.object({
+  app: z.literal('uniwake'),
+  v: z.number().int(),
+  instance: uuid,
+  team: z
+    .string()
+    .regex(/^[0-9a-f]{32}$/)
+    .optional(),
+});
 
 // ---------------------------------------------------------------- pairing (plain TCP)
 export const pairHello = z.object({
@@ -74,6 +96,11 @@ const entity = z.enum([
   'schedule',
   'schedule_exception',
   'schedule_run',
+  // v1.3 (ADR-048); protocol 2 only.
+  'device_agent',
+  'power_job',
+  'power_order',
+  'power_report',
   'setting',
   'scheduler_pause',
 ]);

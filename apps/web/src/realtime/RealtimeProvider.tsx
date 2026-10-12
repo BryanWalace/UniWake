@@ -138,6 +138,11 @@ export function RealtimeProvider({
           pending.add(e ? ['jobs', e.jobId] : ['jobs'], ['jobs', 'list'], keys.dashboard);
         });
       }
+      // FR-305: a manual shutdown/restart job changed (orders delivered, reports in).
+      source.addEventListener('power.job', (ev) => {
+        const e = parse<{ jobId: number }>(ev);
+        pending.add(e ? ['power', 'jobs', e.jobId] : ['power'], ['power', 'agents']);
+      });
       for (const type of ['notice', 'scheduler']) {
         source.addEventListener(type, () => pending.add(keys.dashboard));
       }

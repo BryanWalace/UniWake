@@ -1,9 +1,15 @@
+import { execFile, spawn } from 'node:child_process';
 import dgram from 'node:dgram';
 import http from 'node:http';
 import net from 'node:net';
 import { once } from 'node:events';
 import { describe, expect, it } from 'vitest';
-import { isLoopbackHost, NetworkGuardError } from './setup/network-guard';
+import {
+  checkSpawn,
+  isLoopbackHost,
+  NetworkGuardError,
+  ProcessGuardError,
+} from './setup/network-guard';
 
 describe('network guard (constitution §5)', () => {
   it('classifies loopback hosts', () => {
@@ -53,6 +59,23 @@ describe('network guard (constitution §5)', () => {
   it('blocks HTTP requests to non-loopback hosts', () => {
     // Regression: http passes `path: null`, which the first guard version mistook for IPC.
     expect(() => http.get('http://example.com/')).toThrow(NetworkGuardError);
+  });
+
+  it('blocks ping.exe to non-loopback hosts and any shutdown.exe; loopback ping is allowed', () => {
+    expect(() =>
+      checkSpawn('C:\\Windows\\System32\\ping.exe', ['-n', '1', '-w', '1000', '10.0.3.11']),
+    ).toThrow(NetworkGuardError);
+    expect(() => checkSpawn('PING.EXE', ['-n', '1', 'pc-lab.local'])).toThrow(NetworkGuardError);
+    expect(() => checkSpawn('ping.exe', ['-n', '1', '-w', '200', '127.0.0.1'])).not.toThrow();
+    expect(() => checkSpawn('C:\\Windows\\System32\\shutdown.exe', ['/s', '/t', '30'])).toThrow(
+      ProcessGuardError,
+    );
+    expect(() => checkSpawn('powershell.exe', ['-NoProfile', '-Command', 'exit'])).not.toThrow();
+  });
+
+  it('the guard is wired into child_process, also for named imports', () => {
+    expect(() => spawn('ping.exe', ['-n', '1', '192.0.2.1'])).toThrow(NetworkGuardError);
+    expect(() => execFile('shutdown.exe', ['/a'])).toThrow(ProcessGuardError);
   });
 
   it('allows TCP on loopback', async () => {

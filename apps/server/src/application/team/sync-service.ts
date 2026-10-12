@@ -21,10 +21,12 @@ import { subnetBroadcast, LIMITED_BROADCAST } from '../../domain/network';
 import type { PairingService } from './pairing';
 import {
   announcement,
+  announcementHeader,
   type Announcement,
   changesMsg,
   errorMsg,
   PROTOCOL_VERSION,
+  protocolVersionOf,
   rekeyMsg,
   sessionRequest,
   syncHello,
@@ -91,8 +93,12 @@ export interface DiscoveredPc {
 }
 
 /** Operator-facing reason of a failed sync, pt-BR (constitution §8). */
+export const VERSION_MISMATCH_MESSAGE =
+  'Versão diferente: este PC e o outro estão com versões diferentes do UniWake e só sincronizam quando os dois forem atualizados para a mesma versão.';
+
 function describe(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);
+  if (/refused: version/.test(msg)) return VERSION_MISMATCH_MESSAGE;
   if (/ECONNREFUSED|EHOSTUNREACH|ENETUNREACH|ETIMEDOUT|timeout/i.test(msg)) {
     return 'Sem conexão: o PC está desligado, o UniWake não está rodando ou a porta 47102 está bloqueada no firewall.';
   }
@@ -113,6 +119,8 @@ export class SyncService {
   private readonly inflight = new Map<string, Promise<void>>();
   private lastPokedSeq = 0;
   private readonly discovered = new Map<string, DiscoveredPc>();
+  /** Members last heard announcing another protocol version (ADR-048): never synced with. */
+  private readonly otherVersion = new Map<string, number>();
   private pairing: PairingService | null = null;
   private running = false;
 
@@ -194,7 +202,7 @@ export class SyncService {
   ensureUdp(): Promise<number> {
     this.udpListening ??= this.d.network
       .listenAnnouncements(this.d.port === 0 ? 0 : this.d.port, (msg, from) =>
-        this.onAnnouncement(msg, from),
+        this.handleAnnouncement(msg, from),
       )
       .then((p) => (this.udpPort = p))
       .catch((e: Error) => {
@@ -254,10 +262,15 @@ export class SyncService {
     }
   }
 
-  private onAnnouncement(raw: unknown, from: string): void {
+  /** One UDP announcement (public for tests; the listener calls it). */
+  handleAnnouncement(raw: unknown, from: string): void {
     const parsed = announcement.safeParse(raw);
-    if (!parsed.success) return;
+    if (!parsed.success) {
+      this.noteOtherVersion(raw);
+      return;
+    }
     const a = parsed.data;
+    this.otherVersion.delete(a.instance);
     if (a.instance === this.d.team.self().instanceId) return;
     const now = this.d.clock.now();
     if (a.pairing) {
@@ -280,6 +293,18 @@ export class SyncService {
     this.d.team.seenPeer(a.instance, from, a.port);
     const peer = this.d.team.peer(a.instance);
     if (peer && a.seq > peer.pulledSeq) void this.pullFrom(a.instance);
+  }
+
+  /** A member on another protocol version: say so in its status instead of syncing. */
+  private noteOtherVersion(raw: unknown): void {
+    const h = announcementHeader.safeParse(raw);
+    if (!h.success || h.data.v === PROTOCOL_VERSION) return;
+    const teamId = this.d.team.teamId();
+    if (!teamId || h.data.team !== teamHash(teamId)) return;
+    const member = this.d.team.members().find((m) => m.instanceId === h.data.instance);
+    if (!member || member.revokedAt !== null) return;
+    this.otherVersion.set(h.data.instance, h.data.v);
+    this.d.team.updatePeer({ instanceId: h.data.instance, lastError: VERSION_MISMATCH_MESSAGE });
   }
 
   /** PCs announcing an open pairing in the last 30 s (join screen). */
@@ -416,6 +441,10 @@ export class SyncService {
     const peer = this.d.team.peer(instanceId);
     const to = this.endpoint(peer);
     if (!to) return;
+    if (this.otherVersion.has(instanceId)) {
+      this.d.team.updatePeer({ instanceId, lastError: VERSION_MISMATCH_MESSAGE });
+      return;
+    }
     let ch: MessageChannel | null = null;
     try {
       ch = (await this.connect(to)).ch;
@@ -544,7 +573,13 @@ export class SyncService {
   // ---------------------------------------------------------------- server side
   private async serve(ch: MessageChannel, identity: string): Promise<void> {
     try {
-      const hello = syncHello.safeParse(await ch.receive(HANDSHAKE_MS));
+      const raw = await ch.receive(HANDSHAKE_MS);
+      const v = protocolVersionOf(raw);
+      if (v !== null && v !== PROTOCOL_VERSION) {
+        ch.send({ type: 'error', code: 'version' });
+        return;
+      }
+      const hello = syncHello.safeParse(raw);
       const id = TeamService.parseIdentity(identity);
       if (
         !hello.success ||

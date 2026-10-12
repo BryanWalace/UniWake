@@ -36,7 +36,7 @@ Describe 'one-line prepare command (FR-007.3, ADR-011)' {
     Mock Invoke-WebRequest { [IO.File]::WriteAllBytes($OutFile, $original) }
     Invoke-Expression $command
     Should -Invoke powershell.exe -Times 1 -Exactly -ParameterFilter {
-      ($args -join ' ') -like '*-File *uniwake-prepare-target.ps1 -HubUrl http://127.0.0.1:47101 -RoomCode LAB3 -Token TOKEN_de-teste_1234567890'
+      ($args -join ' ') -like '*-File *uniwake-prepare-target.ps1 -HubUrl http://127.0.0.1:47101 -RoomCode LAB3 -Token TOKEN_de-teste_1234567890 -HubKeyId EUXq1qrDFZWTXDDbWmU3R8rEVDuojHsR7n0Maw3vAmY'
     }
     Should -Invoke Write-Host -Times 0 -Exactly -ParameterFilter { "$Object" -like 'Arquivo alterado*' }
   }

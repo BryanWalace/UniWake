@@ -4,8 +4,9 @@
 
 **Ligue, monitore e agende os computadores dos laboratórios da faculdade, direto do navegador.**
 
-Wake-on-LAN por sala, etiqueta ou máquina · Painel em tempo real · Agendamentos com feriados ·
-Cadastro automático das máquinas · Descoberta na rede · Modo equipe · Atualização automática
+Wake-on-LAN por sala, etiqueta ou máquina · Desligar e reiniciar com aviso na tela · Painel em
+tempo real · Agendamentos com feriados · Cadastro automático das máquinas · Descoberta na rede ·
+Modo equipe · Backup e migração · Atualização automática
 
 [![Baixar para Windows](https://img.shields.io/badge/Baixar%20para%20Windows-vers%C3%A3o%20mais%20recente-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/BryanWalace/UniWake/releases/latest/download/UniWake-Setup.exe)
 
@@ -37,11 +38,14 @@ Cadastro automático das máquinas · Descoberta na rede · Modo equipe · Atual
 - [Preparar as máquinas (BIOS + prepare-target.ps1)](#preparar-as-máquinas)
 - [Salas e etiquetas](#salas-e-etiquetas)
 - [Agendamentos](#agendamentos)
+- [Desligar computadores](#desligar-computadores)
+- [Laboratórios com Deep Freeze ou similar](#laboratórios-com-deep-freeze-ou-similar)
 - [Descobrir na rede](#descobrir-na-rede)
 - [Modo equipe (dois ou mais PCs da TI)](#modo-equipe-dois-ou-mais-pcs-da-ti)
 - [Uso diário](#uso-diário)
 - [Atualizações](#atualizações)
 - [Backups e restauração](#backups-e-restauração)
+- [Backup e migração (arquivo .uniwake)](#backup-e-migração-arquivo-uniwake)
 - [Segurança](#segurança)
 - [Solução de problemas](#solução-de-problemas)
 - [Roadmap](#roadmap)
@@ -68,18 +72,22 @@ cadastro, sincronizando pela rede local.
 - **Ligar pela rede**: Wake-on-LAN por sala, etiqueta ou máquina, com resumo antes de enviar e acompanhamento ao vivo de quem acordou.
 - **Painel em tempo real**: salas com máquinas ligadas, desligadas e desconhecidas; histórico e disponibilidade por dia.
 - **Agendamentos**: dias da semana e horário, feriados, pausa para férias e o "Resultado da manhã".
+- **Desligar e reiniciar**: pela sala, pela máquina ou por agendamento, com aviso na tela para quem está usando e opção de adiar; funciona mesmo com o PC da TI desligado no horário.
 - **Preparar máquinas**: um comando, conferido por SHA-256, ajusta a placa de rede, desliga a Inicialização Rápida, libera o ping e cadastra a máquina na sala.
 - **Descobrir na rede**: encontra os computadores da rede e cadastra vários de uma vez, com o fabricante de cada placa.
 - **Modo equipe**: dois ou mais PCs da TI pareados por um código de 6 dígitos mantêm o mesmo cadastro; cada agendamento roda em um só PC ligado.
 - **Diagnóstico**: taxa de sucesso, "parou de acordar", outra sub-rede, **Testar WoL** e páginas de ajuda.
 - **Usuários e auditoria**: perfis administrador e operador; tudo fica registrado e pode ser exportado em CSV.
 - **Backups**: cópia diária automática, antes de cada atualização, e restauração pelo painel.
+- **Backup e migração**: um arquivo `.uniwake` leva o cadastro para um PC novo (com senha para usuários e chaves), com prévia antes de importar, exportação automática para uma pasta da rede e linha de comando.
 - **Atualização automática**: na janela de manutenção, com volta automática à versão anterior se algo der errado.
 - **Modo demonstração**: uma rede de laboratórios simulada para conhecer o sistema sem enviar nada.
 
 > [!NOTE]
-> O **Modo equipe** chegou na versão **1.2.0**. Quem já tem o UniWake instalado recebe a
-> atualização sozinho, na janela de manutenção.
+> O **Modo equipe** chegou na versão **1.2.0**; **Desligar computadores** e **Backup e migração**
+> chegaram na **1.4.0**.
+> Quem já tem o UniWake instalado recebe a atualização sozinho, na janela de manutenção; para
+> desligar uma máquina, rode nela o comando atualizado de **Preparar máquinas**.
 
 ## Como funciona
 
@@ -106,7 +114,7 @@ flowchart LR
   P --> DB
   P -- "Magic Packet (UDP)" --> Labs
   P -. "ping / TCP: quem está ligado" .-> Labs
-  Labs -- "cadastro (comando de preparo)" --> A
+  Labs -- "cadastro e consulta a cada minuto (desligar)" --> A
   E <-- "sincronização criptografada" --> E2
   Hub -. "atualizações (GitHub)" .-> GH[(GitHub Releases)]
 ```
@@ -114,7 +122,10 @@ flowchart LR
 1. O painel envia o **Magic Packet** pela placa de rede do PC da TI.
 2. O UniWake verifica com **ping e TCP** quem acordou e mostra o resultado ao vivo.
 3. As máquinas se **cadastram sozinhas** ao rodar o comando de preparo.
-4. No Modo equipe, os PCs da TI trocam as alterações pela porta **47102**, cifradas com a chave da
+4. Para desligar, o UniWake **não entra nas máquinas**: uma tarefa agendada em cada uma pergunta a
+   cada minuto se há algo a fazer (porta **47101**) e guarda os desligamentos agendados dos próximos
+   14 dias.
+5. No Modo equipe, os PCs da TI trocam as alterações pela porta **47102**, cifradas com a chave da
    equipe.
 
 ## Requisitos
@@ -122,9 +133,9 @@ flowchart LR
 | Item | Requisito |
 |---|---|
 | **PC da TI** | Windows 10 ou 11 (64 bits), **conectado por cabo** à rede dos laboratórios. Não precisa de ninguém logado. Para os agendamentos da manhã, ele (ou outro PC da equipe) precisa estar ligado no horário. |
-| **Máquinas dos laboratórios** | Windows 10 ou 11, placa de rede cabeada com suporte a Wake-on-LAN. |
+| **Máquinas dos laboratórios** | Windows 10 ou 11, placa de rede cabeada com suporte a Wake-on-LAN. Para desligar: só o que já vem no Windows (PowerShell, Agendador de Tarefas e `shutdown.exe`), nada é instalado. |
 | **Rede** | Mesma rede (ou VLAN com broadcast dirigido liberado). Veja [Redes diferentes](#redes-diferentes-vlan). |
-| **Portas** | 47100 (painel), 47101 (cadastro) e 47102 TCP+UDP (Modo equipe), liberadas pelo instalador nas redes de domínio e privadas. Veja [Portas e firewall](#portas-e-firewall). |
+| **Portas** | 47100 (painel), 47101 (cadastro e consultas das máquinas) e 47102 TCP+UDP (Modo equipe), liberadas pelo instalador nas redes de domínio e privadas. Veja [Portas e firewall](#portas-e-firewall). |
 
 ## Portas e firewall
 
@@ -134,7 +145,7 @@ um firewall no caminho), as funções abaixo **não funcionam**:
 | Porta | Protocolo | Quem acessa o PC do UniWake | Sem ela… |
 |---|---|---|---|
 | **47100** | TCP | O navegador. Por padrão só no próprio PC; na rede, só por HTTPS (opcional). | o painel não abre de outros computadores (se você ligou o acesso pela rede). |
-| **47101** | TCP | **As máquinas dos laboratórios**, ao rodar o comando de **Preparar máquinas**: elas baixam o `prepare-target.ps1` e se cadastram por esta porta. | **o comando de preparo/cadastro falha** ("Não é possível conectar ao servidor remoto") e a máquina não é cadastrada. |
+| **47101** | TCP | **As máquinas dos laboratórios**: ao rodar o comando de **Preparar máquinas** (baixam o `prepare-target.ps1` e se cadastram) e, depois de preparadas, **a cada minuto** para buscar ordens e agendamentos de desligar. | **o comando de preparo/cadastro falha** ("Não é possível conectar ao servidor remoto") e **as máquinas não recebem ordens de desligar** (aparecem como "Desligamento remoto perdido"). |
 | **47102** | TCP e UDP | Os outros PCs da TI no **Modo equipe** (pareamento, anúncios e sincronização). | o pareamento falha e o outro PC aparece "offline / Sem conexão". |
 
 > [!IMPORTANT]
@@ -274,6 +285,9 @@ O comando baixa o `prepare-target.ps1` do UniWake, **confere o SHA-256** antes d
 | Propriedades da placa | Wake on Magic Packet e ligar a partir do desligamento ativados; Ethernet com eficiência energética desligada |
 | Firewall | Libera o ping (regra `UniWake-ICMPv4-In`, só domínio e privada) |
 | Cadastro | Cadastra a máquina na sala (ou atualiza, ou move de sala) |
+| Desligamento remoto (1.3) | Cria as tarefas **UniWake**, **UniWake Despertar** e **UniWake Aviso** e a pasta `C:\ProgramData\UniWake` (só Administradores e o sistema alteram) |
+| Plano de energia | Ativa os **temporizadores de ativação** (na tomada) e mostra depois de quanto tempo a máquina entra em suspensão |
+| Congelamento | Detecta Deep Freeze, Reboot Restore Rx, Shadow Defender e UWF (veja [Laboratórios com Deep Freeze](#laboratórios-com-deep-freeze-ou-similar)) |
 
 No fim aparece um resumo (**OK / FALHOU / NÃO SE APLICA / MANUAL**) e o que conferir na BIOS. O
 registro fica em `C:\ProgramData\UniWake-Prepare\`. Para só ver o que mudaria: `-WhatIf`.
@@ -306,6 +320,53 @@ registro fica em `C:\ProgramData\UniWake-Prepare\`. Para só ver o que mudaria: 
   depois disso fica como `perdido` (no Modo equipe, veja abaixo).
 - O **Resultado da manhã** mostra, por sala, quem não acordou e fica fixado no painel até alguém
   clicar em **Ciente**.
+- A **Ação** de cada agendamento é **Ligar** ou **Desligar** (veja abaixo).
+
+## Desligar computadores
+
+> Disponível a partir da versão **1.4.0**. Máquinas preparadas antes precisam do comando atualizado
+> de **Preparar máquinas**; em **Dispositivos**, cada uma mostra "Pronta para desligar" ou
+> "Precisa do novo preparo".
+
+- **Agora:** use **Desligar** ou **Reiniciar** na sala, na máquina ou nas máquinas selecionadas.
+  Antes de confirmar, o UniWake mostra quantas recebem a ordem, quantas têm alguém usando e quais
+  ainda precisam do novo preparo. Aviso padrão de **1 minuto**, sem adiamento (ou **5 minutos com
+  adiamento**). A máquina recebe a ordem em até 1 minuto; ordens não buscadas em 2 horas expiram.
+- **Agendado:** em **Agendamentos**, escolha a Ação **Desligar**. Aviso padrão de 5 minutos, até
+  2 adiamentos de 15 minutos (configurável). As máquinas guardam os horários e **desligam mesmo
+  com o PC da TI desligado**; os resultados chegam na consulta seguinte e aparecem no **Histórico**
+  ("28/30 desligaram, 1 adiou 2×, 1 estava desligada").
+- **Exceções:** marque "Nunca desligar por agendamento" na máquina (por exemplo, a do professor) ou
+  exclua uma etiqueta no agendamento. O "Desligar" manual dessas máquinas pede confirmação extra.
+- **Em suspensão:** a tarefa **UniWake Despertar** acorda a máquina no horário para desligar. Se
+  ela acordar mais de 60 minutos atrasada (ou depois do próximo "Ligar"), não desliga e o
+  Histórico mostra "Pulado: acordou … min após o horário".
+- **O aviso:** "Este computador será desligado às … pela equipe de TI. Salve seus arquivos: o que
+  não for salvo será perdido." (texto editável em **Configurações**). Sem ninguém logado, desliga
+  em 30 segundos. O UniWake registra só se havia alguém logado e quantas sessões, **nunca nomes**.
+- **Reiniciar** existe só manualmente, pelo painel.
+- **Revogar:** na página da máquina, um administrador pode usar **Revogar desligamento remoto**. Para
+  remover as tarefas e arquivos da máquina, baixe o `prepare-target.ps1` em **Preparar máquinas** e
+  rode `.\prepare-target.ps1 -RemoveAgent` como Administrador.
+
+### Laboratórios com Deep Freeze ou similar
+
+Programas que desfazem as alterações ao reiniciar (Deep Freeze, Reboot Restore Rx, Shadow
+Defender, UWF) também desfazem a agenda guardada pela máquina.
+
+1. **Descongele** a máquina, rode o comando de preparo e **congele** de novo. Se ela estiver
+   congelada, o resumo avisa que as tarefas só valem até o próximo reinício.
+2. Sem uma pasta preservada, **o desligamento agendado depende de a máquina ter falado com o
+   UniWake depois do último reinício** (ela busca a agenda sempre que liga).
+3. Com Deep Freeze, crie uma área **ThawSpace** (ex.: unidade `T:`) e, em **Preparar máquinas →
+   Laboratório com Deep Freeze ou similar**, informe `T:\UniWake` em **Pasta persistente**. Use uma
+   pasta nova, só do UniWake: o preparo a deixa acessível apenas para Administradores e o sistema
+   (pastas do Windows e pastas com outros arquivos são recusadas).
+4. Com o **UWF**, marque "Excluir a pasta do agente do Filtro de Gravação Unificado (UWF)"; vale
+   depois do próximo reinício.
+
+Uma máquina que responde na rede há 15 minutos sem consultar o UniWake aparece como
+**"Desligamento remoto perdido"** (e é contada em **Saúde do sistema**).
 
 ## Descobrir na rede
 
@@ -377,7 +438,7 @@ código. A chave da equipe fica guardada cifrada pelo Windows (DPAPI) em cada PC
 | **Painel** | Contadores e salas; clique em uma sala para ligar ou ver as máquinas. |
 | **Ctrl+K** | Ligar rapidamente uma sala, etiqueta ou máquina pelo nome. |
 | **Agendamentos** | Dias, horário, salas/etiquetas; feriados e "Pausar agendamentos" (férias). |
-| **Histórico** | Cada ligação, quem acordou e quem não respondeu (com link para o diagnóstico). |
+| **Histórico** | Cada ligação, quem acordou e quem não respondeu (com link para o diagnóstico); desligamentos e reinícios. |
 | **Dispositivos** | Inventário, importação/exportação CSV, **Descobrir na rede**, diagnóstico e **Testar WoL**. |
 | **Modo equipe** | PCs da equipe, sincronização, conflitos resolvidos (administradores). |
 | **Saúde do sistema** | Agendador, verificações, relógio, backups, atualizações, avisos do Windows e o identificador deste PC. |
@@ -416,6 +477,67 @@ atualiza sozinho, na própria janela de manutenção.
 - **Restaurar:** **Configurações → Backups**, escolha o backup e digite a data dele para confirmar.
   Um backup restaurado vale para o mesmo PC (as chaves do Modo equipe só abrem nele).
 
+## Backup e migração (arquivo .uniwake)
+
+> Disponível a partir da versão **1.4.0**. Em **Backup e migração** (administradores).
+
+Os backups acima restauram **este** PC. Para levar o UniWake para **outro** PC (ou guardar uma cópia
+fora dele), use um arquivo `.uniwake`:
+
+| Parte | O que leva | Senha |
+|---|---|---|
+| Cadastro | salas, etiquetas, máquinas | não |
+| Agendamentos | ligar e desligar, exceções, pausa | não |
+| Configurações gerais | as que valem para a equipe | não |
+| Usuários | usuários, perfis e senhas | **sim** |
+| Desligamento remoto | máquinas preparadas e a chave deste UniWake | **sim** |
+| Histórico (opcional) | execuções e desligamentos | não |
+
+As configurações deste PC (placas de rede, endereços, portas, atualização, backup) **nunca** vão no
+arquivo. A senha (10+ caracteres) protege usuários e chaves com argon2id + AES-256-GCM; sem ela o
+UniWake não abre essas partes — guarde-a com a documentação da TI.
+
+**Passar para um PC novo:**
+
+1. PC antigo: **Exportar** com todas as partes e uma senha.
+2. PC novo: instale o UniWake, crie o primeiro usuário, **Importar** → senha → **Substituir** →
+   **Ver prévia** → digite `IMPORTAR`. Um backup é feito antes e dá para **desfazer**.
+3. Entre com um usuário do arquivo. O PC novo fica **em espera** (agendamentos parados e nenhuma
+   ordem às máquinas) até você desligar o PC antigo e clicar em **Ativar este UniWake**.
+4. Se o PC novo tiver outro endereço, rode de novo o comando de **Preparar máquinas** nos
+   laboratórios.
+
+**Mesclar** junta o arquivo ao que já existe (nada é apagado; vale a versão mais nova de cada
+item). Um PC em **Modo equipe** não importa: importe num PC fora da equipe e depois pareie.
+
+**Exportação automática:** em **Configurações → Exportação automática**, escolha uma pasta (local
+ou `\\servidor\pasta`), o horário (02:45) e quantos arquivos manter. Ela não leva Usuários nem
+Desligamento remoto. O serviço roda como **Sistema Local**: na pasta da rede, quem precisa poder
+gravar é a **conta do computador** (ex.: `DOMINIO\PC-TI$`). Falhas aparecem em **Saúde do sistema**.
+
+<details>
+<summary><b>Linha de comando</b></summary>
+
+Na pasta da versão instalada (PowerShell como Administrador; troque `1.4.0` pela versão em uso):
+
+```powershell
+cd "C:\Program Files\UniWake\versions\1.4.0"
+# Exportar (funciona com o serviço rodando). Sem senha, sai sem Usuários e Desligamento remoto.
+$env:UNIWAKE_SENHA = 'uma senha longa'
+& .\node.exe .\server.mjs --export D:\uniwake.uniwake --password-env UNIWAKE_SENHA
+
+# Importar: pare o serviço antes.
+Stop-Service UniWake
+& .\node.exe .\server.mjs --import D:\uniwake.uniwake --mode replace --password-env UNIWAKE_SENHA
+Start-Service UniWake
+```
+
+`--sections inventory,schedules,settings,users,agents,history` escolhe as partes. Códigos de saída:
+0 ok, 2 uso incorreto, 3 recusado (serviço rodando, Modo equipe, arquivo de versão mais nova), 4
+senha incorreta ou arquivo danificado.
+
+</details>
+
 ## Segurança
 
 - Painel só no próprio computador por padrão; na rede, **somente HTTPS**.
@@ -423,6 +545,10 @@ atualiza sozinho, na própria janela de manutenção.
 - Códigos de cadastro guardados só como hash, com validade, limite de usos e revogação.
 - Comando de preparo **conferido por SHA-256**; instalador e atualizações **conferidos por
   SHA-256**; origem das atualizações fixa no programa.
+- Desligar: as máquinas só fazem conexões de saída para o UniWake (nenhuma porta aberta nelas,
+  nenhuma senha de administrador compartilhada); cada máquina tem um token próprio, e cada resposta
+  do UniWake é **assinada** e conferida antes de qualquer ação. Os scripts são texto simples, sem
+  ofuscação, em uma pasta que só Administradores e o sistema alteram.
 - Modo equipe: pareamento por código que não trafega (SPAKE2), sincronização TLS 1.3 com a chave da
   equipe, chave guardada com DPAPI, PCs removidos ficam de fora.
 - **Auditoria** de todas as ações, com exportação CSV protegida contra fórmulas.
@@ -442,6 +568,14 @@ atualiza sozinho, na própria janela de manutenção.
 | **"Dispositivo em outra sub-rede" / VLAN** | O broadcast não atravessa roteadores: veja [Redes diferentes](#redes-diferentes-vlan). |
 | **Modo equipe: PC "offline" / "Sem conexão"** | O outro PC está desligado, o UniWake não roda nele, ou a porta **47102** está bloqueada. Em outra sub-rede, informe um endereço fixo. |
 | **Modo equipe: "as chaves não conferem"** | O PC ficou desligado durante duas trocas de chave (remoções): saia da equipe e pareie de novo. |
+| **"Desligamento remoto perdido"** | A máquina está ligada, mas não consulta o UniWake: confira no **Agendador de Tarefas** se a tarefa **UniWake** existe e está ativa, se ela alcança a porta **47101** e se não está congelada. Rodar o comando de preparo de novo resolve a maioria dos casos. |
+| **"Precisa do novo preparo"** | A máquina foi preparada antes da 1.3: rode nela o comando atualizado de **Preparar máquinas**. |
+| **Não desliga quando estava em suspensão** | Os **temporizadores de ativação** precisam estar ativados (o preparo ativa na tomada; veja na página da máquina). Em notebooks na bateria eles podem não funcionar. |
+| **Desligou fora do horário ou atrasado** | O relógio da máquina estava muito errado: o UniWake corrige a diferença a cada consulta (veja "Relógio da máquina" na página dela), mas acerte a sincronização de horário do Windows. |
+| **Antivírus bloqueou** | Algumas políticas bloqueiam o PowerShell em tarefas agendadas: libere `C:\ProgramData\UniWake\agent` (scripts `uniwake-agent.ps1` e `uniwake-aviso.ps1`). |
+| **"Este UniWake está em espera"** | Depois de importar um arquivo, o PC fica parado até alguém conferir: em **Backup e migração**, clique em **Ativar este UniWake** (desligue antes o PC antigo). |
+| **Exportação automática falhou** | Veja o motivo em **Saúde do sistema**. Pasta da rede: a conta do computador precisa de permissão de escrita; a pasta precisa existir. |
+| **Deep Freeze / máquina congelada** | Veja [Laboratórios com Deep Freeze ou similar](#laboratórios-com-deep-freeze-ou-similar). |
 | **O serviço não inicia** | Veja o motivo no **Visualizador de Eventos → Aplicativo**, origem **UniWake** (por exemplo, porta 47100 em uso). |
 | **Atualização revertida** | O painel mostra o motivo; os detalhes ficam em `C:\ProgramData\UniWake\logs`. |
 
@@ -465,9 +599,9 @@ também na rede dessas máquinas, ou informar o **"Broadcast dirigido"** da sala
 | 1.0 | Ligar pela rede, painel, agendamentos, preparo e cadastro, usuários, backups, atualização automática | publicada (incluída na 1.2.0) |
 | 1.1 | Descobrir na rede | publicada (incluída na 1.2.0) |
 | 1.2 | **Modo equipe** (sincronização entre PCs da TI) | publicada (1.2.0) |
-| 1.3 | UniWake Agent: **desligar e reiniciar** pela rede ou por agendamento, aviso na tela com contagem regressiva | planejado |
-| 1.4 | **Backup, restauração e migração** em arquivo `.uniwake` (exportar/importar, com senha) | planejado |
-| — | Agente por VLAN, notificações (e-mail/Telegram), ferramentas de BIOS dos fabricantes, permissões por sala | ideias |
+| 1.3 | **Desligar e reiniciar** pelo painel ou por agendamento, aviso na tela com adiamento, laboratórios com Deep Freeze | publicada (incluída na 1.4.0) |
+| 1.4 | **Backup e migração** em arquivo `.uniwake` (exportar/importar com prévia e senha, em espera até ativar, exportação automática, linha de comando) | publicada (1.4.0) |
+| — | Reinício agendado, agente por VLAN, notificações (e-mail/Telegram), ferramentas de BIOS dos fabricantes, permissões por sala | ideias |
 
 ## Relatar problemas e sugerir funções
 
@@ -485,6 +619,9 @@ Em **Configurações do Windows → Aplicativos**, desinstale o UniWake. O servi
 firewall e o atalho são removidos. Os dados em `C:\ProgramData\UniWake` são **mantidos**, a menos
 que você escolha removê-los (a desinstalação silenciosa sempre mantém os dados). Se o PC estava
 numa equipe, remova-o antes em **Modo equipe** de outro PC.
+
+Nas máquinas dos laboratórios preparadas para desligar, rode `.\prepare-target.ps1 -RemoveAgent`
+como Administrador para remover as tarefas e os arquivos do UniWake.
 
 ## Perguntas frequentes
 
@@ -510,6 +647,15 @@ Não. É um serviço do Windows: começa sozinho quando o computador liga.
 Não no uso normal: os PCs ligados escolhem um só executor para cada agendamento. Se um PC não
 enxergar o outro (por exemplo, firewall bloqueando a porta 47102), os dois podem executar — o que
 liga as máquinas duas vezes, mas nunca deixa de ligar.
+
+</details>
+
+<details>
+<summary><b>O UniWake usa uma senha de administrador para desligar as máquinas?</b></summary>
+
+Não. Nada entra nas máquinas pela rede: cada uma, depois de preparada, pergunta ao UniWake se há
+algo a fazer e confere a assinatura da resposta antes de agir. Não há senha compartilhada nem porta
+aberta nas máquinas.
 
 </details>
 

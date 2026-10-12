@@ -8,6 +8,8 @@ export const ONE_LINER_FIXTURE = {
   hubUrl: 'http://127.0.0.1:47101',
   roomCode: 'LAB3',
   token: 'TOKEN_de-teste_1234567890',
+  /** A hub key id (RFC 7638 thumbprint, base64url). */
+  hubKeyId: 'EUXq1qrDFZWTXDDbWmU3R8rEVDuojHsR7n0Maw3vAmY',
   /** Script bytes the Pester test "downloads" (UTF-8). */
   script: 'Write-Host "conteúdo original do script"\r\n',
 };

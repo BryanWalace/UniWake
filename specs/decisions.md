@@ -553,10 +553,360 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
   only `v*` tags on `main` publish installers (ADR-030) and agents never tag. The CI installer job
   only builds throwaway 0.0.x installers for its smoke tests.
 - **Decision:** On pushes to `dev`, the Windows installer job also builds
-  `UniWake-Setup-<next>-dev.<run>.exe` (now `1.2.0-dev.N`, base in `DEV_VERSION_BASE`) with its
+  `UniWake-Setup-<next>-dev.<run>.exe` (now `1.4.0-dev.N`, base in `DEV_VERSION_BASE`) with its
   SHA-256 and uploads them as the Actions artifact **UniWake-Setup-dev** (14-day retention). It is
   not a release: no tag, no GitHub Release, nothing a hub's update check can see. A hub installed
   from it is a prerelease version: it never updates to another prerelease (AC-001-05) and updates
   automatically once a stable release newer than it is published (e.g. `v1.2.0`).
 - **Consequences:** The owner downloads the installer from the run's page (GitHub login needed) and
   installs it on test PCs. Bump `DEV_VERSION_BASE` when work on the next version starts.
+
+## ADR-042 — Remote shutdown by pull: Windows scheduled tasks, no installed program
+- **Date:** 2026-10-11 · **Status:** Accepted (owner decision, 2026-10-11) · **Supersedes:**
+  `.agents/07-roadmap-features.md` §C "UniWake Agent" Windows service with outbound WebSocket ·
+  **Amends:** constitution §2.6; spec §11 RM-2 (→ §6b)
+- **Context:** Lab PCs use local accounts (workgroup). Nothing downloaded may be installed on them:
+  only PowerShell 5.1, Task Scheduler, `shutdown.exe`, `quser`, WMI/CIM and .NET Framework. The
+  hub is on only part of the day (owner: wake 17:40, hub off 21:20, labs off 22:40).
+- **Decision:** The preparation command (already SHA-256 pinned) downloads two PowerShell scripts from the hub
+  (hashes checked against the signed enrollment answer, ADR-044) into
+  `C:\ProgramData\UniWake\agent\` and registers three tasks: **"UniWake"** (SYSTEM, at startup +
+  every 1 min, the minimum Task Scheduler repetition; `MultipleInstances=IgnoreNew`,
+  `ExecutionTimeLimit=PT2H` so a warning with postpones fits in one run, runs on battery),
+  **"UniWake Despertar"** (SYSTEM, one-time triggers, `WakeToRun`, ADR-045) and **"UniWake Aviso"**
+  (Users, interactive, ADR-046). The tasks make **outbound HTTP calls** to the hub's agent listener
+  (47101); no port is opened on lab PCs. The machine keeps the shutdown agenda of the next days and
+  executes it alone; reports wait in a local queue until a hub answers.
+- **Folder hardening:** `C:\ProgramData` lets Users create folders, so a user could pre-create
+  `C:\ProgramData\UniWake` and plant a script that SYSTEM would run. The preparation sets owner =
+  Administrators, disables inheritance and replaces the ACL (Administrators, SYSTEM full; Users read
+  on the warning script only; ADR-046 for the IPC folders), and re-checks it on every run; the
+  agent refuses to run (and reports it) if its folder's owner or ACL changed.
+- **Alternatives rejected:** hub-side `shutdown /m \\PC` or WMI/WinRM (`Win32_OperatingSystem.
+  Win32Shutdown`): need the same local administrator password on every PC,
+  `LocalAccountTokenFilterPolicy=1` for remote admin with local accounts, and SMB 445/RPC/WinRM open
+  inbound — a large attack surface, and the hub must be on at shutdown time. A Windows service
+  (roadmap §C): it is an installed program (forbidden) and needs an installer per PC.
+- **Consequences:** Works with the hub off. Up to ~1 min latency for manual orders. One
+  `powershell.exe` start per minute per PC (≈ 0.3–0.8 s CPU, NFR-302). Machines prepared with v1.2
+  keep waking; shutdown needs the new command once (FR-301.2). Freezing software can erase the tasks
+  (ADR-047).
+
+## ADR-043 — Agent channel: one check-in route, per-machine token, limits
+- **Date:** 2026-10-11 · **Status:** Accepted · **Amends:** constitution §2.6, §5 (no real power
+  changes in tests), §6.1, new §6.3a; plan §6.2 ("exactly three routes" → five)
+- **Decision:**
+  - Routes on the agent listener: `POST /agent/v1/checkin` (Bearer agent token) and
+    `GET /agent/v1/scripts/:name` (`uniwake-agent.ps1`, `uniwake-aviso.ps1`; public bytes, integrity
+    from the signed hashes, ADR-044), plus
+    the existing health, enroll and prepare-script routes. `/agent/enroll` gains an optional
+    `agent: {protocol: 1}` request field; with it, the answer adds `agentToken`, `hubKey`, the
+    script hashes and the first agenda, and is signed over the script's nonce. Older scripts are unaffected.
+  - **Check-in request:** `{protocol, nonce (16 random bytes), agentVersion, bootTime, clock,
+    freeze {product, state, persistent}, power {sleepAfterMinutes, wakeTimers}, session {loggedOn,
+    sessions}, reports[] (≤ 50, machine-made UUIDs), ackedOrders[]}` — **no user names** (owner,
+    LGPD: the agent drops them while parsing `quser`). **Answer:** `{serverTime, orders[], agenda
+    {version, window {from, to}, items[], nextWakes[]}, hubs[], scripts {name: {version, sha256}},
+    ackReports[], newToken?}`, signed (ADR-044).
+  - **Token:** 32 random bytes (base64url), only SHA-256 stored, compared in constant time. One
+    active token per machine plus at most one pending (rotation: old valid until the new one is
+    used). Rotation every 30 days, skipped while the machine reports "congelada" without a
+    persistent area. Revocation per device ("Revogar desligamento remoto"); re-preparing issues a new
+    token (enrollment is by MAC, upsert) and invalidates the old one.
+  - **Storage on the PC:** a file readable by Administrators and SYSTEM only. DPAPI was considered
+    and rejected: any local administrator can run code as SYSTEM and unprotect it, and a frozen
+    machine would lose a DPAPI re-protection made after freezing.
+  - **Limits:** 6 check-ins/min per token (1/min normal, 2/min while a warning is running, plus the
+    pre-shutdown report), 60/min per source IP, body ≤ 64 KB, Zod-validated, reports deduplicated
+    by UUID (insert-only); 401 without detail for missing/unknown/revoked tokens; failures logged
+    without the token.
+- **Threats accepted:** the token travels in clear HTTP on the LAN (same as the enrollment token
+  today). A sniffed token lets an attacker read that machine's agenda, post false reports for it,
+  or take over its rotation (the real machine then shows "perdido" — visible, fixed by
+  re-preparing). It never lets anyone **order** a shutdown: orders only come from signed answers.
+- **Consequences:** Hub load ≈ N/60 requests/s (500 PCs ≈ 8.3/s), agenda cached per device and
+  invalidated by schedule/exception/device/settings changes.
+
+## ADR-044 — Integrity of agent answers: hub signatures now, TLS stays roadmap (RM-5)
+- **Date:** 2026-10-11 · **Status:** Accepted · **Decides:** RM-5 for v1.3 (TLS stays roadmap)
+- **Context:** In v1.3 an answer from the hub can turn a lab off. Over plain HTTP, anyone able to
+  spoof the hub on the LAN (ARP/DNS spoofing) could shut down every lab, or replay an old order.
+  Confidentiality of agendas is of low value; authenticity and freshness are what matter.
+- **Decision:**
+  - Each hub has an **RSA-3072** signing key pair, generated on first start of v1.3, private key
+    protected with DPAPI LocalMachine (ADR-037). The public key travels as JWK members `{n, e}`
+    (base64url); key id = its RFC 7638 thumbprint (SHA-256 of `{"e":…,"kty":"RSA","n":…}`,
+    base64url), easy to compute in PowerShell without ASN.1.
+  - Every check-in answer is signed: `RSASSA-PKCS1-v1_5 / SHA-256` over
+    `"uniwake-agent-v1\n" + nonce + "\n" + body bytes`, sent in `X-UniWake-Key` and
+    `X-UniWake-Signature`. The agent reads the exact body bytes (`HttpWebRequest`, not the decoded
+    string of `Invoke-WebRequest`), verifies with .NET Framework `RSA` (`RSACng` with
+    `HashAlgorithmName.SHA256` / `RSASignaturePadding.Pkcs1`, .NET ≥ 4.6, present on supported
+    Windows 10/11), checks the nonce it sent and rejects anything else (and reports it).
+  - **Trust anchor:** the panel's copied command gains `-HubKeyId <id>`; the preparation accepts
+    the `hubKey` from the enrollment answer only if its id matches. The command is copied by staff
+    from the panel, like the script hash today.
+  - **Team mode:** answers list the team hubs `{instanceId, urls, keyId, publicKey}` with the team
+    key epoch; the agent trusts a key only if it came in a list signed by a key it already trusts
+    and accepts lists only with epoch ≥ its current one. Revoking a member bumps the epoch (ADR-038)
+    and drops its key.
+  - **Scripts (preparation and self-update):** signed answers carry `{version, sha256}` per
+    script; the preparation and the agent download them from `/agent/v1/scripts/`, check the hash
+    and replace them atomically (write temp, verify, move). `prepare-target.ps1` stays one static
+    file pinned by the copied command.
+  - Signing key is in backups; restoring on another PC cannot decrypt the DPAPI blob, so machines
+    must be prepared again — v1.4's portable export must carry the key (noted for v1.4).
+- **Alternatives:** TLS on 47101 (RM-5): PowerShell 5.1 needs a certificate validation callback
+  for a self-signed certificate (`ServicePointManager.ServerCertificateValidationCallback` with a
+  script block is known to be fragile across threads) or a certificate imported into the machine
+  store; it also needs certificate rotation. Signatures give the needed authenticity and freshness
+  with built-in APIs. TLS remains RM-5 for confidentiality.
+- **Spike (M16-T01), done 2026-10-11:** a Node RSA-3072 signature over a UTF-8 body verifies in
+  Windows PowerShell 5.1 (Windows 11, .NET Framework 4.8) with `RSACng.ImportParameters` from
+  `{n, e}` + `VerifyData(…, SHA256, Pkcs1)`; a changed body, another nonce, a malformed signature
+  or key all give `false`; the RFC 7638 key id matches Node's. Fixture
+  `packages/shared/fixtures/agent/signature.json` (throwaway key) is checked by Vitest and by
+  Pester (`scripts/tests/agent-signature.Tests.ps1`, also on the CI Windows runner). Windows 10
+  lab PCs ship .NET Framework 4.8 too (RSACng needs ≥ 4.6).
+- **Residual risk:** a revoked team member that still has its private key could sign lists for
+  machines that have not yet checked in with another hub (window ≤ one check-in while any good hub
+  is on). Team members are staff PCs; accepted.
+
+## ADR-045 — Local agenda: explicit window, clock offset, wake task, boot and sleep rules
+- **Date:** 2026-10-11 · **Status:** Accepted (window and late-wake report per owner answers Q-3,
+  Q-4, Q-9 of 2026-10-11)
+- **Decision:**
+  - **Items** carry the shutdown instant T in UTC (the hub resolves timezone/DST and holidays),
+    warning, postpone policy and a deterministic occurrence UUID (v5 of schedule uuid + planned
+    instant, ADR-031) so every team hub and every machine name the same occurrence. The message is
+    the global setting, sent once per answer.
+  - **Clock:** at each check-in the agent stores `offset = serverTime − local midpoint` and uses
+    `local + offset`. Offsets > 2 min are reported ("relógio adiantado/atrasado X min").
+  - **Window (Q-4):** the hub sends `window {from, to}` with to = generation time + 14 days
+    (constant `AGENDA_DAYS = 14`) and from = generation time − 6 h (`AGENDA_LOOKBACK_MS`, M16-T05:
+    a PC checking in during a warning, postpone or late wake must still see that item), and the concrete instants inside it, already without
+    holidays, vacations, paused days and exclusions. The machine runs only listed items with T in
+    the window; there is no other validity rule, and no rule is ever re-evaluated on the machine.
+    After `to`, nothing runs until a hub sends a new window.
+  - **Wake:** `WakeToRun` is a task setting, not a trigger setting, so the 1-minute task must
+    **not** have it (it would wake the PC every minute). "UniWake Despertar" holds one-time
+    triggers at T − warning − 1 min for the items, is rewritten when the agenda changes, and its
+    action just runs the agent. It depends on the power plan option "Permitir temporizadores de
+    ativação" (`powercfg` alias `RTCWAKE` under `SUB_SLEEP`, GUID
+    `bd3b718a-0680-4d9d-8ab2-e1d2b4ac806d`; 0 disable, 1 enable, 2 important only). The preparation
+    sets AC = 1 on the active scheme when it is not 1 already (owner, Q-3; idempotent, shown in the
+    summary): `powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_SLEEP RTCWAKE 1`, then
+    `/SETACTIVE SCHEME_CURRENT`. It **only reads** the AC sleep timeout (alias `STANDBYIDLE`, never
+    changed) and reports "Suspensão: após N min" / "nunca". `powercfg /QUERY` output is localized
+    (pt-BR Windows prints Portuguese labels), so values are read by position of the hex indexes or
+    from CIM `root\cimv2\power`. M18-T05: the hex values are read by position (last two = AC, DC);
+    checked read-only on the developer's Windows 11 pt-BR, whose labels ("Índice de Configurações de
+    Correntes Alternadas Atuais") differ from the English ones; other builds **não verificado**.
+    The default value varies by plan and vendor (**não verificado**); value 2 likely blocks task
+    wake timers (**não verificado**); behaviour on Modern Standby (S0) PCs **não verificado**. GPOs
+    or firmware can still block wake timers → the late-wake rule.
+  - **Rules at each run, in order:** (1) item already done/expired/cancelled → skip; (2) last boot
+    (`Win32_OperatingSystem.LastBootUpTime`) after T → "máquina estava desligada", never run;
+    (3) heartbeat gap > 3 min covering T (asleep/hibernated) → run only if now < next wake and
+    now − T ≤ 60 min (Q-9), report "estava em suspensão"; otherwise report "pulado: acordou {n} min
+    após o horário"; (4) now ≥ T − warning → start the warning
+    flow (ADR-046). A heartbeat file (last run time) is written every run.
+  - **Storage:** `agenda.json`, `state.json` (executed occurrence/order ids for 48 h, offset, hub
+    list), `reports.jsonl` (≤ 500 lines, oldest dropped and counted) in the agent folder, or in the
+    persistent path on frozen machines (ADR-047).
+- **Consequences:** The same logic is specified once and tested twice: the hub's agenda generator
+  (Vitest) and the agent's executor (Pester) share JSON contract fixtures under
+  `packages/shared/fixtures/agent/`.
+
+## ADR-046 — Warning with "Adiar": a task in the user's session and a file channel
+- **Date:** 2026-10-11 · **Status:** Accepted
+- **Context:** The native `shutdown /t` warning has no "Adiar". The SYSTEM task runs in session 0,
+  which cannot show windows to the user. Only built-in Windows parts may be used.
+- **Decision:**
+  - Task **"UniWake Aviso"**: principal = group `BUILTIN\Users` (SID S-1-5-32-545), interactive,
+    triggers: at logon (shows a warning already in progress) and on demand. The SYSTEM agent starts
+    it with `Start-ScheduledTask` when a warning begins. Action: `powershell.exe -NoProfile
+    -WindowStyle Hidden -ExecutionPolicy Bypass -File …\uniwake-aviso.ps1` (a brief console flash is
+    accepted; `conhost.exe --headless` is undocumented, **não verificado**). The window is
+    WinForms (.NET Framework): message, T, countdown, "Adiar 15 min" while allowed, always on top,
+    no close-to-cancel.
+  - That a group-principal task started on demand runs in each interactive member's session (also
+    with fast user switching) is **não verificado** → spike M18-T01 on a test PC; fallback below.
+    M18-T01 (2026-10-11): not run on the developer's PC — it needs a real scheduled task and an
+    interactive session on a lab-like PC, a change the agent does not make on the owner's machine
+    unasked. Moved to the owner's checklist (V3-T02, step "janela de aviso"). Until then the design
+    does not depend on it: the agent waits 20 s for the window's heartbeat file and otherwise uses
+    the native `shutdown /t` warning (reported "aviso nativo (sem adiar)"), so a failure costs only
+    the "Adiar" button.
+  - **Channel:** `C:\ProgramData\UniWake\ui\request\` (SYSTEM writes, Users read) holds
+    `{requestId, T, postponesLeft, postponeMinutes, message}`; `ui\response\` (Users may create
+    files, SYSTEM reads) receives `{requestId, action: "postpone"}`. SYSTEM **never writes or
+    deletes in the Users-writable folder** (deleting through a user-planted junction/hard link is a
+    classic privilege escalation), skips reparse points, reads ≤ 4 KB, accepts only the current
+    requestId and enforces the count/length itself; the user-side script deletes its own files.
+  - **Fallback:** the task does not start or the window does not appear (no heartbeat file from
+    the UI within 20 s) → `shutdown /s /t <aviso> /c "<mensagem>"` (native warning, no postpone),
+    reported "aviso nativo (sem adiar)". No user logged on (`quser`; fallback
+    `Win32_ComputerSystem.UserName`) → shutdown with `/t 30`, no warning window.
+  - **Forced close:** `/t > 0` implies `/f` (Microsoft Learn, `shutdown`): unsaved work is lost; the
+    message says so.
+- **Alternatives:** `msg.exe` / WTS messages (no button result); toast notifications from SYSTEM
+  (need an AppUserModelID registration; actions need an app to receive them); named pipes (needs a
+  long-running process in the user session anyway; files are simpler to test with mocks).
+
+## ADR-047 — Freezing software: detection, persistent area, lost-agent heuristic
+- **Date:** 2026-10-11 · **Status:** Accepted
+- **Context:** Freezing products restore the system disk at restart, erasing tasks, scripts,
+  tokens, agendas and reports created while frozen. The owner's institution does not use them;
+  others do. Commands and exit codes must not be invented.
+- **Detection table** (preparation + every check-in; every external call wrapped and mocked in tests):
+
+  | Product | Presence | Frozen/thawed state | Verification |
+  |---|---|---|---|
+  | Deep Freeze (Faronics) | services/processes `DFServ` / `DfServEx`, `FrzState2k.exe` (typically under `…\Faronics\Deep Freeze\Install C-0\`) | `DFC.exe get /ISFROZEN`: exit 0 = thawed, 1 = frozen; `DFC.exe` found with `Get-Command` and the install folders | Third-party sources only (FileWave KB, BigFix forum, ProVal docs); DFC.exe location and whether `get /ISFROZEN` needs a password: **não verificado** |
+  | Windows UWF | WMI class `UWF_Filter` in `root\standardcimv2\embedded` exists | `CurrentEnabled` (now) / `NextEnabled` (after restart) | Microsoft Learn (official). Only on Enterprise/Education/IoT editions |
+  | Reboot Restore Rx (Horizon DataSys) | processes `shield.exe`, `shdserv.exe`, `shdtray.exe` (also `shdcmd.exe`, `shdsync.exe` listed) | none known without its own tools | Presence: third-party lists; state: **não verificado** → "detectado (estado não verificado)" |
+  | Shadow Defender | tray `DefenderDaemon.exe`; service running `Service.exe` under a hex-number name | none known | Presence: third-party lists; state: **não verificado** |
+
+  Any error or unknown output → "não verificado". Product names are reported, never paths with
+  user data.
+- **Preparation:** frozen → "Desligamento remoto: ATENÇÃO" with: "A máquina está congelada
+  (<produto>). Descongele (Thawed / modo manutenção), execute o comando de novo e congele outra
+  vez." Enrollment and the other steps run normally.
+- **Persistent area:** `-PersistentPath <dir>` (e.g. a Deep Freeze ThawSpace `T:\UniWake`;
+  ThawSpace drive letters are configured per site and cannot be detected reliably, so the path is a
+  parameter, also settable in the panel's command generator). With UWF enabled, the preparation can
+  add file exclusions for the agent's data folder (`uwfmgr.exe file add-exclusion <path>`, official;
+  takes effect after restart — Microsoft Learn) when `-UwfExclude` is given. Exclusions for the
+  Task Scheduler store and registry: **não verificado**, so the tasks themselves must be created
+  while UWF is disabled.
+- **Limitation (documented in help and README):** without a persistent area, the scheduled shutdown
+  depends on the machine having talked to the hub **after its last restart** (the agenda is always
+  fetched at start-up). Owner-like routines work: the hub wakes the labs, they check in, then shut
+  down at night even with the hub off. Reports created while the hub was off are lost at restart;
+  the hub infers "provavelmente desligou (sem relatório)" from the next boot time and the monitor.
+  Token rotation is skipped on such machines (ADR-043). A self-updated agent reverts at restart and
+  updates again — the hub accepts any agent with protocol 1.
+- **Lost heuristic (owner, Q-5):** a machine with remote shutdown that has answered ping/TCP
+  without interruption for 15 minutes (from its last offline→online transition in the monitor)
+  and has not checked in since it came online → "Desligamento remoto perdido: provável
+  congelamento ou tarefa removida" + help link; "Saúde do sistema" shows the count. Cleared by the
+  next check-in.
+- **Roadmap (RM-7):** using the products' own features (e.g. Deep Freeze scheduled
+  shutdown/maintenance) — needs their consoles/licences; not in v1.3.
+
+## ADR-048 — Shutdown in team mode: replicated orders and reports, no lease
+- **Date:** 2026-10-11 · **Status:** Accepted · **Amends:** ADR-034/039 (scope)
+- **Decision:**
+  - Schedules with `action = 'shutdown'` replicate like other schedules; the scheduler (and the
+    `TeamLease`) handles only `action = 'wake'`. A shutdown occurrence is executed **by each
+    machine** from its own agenda, so there is nothing to elect: every hub computes the same agenda
+    from replicated data; a machine may check in with any hub of its list.
+  - New replicated entities: `power_order` (manual order per device: action, warning, policy,
+    state, created by) and `power_report` (insert-only, UUID made by the machine, so the same report
+    sent to two hubs is one entity). Order state changes are LWW; the agent ignores an order id it
+    already executed (kept 48 h), so delivery by two hubs before sync is harmless.
+  - `device_agent` replicated entity (1:1 with device): token hash(es), issued/rotated/revoked
+    times, agent version, freeze state, last check-in written **at most every 30 min** (exact time, to limit change-log
+    churn; rounding down made machines that talk to another hub look "perdido", M17-R). Each hub also keeps an exact local `agent_seen_at` for the "perdido" heuristic and
+    the live job view.
+  - Hub signing public keys travel in `team_members`; private keys never leave their PC.
+  - **Mixed versions are not allowed to sync (Phase 9 finding, CRITICAL):** a v1.2 hub applying a
+    schedule snapshot with `action: "shutdown"` would ignore the unknown field, store a **wake**
+    schedule (waking the labs at shutdown time) and log its own version back to the team. So v1.3
+    raises the team `PROTOCOL_VERSION` to 2: v1.2 and v1.3 PCs reject each other's hello and
+    announcements; the v1.3 side shows the peer as "Versão diferente — atualize o UniWake neste
+    PC" (it still parses the version field of old announcements to say so). Automatic updates in the
+    nightly window normally bring every team PC to v1.3 the same night.
+  - Snapshots of `schedule` (action, warning, postpone, excluded tags) and `device` (never
+    scheduled shutdown) gain fields, so migration 006 resets their `rev` to 0 and the start-up
+    baseline logs them again with the new shape (identical content on every PC → no conflict
+    record).
+- **Consequences:** Shutdown at 22:40 does not need any hub on. Reports reach every hub through
+  sync. A brief agenda flip-flop between two hubs with unsynced data is harmless (newest version
+  wins at the machine; both converge).
+
+## ADR-049 — `.uniwake` file: gzip-compressed JSON of sync snapshots
+- **Date:** 2026-10-12 · **Status:** Accepted (Architect assumption A-1, owner may override)
+- **Context:** roadmap §D suggested a zip with versioned JSON and a manifest. A zip needs a library
+  or a hand-written writer/reader; NFR-403 forbids new runtime dependencies.
+- **Decision:**
+  - A `.uniwake` file is `gzip(JSON)` (`node:zlib`). Document:
+    `{ "uniwake": "export", "format": 1, "manifest": {...}, "data": {...}, "secrets": null | {...} }`.
+  - `manifest`: app version, schema version (latest migration), created at, source PC name and
+    instance id, sections, item counts per entity, `secrets: boolean`, `checksum` = SHA-256 of the
+    canonical JSON of `data` (keys sorted).
+  - `data`: per section, the same entity snapshots team sync uses (`ChangeEntry`: entity, UUID,
+    rev, instance, payload) — one serializer for sync and export, references as UUIDs, no local
+    ids, no machine-local columns.
+  - Sections map to entities: Cadastro → room, tag, device; Agendamentos → schedule,
+    schedule_exception, scheduler_pause; Configurações gerais → setting (shared scope only);
+    Usuários → user (secret); Desligamento remoto → device_agent (secret) + hub key (secret);
+    Histórico → schedule_run, power_job, power_order, power_report.
+  - `format` is bumped when the document shape changes; readers convert older formats step by
+    step and refuse newer ones. The schema version is informative (snapshots are versioned by
+    `format`). Size limit 50 MB compressed and 200 MB uncompressed (zip-bomb guard), checked while
+    inflating.
+- **Consequences:** Windows cannot open the file directly (it is not a zip); that is acceptable
+  for a backup format and avoids users editing it. Export cost is the sync snapshot cost.
+
+## ADR-050 — Secrets in exports: argon2id + AES-256-GCM, only with a password
+- **Date:** 2026-10-12 · **Status:** Accepted (assumption A-2)
+- **Decision:**
+  - Secret sections (Usuários: password hashes; Desligamento remoto: agent token hashes and the
+    hub signing private key) are exported only with a password (≥ 10 characters). They go in
+    `secrets = { kdf: { alg: "argon2id", m: 65536, t: 3, p: 1, salt }, iv, tag, ciphertext }`,
+    ciphertext = AES-256-GCM of the JSON of those sections, **AAD = the manifest checksum**, so the
+    secret part cannot be moved to another file. Key = argon2id(password, salt, 32 bytes) with
+    stronger parameters than login (offline attack on a stolen file).
+  - The hub private key is unwrapped from DPAPI only in memory to be encrypted, and re-wrapped
+    with DPAPI on import. Password never stored, logged, audited or returned.
+  - Wrong password and changed bytes give the same error (no oracle).
+- **Consequences:** a file without password is safe to keep on a share (no hashes, no keys); with
+  password it is as safe as the password.
+
+## ADR-051 — Import: preview by rollback, merge or replace, standby, not in a team
+- **Date:** 2026-10-12 · **Status:** Accepted (assumptions A-3, A-4)
+- **Decision:**
+  - **Preview** runs the import inside a transaction that is always rolled back and reports the
+    applier's counts (created/updated/unchanged) and conflicts (duplicate names/MACs renamed or
+    kept, orphans dropped), exactly what the real import will do.
+  - **Mesclar** = the team-sync applier (`applyRemote`): match by UUID, newer `(rev, instance)`
+    wins, no deletes. **Substituir** covers Cadastro, Agendamentos, Desligamento remoto and Histórico
+    together (plus Usuários/Configurações gerais when present): rows whose UUID is not in the file
+    are deleted, the change-log rows of those entities are dropped (so every item of the file wins;
+    tombstones are unnecessary outside a team), then the applier updates matching rows **in place**
+    (local ids, and so device status, events and test results, survive; deleting and re-inserting
+    would cascade them away, M22 finding). Needs Cadastro and Agendamentos in the file.
+  - Always one transaction (NFR-402), after a `pre-import` database backup; "Desfazer importação"
+    restores that backup through the FR-014 restore (restart).
+  - **Hub key:** imported only when this PC has no prepared machine of its own (no agent token);
+    otherwise kept and the preview says the lab PCs prepared with the other PC need the command
+    again.
+  - **Team:** import refused while `team` state is joined (replace would erase the team's data
+    everywhere; merge would inject foreign revisions). Export allowed.
+  - **Standby** (`system_state` key `standby`): set by an import with Agendamentos or Desligamento
+    remoto. The scheduler treats it like a pause (without touching the imported pause state), the
+    agent check-in route answers 503 `AGENT_STANDBY` (the agent keeps its stored agenda and tries
+    its next hub), the panel shows a banner; "Ativar este UniWake" (admin, typed confirmation,
+    audited) clears it. Joining a team also clears it (Phase 11, D11-03).
+- **Consequences:** moving to a new PC is: export with password → import (Substituir) on the new PC
+  → check → turn off the old PC → activate. Two live copies never act at once by accident.
+
+## ADR-052 — Automatic exports and command line
+- **Date:** 2026-10-12 · **Status:** Accepted (assumption A-5)
+- **Decision:**
+  - Machine settings `export.autoEnabled` (false), `export.autoFolder`, `export.autoTime` (02:45,
+    after the 02:30 backup and before the 03:00 update window), `export.autoKeep` (14). Files
+    `UniWake-<PC>-<AAAA-MM-DD>.uniwake`, every non-secret section except Histórico; written to a
+    temporary name then renamed; only files matching that pattern are rotated. Failures are logged
+    and shown as a "Saúde do sistema" warning until the next success.
+  - No stored password: automatic files never contain secrets.
+  - CLI in `main.ts`: `--export <file> [--sections …] [--password-env VAR]` opens the database
+    read-only alongside a running service; `--import <file> --mode merge|replace
+    [--password-env VAR]` first probes `http://127.0.0.1:<panelPort>/api/health` and refuses (exit
+    3) if a hub answers. The password comes from an environment variable so it never appears in
+    the process list or shell history. Exit codes: 0, 2 usage, 3 refused, 4 wrong password or
+    damaged file.
+- **Consequences:** a nightly copy on a file server covers a dead PC (users and lab-PC preparation
+  redone); a full migration still uses a password export.

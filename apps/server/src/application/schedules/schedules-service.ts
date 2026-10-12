@@ -5,6 +5,7 @@
  */
 import {
   type NextRun,
+  type PowerPolicy,
   type Schedule,
   type ScheduleCreate,
   type ScheduleException,
@@ -52,6 +53,14 @@ export interface ScheduleRecord {
   createdAt: number;
   updatedAt: number;
   targets: TargetRow[];
+  /** v1.3 (FR-306): "Ligar" or "Desligar" and the shutdown policy (null for wake schedules). */
+  action?: 'wake' | 'shutdown';
+  warningMinutes?: number | null;
+  allowPostpone?: boolean | null;
+  postponeMax?: number | null;
+  postponeMinutes?: number | null;
+  /** Tag UUIDs a shutdown schedule skips (FR-306.2). */
+  excludeTags?: string[];
 }
 
 export type ScheduleWrite = Omit<ScheduleRecord, 'id' | 'uuid' | 'createdAt' | 'createdBy'>;
@@ -82,6 +91,8 @@ export interface SchedulesDeps {
   audit: AuditService;
   clock: Clock;
   transaction: <T>(fn: () => T) => T;
+  /** Excluded tags travel as UUIDs (FR-306.2): ids in the API, UUIDs in the row. */
+  tagUuids: { toUuid(id: number): string | null; toId(uuid: string): number | null };
 }
 
 export function targetToRows(t: WakeTarget): TargetRow[] {
@@ -167,6 +178,7 @@ export class SchedulesService {
     const id = this.d.transaction(() => {
       const data = scheduleCreateSchema.parse(input);
       this.assertRefsExist(data.target);
+      const power = this.powerFields(data.action, data.power, null, data.excludeTagIds);
       const confirmedCount = this.confirmIfLarge(data.target, data.confirm?.count);
       const now = this.d.clock.now();
       const id = this.d.repo.insert(
@@ -176,12 +188,15 @@ export class SchedulesService {
           weekdays: data.weekdays,
           timeLocal: data.timeLocal,
           timezone: data.timezone ?? this.d.settings.get('scheduler.timezone'),
-          onlyOffline: data.onlyOffline,
-          batchSize: data.stagger?.batchSize ?? null,
-          batchDelayMs: data.stagger ? data.stagger.batchDelaySeconds * 1000 : null,
+          // A shutdown is not staggered and does not depend on being online (FR-306.1).
+          onlyOffline: data.action === 'wake' && data.onlyOffline,
+          batchSize: data.action === 'wake' ? (data.stagger?.batchSize ?? null) : null,
+          batchDelayMs:
+            data.action === 'wake' && data.stagger ? data.stagger.batchDelaySeconds * 1000 : null,
           confirmedCount,
           updatedAt: now,
           targets: targetToRows(data.target),
+          ...power,
         },
         actor.id,
         now,
@@ -190,7 +205,7 @@ export class SchedulesService {
         actor,
         action: 'schedule.create',
         target: `schedule:${data.name}`,
-        details: { id, weekdays: data.weekdays, timeLocal: data.timeLocal },
+        details: { id, weekdays: data.weekdays, timeLocal: data.timeLocal, action: data.action },
       });
       return id;
     });
@@ -208,13 +223,22 @@ export class SchedulesService {
         confirmedCount = this.confirmIfLarge(patch.target, patch.confirm?.count);
         targets = targetToRows(patch.target);
       }
+      const action = patch.action ?? current.action ?? 'wake';
+      const power = this.powerFields(
+        action,
+        patch.power,
+        action === current.action ? current : null,
+        patch.excludeTagIds ?? (action === 'shutdown' ? this.tagIdsOf(current.excludeTags) : []),
+      );
       const stagger =
-        patch.stagger === undefined
-          ? { batchSize: current.batchSize, batchDelayMs: current.batchDelayMs }
-          : {
-              batchSize: patch.stagger?.batchSize ?? null,
-              batchDelayMs: patch.stagger ? patch.stagger.batchDelaySeconds * 1000 : null,
-            };
+        action === 'shutdown'
+          ? { batchSize: null, batchDelayMs: null }
+          : patch.stagger === undefined
+            ? { batchSize: current.batchSize, batchDelayMs: current.batchDelayMs }
+            : {
+                batchSize: patch.stagger?.batchSize ?? null,
+                batchDelayMs: patch.stagger ? patch.stagger.batchDelaySeconds * 1000 : null,
+              };
       this.d.repo.update(
         id,
         {
@@ -223,11 +247,12 @@ export class SchedulesService {
           weekdays: patch.weekdays ?? current.weekdays,
           timeLocal: patch.timeLocal ?? current.timeLocal,
           timezone: patch.timezone ?? current.timezone,
-          onlyOffline: patch.onlyOffline ?? current.onlyOffline,
+          onlyOffline: action === 'wake' && (patch.onlyOffline ?? current.onlyOffline),
           ...stagger,
           confirmedCount,
           updatedAt: this.d.clock.now(),
           targets,
+          ...power,
         },
         this.d.clock.now(),
       );
@@ -329,6 +354,66 @@ export class SchedulesService {
     return s.count;
   }
 
+  /**
+   * The stored action fields (FR-306): a "Desligar" schedule always stores an explicit policy
+   * (given fields over the current ones over the settings, R-M16-04) and its excluded tags as
+   * UUIDs; a "Ligar" schedule stores none of them.
+   */
+  private powerFields(
+    action: 'wake' | 'shutdown',
+    given: Partial<PowerPolicy> | undefined,
+    current: Pick<
+      ScheduleRecord,
+      'warningMinutes' | 'allowPostpone' | 'postponeMax' | 'postponeMinutes'
+    > | null,
+    excludeTagIds: readonly number[],
+  ): Pick<
+    ScheduleRecord,
+    | 'action'
+    | 'warningMinutes'
+    | 'allowPostpone'
+    | 'postponeMax'
+    | 'postponeMinutes'
+    | 'excludeTags'
+  > {
+    if (action === 'wake') {
+      return {
+        action,
+        warningMinutes: null,
+        allowPostpone: null,
+        postponeMax: null,
+        postponeMinutes: null,
+        excludeTags: [],
+      };
+    }
+    const max = this.d.settings.get('power.postponeMax');
+    const pick = <K extends keyof PowerPolicy>(k: K, fallback: PowerPolicy[K]): PowerPolicy[K] =>
+      given?.[k] ??
+      ((current as Partial<PowerPolicy> | null)?.[k] as PowerPolicy[K] | null | undefined) ??
+      fallback;
+    const excludeTags: string[] = [];
+    for (const id of excludeTagIds) {
+      const uuid = this.d.tagUuids.toUuid(id);
+      if (uuid === null) throw new AppError('TARGET_NOT_FOUND', { ids: String(id) });
+      excludeTags.push(uuid);
+    }
+    return {
+      action,
+      warningMinutes: pick('warningMinutes', this.d.settings.get('power.defaultWarningMinutes')),
+      allowPostpone: pick('allowPostpone', max > 0),
+      postponeMax: pick('postponeMax', max),
+      postponeMinutes: pick('postponeMinutes', this.d.settings.get('power.postponeMinutes')),
+      excludeTags: [...new Set(excludeTags)].sort(),
+    };
+  }
+
+  private tagIdsOf(uuids: readonly string[] | undefined): number[] {
+    return (uuids ?? []).flatMap((u) => {
+      const id = this.d.tagUuids.toId(u);
+      return id === null ? [] : [id];
+    });
+  }
+
   private view(
     r: ScheduleRecord,
     target: WakeTarget,
@@ -361,6 +446,17 @@ export class SchedulesService {
       nextRun: next?.at ?? null,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
+      action: r.action ?? 'wake',
+      power:
+        r.action === 'shutdown'
+          ? {
+              warningMinutes: r.warningMinutes ?? 0,
+              allowPostpone: r.allowPostpone ?? false,
+              postponeMax: r.postponeMax ?? 0,
+              postponeMinutes: r.postponeMinutes ?? 15,
+            }
+          : null,
+      excludeTagIds: this.tagIdsOf(r.excludeTags),
     };
   }
 }
