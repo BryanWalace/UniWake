@@ -915,8 +915,9 @@ stored** (LGPD, Q-6); the agent drops them while parsing.
   session with the message, countdown and postpones left.
 - AC-304-02 [Pester]: Given T = 22:40, warning from 22:35, two postpones then no answer, Then the
   shutdown happens at 23:10 and the report says "adiado 2× por usuário".
-- AC-304-03 [Pester]: Given the warning task fails to start, Then the agent uses
-  `shutdown /s /t 300 /c …` and reports "aviso nativo (sem adiar)".
+- AC-304-03 [Pester]: Given the warning task fails to start (no window heartbeat within 20 s),
+  Then the agent uses `shutdown /s /t <seconds left to T> /c …` (≈ 280 s for a 5-min warning) and
+  reports "aviso nativo (sem adiar)".
 - AC-304-04 [Pester]: Given a cancel order during the warning, Then `shutdown /a` runs and the
   report says "cancelado".
 - AC-304-05: Given a postpone request beyond the limit (tampered response file), Then it is ignored.
