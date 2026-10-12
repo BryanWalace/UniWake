@@ -304,11 +304,14 @@ describe('joining a team (D7-01)', () => {
       "INSERT INTO power_jobs (uuid, action, target, warning_minutes, allow_postpone, postpone_max, postpone_minutes, created_at) VALUES ('job-joiner', 'shutdown', '{}', 1, 0, 0, 5, 0)",
     );
     changeLog(joiner.db).touch('power_job', 1);
+    // v1.4 (D11-03): a standby left by an import ends when the PC takes the team's live data.
+    joiner.db.run("INSERT INTO system_state (key, value) VALUES ('standby', '{}')");
     replaceWithTeamState(joiner.db, changesSince(team.db, 0).entries, T0);
     expect(joiner.s.rooms.list().map((r) => r.name)).toEqual(['Lab 01']);
     expect(state(joiner)).toEqual(state(team));
     expect(joiner.db.get('SELECT value FROM machine_settings')).toEqual({ value: '["10.9.9.9"]' });
     expect(joiner.db.all('SELECT id FROM power_jobs')).toEqual([]);
+    expect(joiner.db.all("SELECT key FROM system_state WHERE key = 'standby'")).toEqual([]);
   });
 });
 

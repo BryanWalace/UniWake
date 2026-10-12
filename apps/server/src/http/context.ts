@@ -19,6 +19,7 @@ import type { EventsBus } from '../application/events-bus';
 import type { Clock } from '../application/ports';
 import type { BackupService } from '../application/backups/backup-service';
 import type { ExportService } from '../application/migration/export-service';
+import type { ImportService } from '../application/migration/import-service';
 import type { HealthService } from '../application/health/health-service';
 import type { NetworkPreviewService } from '../application/network/network-preview';
 import type { LogSource } from '../application/ports';
@@ -81,6 +82,7 @@ export interface HttpServices {
   backups: BackupService | null;
   /** v1.4 "Backup e migração" (spec §6c). */
   exporter: ExportService;
+  importer: ImportService;
   /** Hub only: the log viewer source (FR-016). */
   logs?: LogSource;
   /** Present on the hub: stores an uploaded PFX for LAN HTTPS (ADR-012). */

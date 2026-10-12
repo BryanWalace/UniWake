@@ -872,9 +872,12 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
     applier's counts (created/updated/unchanged) and conflicts (duplicate names/MACs renamed or
     kept, orphans dropped), exactly what the real import will do.
   - **Mesclar** = the team-sync applier (`applyRemote`): match by UUID, newer `(rev, instance)`
-    wins, no deletes. **Substituir** = delete this PC's rows of the sections present in the file
-    (plus their change-log rows; tombstones are unnecessary outside a team), then apply. Substituir
-    needs Cadastro and Agendamentos in the file (schedules reference rooms/tags/devices).
+    wins, no deletes. **Substituir** covers Cadastro, Agendamentos, Desligamento remoto and Histórico
+    together (plus Usuários/Configurações gerais when present): rows whose UUID is not in the file
+    are deleted, the change-log rows of those entities are dropped (so every item of the file wins;
+    tombstones are unnecessary outside a team), then the applier updates matching rows **in place**
+    (local ids, and so device status, events and test results, survive; deleting and re-inserting
+    would cascade them away, M22 finding). Needs Cadastro and Agendamentos in the file.
   - Always one transaction (NFR-402), after a `pre-import` database backup; "Desfazer importação"
     restores that backup through the FR-014 restore (restart).
   - **Hub key:** imported only when this PC has no prepared machine of its own (no agent token);

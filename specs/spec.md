@@ -1121,9 +1121,11 @@ sections, secrets yes/no) → password if needed → **preview** → choose **Me
 conflicts with how they resolve (same name or MAC with another identity: renamed or kept, as in
 team sync). Computed by applying the file inside a transaction that is rolled back.
 **FR-403.3 Mesclar**: items are matched by their stable UUID; the newer version wins (same rule as
-team sync); nothing on this PC is deleted. **Substituir**: this PC's exported sections are replaced
-by the file's (machine settings, local history and audit stay); it needs Cadastro and Agendamentos
-in the file (schedules reference rooms, tags and devices). The hub signing key is imported only
+team sync); nothing on this PC is deleted. **Substituir**: Cadastro, Agendamentos, Desligamento remoto and
+Histórico become exactly the file's (they reference each other), and Usuários and Configurações
+gerais too when the file has them. Items the file also has are updated in place (their machine-local
+history, status and test results stay); the others are removed. Machine settings, wake history,
+audit and logs stay. It needs Cadastro and Agendamentos in the file. The hub signing key is imported only
 when this PC has no prepared lab machine of its own; otherwise the preview says those machines
 keep this PC's key and the machines of the other PC need the preparation command again.
 **FR-403.4 Safety**: a database backup (kind `pre-import`) is taken first; after the import the

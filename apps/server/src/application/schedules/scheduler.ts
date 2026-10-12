@@ -94,6 +94,8 @@ export interface SchedulerDeps {
   lease?: ExecutionLease;
   /** FR-204.2: in team mode, runs missed while this PC was off are offered, not replayed. */
   teamMode?: () => boolean;
+  /** v1.4 standby after an import (FR-404): due runs are skipped like during a pause. */
+  standby?: () => boolean;
   onMissedRun?: (r: { scheduleId: number; scheduleName: string; plannedAt: number }) => void;
   refs: TargetRefs;
   startWake: (req: WakeRequestParams, actor: Actor, opts: StartOptions) => StartResult;
@@ -168,6 +170,7 @@ export class Scheduler {
     const graceMs = this.d.settings.get('scheduler.graceMinutes') * 60_000;
     const last = this.d.repo.lastTick();
     const pause = this.autoResume(now);
+    const standby = this.d.standby?.() ?? false;
     // First start ever: only the grace window counts. A clock jumped back keeps the old mark,
     // so the window it already covered is not evaluated again.
     const from = Math.max(last ?? now - graceMs, now - MAX_LOOKBACK_MS);
@@ -181,7 +184,10 @@ export class Scheduler {
           graceMs,
           exception: (day) => exceptionFor(day, exceptions, s.id),
           pausedAt: (at) =>
-            pause !== null && at >= pause.since && (pause.resumeAt === null || at < pause.resumeAt),
+            standby ||
+            (pause !== null &&
+              at >= pause.since &&
+              (pause.resumeAt === null || at < pause.resumeAt)),
         });
         const lease = this.d.lease ?? SOLO_LEASE;
         const team = this.d.teamMode?.() ?? false;

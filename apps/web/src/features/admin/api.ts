@@ -136,7 +136,8 @@ export function useUploadCertificate() {
 export interface Backup {
   id: number;
   file: string;
-  kind: 'daily' | 'pre-migration' | 'pre-update' | 'pre-restore' | 'pre-join' | 'manual';
+  kind:
+    'daily' | 'pre-migration' | 'pre-update' | 'pre-restore' | 'pre-join' | 'pre-import' | 'manual';
   createdAt: number;
   size: number;
   dateLabel: string;

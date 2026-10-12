@@ -138,23 +138,13 @@ describe('restore (FR-014)', () => {
   });
 });
 
-/** Undoes the newest migration (005_team) so the next start has one pending. */
+/** Undoes the newest migration (007_import_backup) so the next start has one pending. */
 const UNDO_LATEST = [
-  'DELETE FROM schema_migrations WHERE version = 6',
-  ...[
-    'action',
-    'warning_minutes',
-    'allow_postpone',
-    'postpone_max',
-    'postpone_minutes',
-    'exclude_tags',
-  ].map((c) => `ALTER TABLE schedules DROP COLUMN ${c}`),
-  'ALTER TABLE devices DROP COLUMN never_scheduled_shutdown',
-  'ALTER TABLE team_members DROP COLUMN signing_key_id',
-  'ALTER TABLE team_members DROP COLUMN signing_public_jwk',
-  ...['power_reports', 'power_orders', 'power_jobs', 'device_agents', 'agent_seen', 'hub_keys'].map(
-    (t) => `DROP TABLE ${t}`,
-  ),
+  'DELETE FROM schema_migrations WHERE version = 7',
+  "CREATE TABLE backups_old (id INTEGER PRIMARY KEY, file TEXT NOT NULL UNIQUE, kind TEXT NOT NULL CHECK (kind IN ('daily', 'pre-migration', 'pre-update', 'pre-restore', 'pre-join', 'manual')), created_at INTEGER NOT NULL, size INTEGER NOT NULL)",
+  'INSERT INTO backups_old SELECT id, file, kind, created_at, size FROM backups',
+  'DROP TABLE backups',
+  'ALTER TABLE backups_old RENAME TO backups',
 ].join(';\n');
 
 describe('restore and pre-migration backups on a real hub', () => {

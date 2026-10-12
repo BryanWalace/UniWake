@@ -86,7 +86,7 @@ function agentToken(req: FastifyRequest): string {
  */
 export function checkinRoute(
   app: FastifyInstance,
-  s: Pick<HttpServices, 'agent' | 'hubKey'>,
+  s: Pick<HttpServices, 'agent' | 'hubKey' | 'importer'>,
 ): void {
   app.post(
     '/agent/v1/checkin',
@@ -99,6 +99,8 @@ export function checkinRoute(
       },
     },
     async (req, reply) => {
+      // FR-404: an imported copy does not answer lab PCs until it is activated (ADR-051).
+      if (s.importer.standby()) throw new AppError('AGENT_STANDBY');
       const who = s.agent.identify(agentToken(req));
       const parsed = checkinRequestSchema.safeParse(req.body);
       if (!parsed.success) {

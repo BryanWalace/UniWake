@@ -886,6 +886,8 @@ export function replaceWithTeamState(
       DELETE FROM sessions; DELETE FROM users; DELETE FROM team_members; DELETE FROM settings;
       DELETE FROM change_log;`);
     db.run('DELETE FROM system_state WHERE key = ?', [PAUSE_KEY]);
+    // v1.4 (D11-03): the team's data is live, so a standby left by an import ends here.
+    db.run("DELETE FROM system_state WHERE key = 'standby'");
     return applyRemote(db, entries, { now });
   });
 }

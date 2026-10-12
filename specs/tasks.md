@@ -418,9 +418,9 @@ milestone after milestone autonomously; assumptions A-1..A-5 are recorded as ADR
 ## M22 — Import and standby
 | ID | Task | Refs | Tests | Done when |
 |---|---|---|---|---|
-| [ ] M22-T01 | Import parse/inspect + pending store (15 min) + `POST /api/migration/import`; newer format refused; team refusal. | FR-403.1/5/6 | AC-403-04, AC-403-05 | — |
-| [ ] M22-T02 | Preview (rolled-back transaction) and apply: merge (`applyRemote`), replace (scoped wipe), hub-key rule, `pre-import` backup, audit; undo via restore request. | FR-403.2/3/4; ADR-051 | AC-403-01, AC-403-02, AC-403-03 | — |
-| [ ] M22-T03 | Standby: `system_state`, scheduler skip, agent route 503 `AGENT_STANDBY`, activate route; health/state endpoint. | FR-404 | AC-404-01 | — |
+| [x] M22-T01 | Import parse/inspect + pending store (15 min) + `POST /api/migration/import`; newer format refused; team refusal. | FR-403.1/5/6 | AC-403-04, AC-403-05 | — |
+| [x] M22-T02 | Preview (rolled-back transaction) and apply: merge (`applyRemote`), replace (scoped wipe), hub-key rule, `pre-import` backup, audit; undo via restore request. | FR-403.2/3/4; ADR-051 | AC-403-01, AC-403-02, AC-403-03 | — |
+| [x] M22-T03 | Standby: `system_state`, scheduler skip, agent route 503 `AGENT_STANDBY`, activate route; health/state endpoint. | FR-404 | AC-404-01 | — |
 | [ ] M22-D | Break-it: crash mid-import, import twice, import while a wake job runs, clock jumps, file from a PC with conflicting names/MACs. | tasks §Break-it | regressions | — |
 | [ ] M22-R | Code review → `specs/reviews/M22-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
 

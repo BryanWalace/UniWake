@@ -57,7 +57,7 @@ export async function registerPanelRoutes(app: FastifyInstance, s: HttpServices)
  */
 export function registerAgentRoutes(
   app: FastifyInstance,
-  s: Pick<HttpServices, 'enrollment' | 'agent' | 'hubKey'>,
+  s: Pick<HttpServices, 'enrollment' | 'agent' | 'hubKey' | 'importer'>,
 ): void {
   healthRoutes(app);
   prepareScriptRoute(app, s);

@@ -7,6 +7,9 @@ import { AuditService } from './application/audit/audit-service';
 import { AuthService } from './application/auth/auth-service';
 import { BackupService } from './application/backups/backup-service';
 import { ExportService } from './application/migration/export-service';
+import { ImportService } from './application/migration/import-service';
+import { SqliteMigrationStateRepo } from './db/repositories/migration-repo';
+import { applyImport, hasPreparedMachines, previewImport } from './db/sync/import';
 import { UsersService } from './application/auth/users-service';
 import { CsvImportService } from './application/devices/csv-import-service';
 import { DashboardService } from './application/dashboard/dashboard-service';
@@ -199,6 +202,7 @@ export function createServices(
   configureChangeLog(db, () => clock.now());
   const audit = new AuditService(new SqliteAuditRepo(db), clock);
   const settings = new SettingsService(new SqliteSettingsRepo(db), clock);
+  const migrationState = new SqliteMigrationStateRepo(db);
   const usersRepo = new SqliteUsersRepo(db);
   const sessionsRepo = new SqliteSessionsRepo(db);
   const auth = new AuthService(usersRepo, sessionsRepo, settings, audit, clock, tx);
@@ -418,6 +422,7 @@ export function createServices(
     repo: schedulerRepo,
     lease,
     teamMode: () => team.inTeam(),
+    standby: () => migrationState.standby() !== null,
     onMissedRun: (r) => notices.missedRun(r),
     refs,
     startWake: (req, actor, opts) => wake.start(req, actor, opts),
@@ -688,11 +693,30 @@ export function createServices(
     version: opts.version ?? '0.0.0-dev',
   });
 
+  const importer = new ImportService({
+    codec: exportCodec,
+    store: {
+      preview: (entries, replace) => previewImport(db, entries, { replace, now: clock.now() }),
+      apply: (entries, replace, after) =>
+        applyImport(db, entries, { replace, now: clock.now() }, after),
+      hasPreparedMachines: () => hasPreparedMachines(db),
+    },
+    state: migrationState,
+    inTeam: () => team.inTeam(),
+    hubKey,
+    backups,
+    audit,
+    clock,
+    logger: ports.logger.child({ module: 'import' }),
+    newId: () => randomUUID(),
+  });
+
   return {
     db,
     clock,
     hubKey,
     exporter,
+    importer,
     agentTokens,
     agent,
     agenda,

@@ -13,6 +13,7 @@ const KIND_TEXT: Record<Backup['kind'], string> = {
   'pre-update': 'antes de atualizar o UniWake',
   'pre-restore': 'antes de restaurar',
   'pre-join': 'antes de entrar na equipe',
+  'pre-import': 'antes de uma importação',
 };
 
 /** Backups (FR-014): list, create now, restore with typed confirmation. */

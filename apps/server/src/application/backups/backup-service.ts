@@ -11,7 +11,7 @@ import type { Clock, Logger, TimerHandle } from '../ports';
 import type { SettingsService } from '../settings/settings-service';
 
 export type BackupKind =
-  'daily' | 'pre-migration' | 'pre-update' | 'pre-restore' | 'pre-join' | 'manual';
+  'daily' | 'pre-migration' | 'pre-update' | 'pre-restore' | 'pre-join' | 'pre-import' | 'manual';
 
 export interface BackupRecord {
   id: number;
