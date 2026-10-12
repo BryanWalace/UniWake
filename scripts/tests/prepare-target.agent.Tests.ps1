@@ -209,3 +209,28 @@ Describe 'Remote shutdown step (FR-301)' {
     ConvertFrom-UwPowercfgOutput -Lines @('erro') | Should -BeNullOrEmpty
   }
 }
+
+Describe 'Remove-UwAgentFolder on a real folder (D-M20-01)' {
+  BeforeAll {
+    . (Join-Path $PSScriptRoot '..\prepare-target.ps1')
+  }
+
+  It 'removes only the agent folders and keeps an UniWake data folder on the same PC' {
+    $root = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+    foreach ($d in 'agent/data', 'ui/request', 'backups', 'logs') { New-Item -ItemType Directory -Force -Path (Join-Path $root $d) | Out-Null }
+    Set-Content -LiteralPath (Join-Path $root 'uniwake.db') -Value 'banco'
+    Set-Content -LiteralPath (Join-Path $root 'agent/token.txt') -Value 'tok'
+    Remove-UwAgentFolder -Root $root
+    Test-Path -LiteralPath (Join-Path $root 'agent') | Should -BeFalse
+    Test-Path -LiteralPath (Join-Path $root 'ui') | Should -BeFalse
+    Test-Path -LiteralPath (Join-Path $root 'uniwake.db') | Should -BeTrue
+    Test-Path -LiteralPath (Join-Path $root 'backups') | Should -BeTrue
+  }
+
+  It 'removes the root too when only the agent was there' {
+    $root = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Force -Path (Join-Path $root 'agent/data') | Out-Null
+    Remove-UwAgentFolder -Root $root
+    Test-Path -LiteralPath $root | Should -BeFalse
+  }
+}

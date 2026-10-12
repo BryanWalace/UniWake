@@ -641,11 +641,20 @@ function Unregister-UwAgentTask {
   }
 }
 
+<#
+  D-M20-01: only the agent's own folders go. %ProgramData%\UniWake is also the data folder of an
+  UniWake installed on the same PC (database, backups), so the root is removed only when empty.
+#>
 function Remove-UwAgentFolder {
   [CmdletBinding(SupportsShouldProcess = $true)]
   param([string]$Root)
-  if ((Test-Path -LiteralPath $Root) -and $PSCmdlet.ShouldProcess($Root, 'Remover arquivos do agente')) {
-    Remove-Item -LiteralPath $Root -Recurse -Force
+  if (-not $PSCmdlet.ShouldProcess($Root, 'Remover arquivos do agente (pastas agent e ui)')) { return }
+  foreach ($sub in 'agent', 'ui') {
+    $path = Join-Path $Root $sub
+    if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
+  }
+  if ((Test-Path -LiteralPath $Root) -and @(Get-ChildItem -LiteralPath $Root -Force).Count -eq 0) {
+    Remove-Item -LiteralPath $Root -Force
   }
 }
 
