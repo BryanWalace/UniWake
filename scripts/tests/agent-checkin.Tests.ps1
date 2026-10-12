@@ -51,7 +51,7 @@ Describe 'Agent safety net (constitution §5)' {
 
 Describe 'Check-in client (FR-302.1, ADR-044)' {
   BeforeEach {
-    Register-UwFakeAgent -Root $TestDrive
+    Register-UwFakeAgent -Root (Join-Path $TestDrive ([guid]::NewGuid()))
     $script:UwFake.Now = $script:T0
     $script:Hub = New-UwTestHub
     Install-UwTestAgent -Hub $script:Hub
@@ -148,7 +148,7 @@ Describe 'Check-in client (FR-302.1, ADR-044)' {
 
 Describe 'Applying an answer (FR-302..304)' {
   BeforeEach {
-    Register-UwFakeAgent -Root $TestDrive
+    Register-UwFakeAgent -Root (Join-Path $TestDrive ([guid]::NewGuid()))
     $script:UwFake.Now = $script:T0
     $script:Hub = New-UwTestHub
     Install-UwTestAgent -Hub $script:Hub
