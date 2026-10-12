@@ -254,7 +254,9 @@ describe.skipIf(process.platform !== 'win32')(
       try {
         const all = await Promise.all(
           Array.from({ length: 10_000 }, (_, i) =>
-            icmp.ping(`127.0.${(i >> 8) & 255}.${i & 255 || 1}`, 1000),
+            // 5 s each: a loaded windows-latest runner lost 256 of 10 000 answers at 1 s (CI of
+            // bf79de8). A leak loses answers for good, so a longer deadline still catches it.
+            icmp.ping(`127.0.${(i >> 8) & 255}.${i & 255 || 1}`, 5000),
           ),
         );
         expect(all.filter((r) => r.alive)).toHaveLength(10_000);
