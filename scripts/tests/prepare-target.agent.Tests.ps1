@@ -158,7 +158,9 @@ Describe 'Remote shutdown step (FR-301)' {
   It 'AC-308-04: -PersistentPath is kept for the agent and checked; -UwfExclude excludes the data folder on UWF' {
     Mock Get-UwFreezeState { @{ product = 'uwf'; state = 'thawed' } }
     Mock Add-UwUwfExclusion { 0 }
+    Mock Protect-UwFolder {}
     Invoke-UwPrepare @PrepArgs -PersistentPath 'T:\UniWake' -UwfExclude | Should -Be 0
+    Should -Invoke Protect-UwFolder -Times 1 -Exactly -ParameterFilter { $Path -eq 'T:\UniWake' }
     ([Text.Encoding]::UTF8.GetString($script:Written['config.json'].Bytes) | ConvertFrom-Json).persistentPath | Should -Be 'T:\UniWake'
     (Get-Step 'Pasta persistente')[0].Resultado | Should -Be 'OK'
     (Get-Step 'Exclusão do UWF')[0].Detalhe | Should -BeLike '*\agent\data (vale depois de reiniciar)'

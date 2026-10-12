@@ -373,8 +373,8 @@ decisions", ADR-043/045/047/048 amended).
 | [x] M18-T04 | Warning: `uniwake-aviso.ps1` (WinForms, countdown, Adiar), file channel with request id, SYSTEM-side limits, reparse checks, native fallback, no-user path. | FR-304.1–.3; ADR-046 | AC-304-01, AC-304-02, AC-304-03, AC-304-05 | — |
 | [x] M18-T05 | `prepare-target.ps1`: `Invoke-UwRemoteShutdownStep` (hardened folder, scripts download + hash, token, three tasks, RTCWAKE per Q-3), `-HubKeyId` (script parameter **and** the panel's one-liner, M16-T02), `-RemoveAgent`, `-WhatIf`, summary line, exit codes unchanged. | FR-301 | AC-301-01, AC-301-02, AC-301-03, AC-301-04 | PSScriptAnalyzer clean |
 | [x] M18-T06 | Freeze detection per ADR-047 table, ATENÇÃO path, `-PersistentPath`, `-UwfExclude`; reported in every check-in. | FR-308.1, .2, .4 | AC-308-01, AC-308-02, AC-308-04 | — |
-| [ ] M18-D | Break-it: tampered agenda/response files, junction planted in `ui\response`, pre-created `C:\ProgramData\UniWake` owned by a user, hub answers with wrong signature/nonce, hash mismatch on self-update, report queue full. | tasks §Break-it | regressions | findings filed |
-| [ ] M18-R | Code review + security review of the scripts → `specs/reviews/M18-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+| [x] M18-D | Break-it: tampered agenda/response files, junction planted in `ui\response`, pre-created `C:\ProgramData\UniWake` owned by a user, hub answers with wrong signature/nonce, hash mismatch on self-update, report queue full. | tasks §Break-it | regressions | findings filed |
+| [x] M18-R | Code review + security review of the scripts → `specs/reviews/M18-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
 
 ## M19 — Panel and demo
 | ID | Task | Refs | Tests | Done when |

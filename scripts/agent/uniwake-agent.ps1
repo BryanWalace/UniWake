@@ -26,6 +26,7 @@ $script:UwDataDir = Join-Path $script:UwAgentDir 'data'
 $script:UwUiDir = Join-Path $script:UwRoot 'ui'
 # Wrappers only touch the computer after Invoke-UwAgent sets this (never when dot-sourced by tests).
 $script:UwRealSystem = $false
+$script:UwIgnorePersistent = $false
 
 $script:UwMinute = 60000L
 $script:UwLateWakeMaxMinutes = 60
@@ -440,10 +441,10 @@ function Start-UwWarningTask {
 function Test-UwAgentFolder {
   [CmdletBinding()]
   [OutputType([bool])]
-  param()
+  param([string]$Path = $script:UwAgentDir)
   Assert-UwRealSystem 'Test-UwAgentFolder'
   try {
-    $acl = Get-Acl -LiteralPath $script:UwAgentDir
+    $acl = Get-Acl -LiteralPath $Path
     $owner = (New-Object System.Security.Principal.NTAccount($acl.Owner)).Translate(
       [System.Security.Principal.SecurityIdentifier]).Value
     if ($owner -notin @('S-1-5-32-544', 'S-1-5-18')) { return $false }
@@ -467,7 +468,8 @@ function Get-UwPathSet {
   param()
   $config = Read-UwJson (Join-Path $script:UwAgentDir 'config.json') $null
   $data = $script:UwDataDir
-  if ($config -and ($config.PSObject.Properties.Name -contains 'persistentPath') -and $config.persistentPath) {
+  if (-not $script:UwIgnorePersistent -and $config -and
+    ($config.PSObject.Properties.Name -contains 'persistentPath') -and $config.persistentPath) {
     $data = [string]$config.persistentPath
   }
   return @{
@@ -852,7 +854,10 @@ function Read-UwUiResponse {
   )
   $out = New-Object System.Collections.ArrayList
   if (-not (Test-Path -LiteralPath $Folder)) { return , $out }
-  foreach ($f in @(Get-ChildItem -LiteralPath $Folder -File -Force -ErrorAction SilentlyContinue)) {
+  # At most the 50 newest files: a flood of files in the users' folder cannot stall the warning.
+  $files = @(Get-ChildItem -LiteralPath $Folder -File -Force -ErrorAction SilentlyContinue |
+      Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 50)
+  foreach ($f in $files) {
     if ($f.Attributes -band [System.IO.FileAttributes]::ReparsePoint) { continue }
     if ($f.Length -gt 4096) { continue }
     try {
@@ -1045,6 +1050,14 @@ function Invoke-UwAgent {
   param()
   $script:UwRealSystem = $true
   if (-not (Test-UwAgentFolder)) { return 3 }
+  # M18-D: SYSTEM writes the agenda in the persistent folder; a folder users can write (a
+  # ThawSpace often is) would let them redirect those writes with links. Locked down by the
+  # preparation; if it is not (anymore), the agent's own folder is used instead.
+  $config = Read-UwJson (Join-Path $script:UwAgentDir 'config.json') $null
+  $persistent = Get-UwProp $config 'persistentPath'
+  if ($persistent -and (Test-Path -LiteralPath $persistent) -and -not (Test-UwAgentFolder -Path $persistent)) {
+    $script:UwIgnorePersistent = $true
+  }
   return Invoke-UwRun
 }
 

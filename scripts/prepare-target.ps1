@@ -759,6 +759,23 @@ function Add-UwUwfExclusion {
   return $LASTEXITCODE
 }
 
+<# Owner Administrators, no inherited rules, Administrators and SYSTEM only (ADR-042, M18-D). #>
+function Protect-UwFolder {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param([string]$Path)
+  if (-not $PSCmdlet.ShouldProcess($Path, 'Restringir a pasta a Administradores e SYSTEM')) { return }
+  if (-not (Test-Path -LiteralPath $Path)) { New-Item -ItemType Directory -Force -Path $Path | Out-Null }
+  $acl = New-Object Security.AccessControl.DirectorySecurity
+  $acl.SetOwner((New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')))
+  $acl.SetAccessRuleProtection($true, $false)
+  foreach ($sid in 'S-1-5-32-544', 'S-1-5-18') {
+    $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule(
+          (New-Object Security.Principal.SecurityIdentifier($sid)), 'FullControl',
+          [Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit', 'None', 'Allow')))
+  }
+  Set-Acl -LiteralPath $Path -AclObject $acl
+}
+
 function Test-UwPersistentPath {
   param([string]$Path)
   $root = [IO.Path]::GetPathRoot($Path)
@@ -875,6 +892,8 @@ function Invoke-UwPersistenceStep {
   param($Freeze, [string]$PersistentPath, [switch]$UwfExclude, [string]$DataDir)
   if ($PersistentPath) {
     if (Test-UwPersistentPath $PersistentPath) {
+      # SYSTEM writes there: locked down like the agent folder (M18-D), or users could redirect it.
+      Protect-UwFolder -Path $PersistentPath
       Add-UwStep 'Pasta persistente' $script:UwStatus.Ok "agenda e relatórios em $PersistentPath"
     } else {
       Add-UwStep 'Pasta persistente' $script:UwStatus.Attention "$PersistentPath não existe neste computador: a agenda fica na pasta do agente"

@@ -15,7 +15,7 @@ $script:UwSystemFunctions = @(
   # v1.3 remote shutdown step (FR-301)
   'Send-UwAgentEnrollment', 'Get-UwAgentScriptContent', 'Initialize-UwAgentFolder', 'Write-UwAgentFile',
   'Register-UwAgentTask', 'Start-UwAgentTask', 'Unregister-UwAgentTask', 'Remove-UwAgentFolder',
-  'Get-UwPowercfg', 'Set-UwWakeTimer', 'Get-UwFreezeState', 'Add-UwUwfExclusion', 'Test-UwPersistentPath'
+  'Get-UwPowercfg', 'Set-UwWakeTimer', 'Get-UwFreezeState', 'Add-UwUwfExclusion', 'Test-UwPersistentPath', 'Protect-UwFolder'
 )
 
 function Register-UwFakeSystem {
@@ -43,7 +43,7 @@ function Register-UwFakeSystem {
   Mock Get-UwAgentScriptContent { throw 'sem rede no teste' }
   foreach ($setter in 'Set-UwPowerManagement', 'Enable-UwDeviceWake', 'Set-UwHiberboot', 'Set-UwAdvancedProperty', 'Set-UwIcmpRule', 'Send-UwEnrollment',
     'Send-UwAgentEnrollment', 'Initialize-UwAgentFolder', 'Write-UwAgentFile', 'Register-UwAgentTask', 'Start-UwAgentTask',
-    'Unregister-UwAgentTask', 'Remove-UwAgentFolder', 'Set-UwWakeTimer', 'Add-UwUwfExclusion') {
+    'Unregister-UwAgentTask', 'Remove-UwAgentFolder', 'Set-UwWakeTimer', 'Add-UwUwfExclusion', 'Protect-UwFolder') {
     Mock $setter $refuse
   }
 }
