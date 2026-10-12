@@ -443,6 +443,6 @@ milestone after milestone autonomously; assumptions A-1..A-5 are recorded as ADR
 ## Phase 12 — Validate v1.4 (lead: Debug)
 | ID | Task | Refs | Evidence |
 |---|---|---|---|
-| [ ] V4-T01 | Walk every v1.4 AC; record evidence in `validation.md` §v1.4. | FR-401..407 | `validation.md` |
-| [ ] V4-T02 | Owner checklist (pt-BR, `NEXT.md`): export with password, import on a second PC, standby, activate, automatic export to a share. | B-002 | checklist |
-| [ ] V4-T03 | Final audit and Architect approval → `specs/reviews/v1.4-final.md`; final report to the owner. | — | review |
+| [x] V4-T01 | Walk every v1.4 AC; record evidence in `validation.md` §v1.4. | FR-401..407 | `validation.md` |
+| [x] V4-T02 | Owner checklist (pt-BR, `NEXT.md`): export with password, import on a second PC, standby, activate, automatic export to a share. | B-002 | checklist |
+| [x] V4-T03 | Final audit and Architect approval → `specs/reviews/v1.4-final.md`; final report to the owner. | — | review |

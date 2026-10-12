@@ -5,7 +5,7 @@ and CI workflow steps. "pass (automated)" means the listed tests or CI steps exi
 verify` / CI ran them green on the commit this file was generated from; up to three pieces of
 evidence are shown per criterion.
 
-**183** automated criteria with evidence · **1** manual (owner checklist, V-T05) ·
+**197** automated criteria with evidence · **1** manual (owner checklist, V-T05) ·
 **0** without evidence.
 
 | AC | Task | Status | Evidence |
@@ -194,3 +194,17 @@ evidence are shown per criterion.
 | AC-309-01 | M17-T05 | pass (automated) | `apps/server/test/power-status.test.ts` › AC-309-01: ready, v1.2, lost and revoked machines show their state; only ready ones get orders |
 | AC-310-01 | M19-T05 | pass (automated) | `apps/server/test/demo-agents.test.ts` › AC-310-01: every case is present and nothing real is sent |
 | AC-311-01 | M20-T01 | pass (automated) | `apps/web/test/help-pages.test.tsx` › AC-311-01: both remote shutdown pages open from the help index |
+| AC-401-01 | M21-T03 | pass (automated) | `apps/server/test/migration-export.test.ts` › AC-401-01: without a password the file carries Cadastro, Agendamentos and shared settings only |
+| AC-401-02 | M21-T03 | pass (automated) | `apps/server/test/export-format.test.ts` › AC-401-02: secret sections need a password of at least 10 characters<br>`apps/server/test/migration-export.test.ts` › AC-401-02: Usuários without a password, or a short one, is refused |
+| AC-402-01 | M21-T02 | pass (automated) | `apps/server/test/migration-import.test.ts` › AC-402-01: wrong or missing password changes nothing; the right one brings users and the key<br>`apps/server/test/secret-box.test.ts` › AC-402-01: a wrong password, one changed byte or another file all give the same error |
+| AC-402-02 | M21-T02 | pass (automated) | `apps/server/test/migration-export.test.ts` › AC-402-02: with a password, users and agent records are sealed, never in clear<br>`apps/server/test/secret-box.test.ts` › AC-402-02: the sealed form never shows the secret or the password |
+| AC-403-01 | M22-T02 | pass (automated) | `apps/server/test/migration-import.test.ts` › AC-403-01: the preview counts creates, updates, unchanged and conflicts, and changes nothing<br>`apps/web/test/migration-page.test.tsx` › AC-403-01: file → manifest → password → preview → IMPORTAR → done |
+| AC-403-02 | M22-T02 | pass (automated) | `apps/server/test/migration-import.test.ts` › AC-403-02: merge deletes nothing; replace makes the sections equal to the file and keeps machine settings |
+| AC-403-03 | M22-T02 | pass (automated) | `apps/server/test/migration-import.test.ts` › AC-403-03: a pre-import backup is taken and "Desfazer importação" requests its restore |
+| AC-403-04 | M22-T01 | pass (automated) | `apps/server/test/export-format.test.ts` › AC-403-04: a newer format is refused with its app version<br>`apps/server/test/migration-import.test.ts` › AC-403-04: a newer format is refused with its version; garbage and edited files too |
+| AC-403-05 | M22-T01 | pass (automated) | `apps/server/test/migration-import.test.ts` › AC-403-05: in a team the import is refused (the file is still inspected); export works |
+| AC-403-06 | M23-T02 | pass (automated) | `e2e/migration.spec.ts` › AC-403-06: export with a password on one hub, import it on another with preview |
+| AC-404-01 | M22-T03 | pass (automated) | `apps/server/test/migration-import.test.ts` › AC-404-01: an imported copy is in standby — schedules skipped, check-ins refused — until activated<br>`apps/web/test/migration-page.test.tsx` › AC-404-01: the banner and "Ativar este UniWake" with typed confirmation |
+| AC-405-01 | M23-T03 | pass (automated) | `apps/server/test/auto-export.test.ts` › AC-405-01: writes a file without secrets to the folder<br>`apps/server/test/auto-export.test.ts` › AC-405-01: keeps only the newest N of this PC and never touches other files<br>`apps/server/test/auto-export.test.ts` › AC-405-01: a missing folder is a warning in "Saúde do sistema" until the next success |
+| AC-406-01 | M23-T04 | pass (automated) | `apps/server/test/migration-cli.test.ts` › AC-406-01: --export writes a valid file; secret sections need --password-env<br>`apps/server/test/migration-cli.test.ts` › AC-406-01: --import refuses while a hub answers (exit 3), then imports (exit 0) |
+| AC-407-01 | M24-T01 | pass (automated) | `apps/web/test/help-pages.test.tsx` › AC-407-01: "Backup e migração" opens from the help index |

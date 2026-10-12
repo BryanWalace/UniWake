@@ -1,7 +1,72 @@
 # NEXT — handoff
 
 Atualizado: 2026-10-12 · Branch de trabalho: **`dev`** (ADR-030) · **`main` = `9d7cc31`** · **release v1.2.0 publicada**
-(estável; `releases/latest` = v1.2.0). A v1.3 está só na `dev`: nada foi para a `main`, nenhuma tag.
+(estável; `releases/latest` = v1.2.0). As v1.3 e v1.4 estão só na `dev`: nada foi para a `main`, nenhuma tag.
+
+## v1.4 "Backup e migração" — pronta na `dev`, aguardando seu teste
+
+Feito de M21 a M24 e validado (Fase 12), com CI na `dev`. Nada foi para a `main`, nenhuma tag.
+
+- **Página "Backup e migração"** (administradores): exporta um arquivo `.uniwake` com as partes
+  escolhidas (Cadastro, Agendamentos, Configurações gerais, Usuários, Desligamento remoto,
+  Histórico). Usuários e Desligamento remoto só saem com senha (argon2id + AES-256-GCM).
+  Configurações deste PC nunca vão no arquivo.
+- **Importar** com prévia (novos, atualizados, sem mudança, conflitos, removidos), **Mesclar** ou
+  **Substituir**, confirmação digitando `IMPORTAR`, backup automático antes e **Desfazer
+  importação**.
+- **Em espera:** depois de importar, o PC não roda agendamentos nem manda ordens às máquinas até
+  você clicar em **Ativar este UniWake** (evita o PC antigo e o novo agirem ao mesmo tempo).
+- **Exportação automática** diária para uma pasta (pode ser da rede) e **linha de comando**
+  (`--export` / `--import`).
+- **Decisões que tomei sozinho (pode mudar qualquer uma):** A-1 o arquivo é JSON compactado (gzip),
+  não zip; A-2 segredos só com senha; A-3 PC em Modo equipe não importa; A-4 PC importado fica em
+  espera até ativar; A-5 a exportação automática nunca leva segredos (não guardo senha). Estão nos
+  ADR-049 a 052.
+- Correções no caminho: "Substituir" apagaria o histórico local das máquinas (corrigido para
+  atualizar no lugar); entrar numa equipe deixava pedidos de desligamento antigos para trás.
+
+### Como testar o backup e a migração (passo a passo)
+
+Use o PC da TI com a versão de teste `1.4.0-dev.N` (mesmo caminho do item 0 da v1.3 abaixo) e,
+se puder, um segundo PC (pode ser uma máquina virtual) para o "PC novo".
+
+**1. Exportar com senha**
+1. Painel → **Backup e migração** → em **Exportar** deixe as partes marcadas, digite uma senha
+   (10+ caracteres) duas vezes → **Exportar**. O navegador baixa `UniWake-<PC>-<data>.uniwake`.
+2. Guarde a senha: sem ela não dá para importar Usuários e Desligamento remoto.
+
+**2. Importar no PC novo (Substituir)**
+1. Instale a mesma versão de teste no PC novo e crie o primeiro usuário.
+2. **Backup e migração** → **Importar** → escolha o arquivo → digite a senha → **Substituir** →
+   **Ver prévia**. Confira os números (máquinas, agendamentos).
+3. Digite `IMPORTAR` → **Importar**. O painel pede login: entre com um usuário do PC antigo.
+4. Esperado: salas, máquinas e agendamentos iguais; faixa vermelha "Este UniWake está em espera" em
+   todas as páginas; em **Saúde do sistema** a versão certa.
+
+**3. Em espera e ativar**
+1. Confirme que nenhum agendamento roda no PC novo enquanto estiver em espera.
+2. Desligue o UniWake do PC antigo (`services.msc` → UniWake → Parar).
+3. No PC novo: **Backup e migração** → **Ativar este UniWake** → digite `ATIVAR`.
+4. Se o PC novo tiver **outro endereço** na rede, rode de novo o comando de **Preparar máquinas**
+   nas máquinas preparadas para desligar (elas guardam o endereço do PC antigo).
+5. Para voltar atrás: **Desfazer importação** → digite `DESFAZER` (o serviço reinicia com o banco de
+   antes).
+
+**4. Exportação automática numa pasta da rede**
+1. **Configurações → Exportação automática**: ligue, informe a pasta (ex.: `\\servidor\uniwake`),
+   horário e quantos manter → **Salvar**.
+2. Na pasta compartilhada, dê permissão de **gravação à conta do computador** do PC da TI (ex.:
+   `DOMINIO\PC-TI$`), não ao seu usuário: o serviço roda como Sistema Local.
+3. Para testar sem esperar a madrugada, ponha o horário para daqui a 2 minutos e confira o arquivo
+   na pasta. Se falhar, **Saúde do sistema** mostra o motivo. **Me diga se funcionou** (isso não dá
+   para testar aqui: depende da rede da instituição).
+
+**5. Linha de comando (opcional)**
+- PowerShell como Administrador, em `C:\Program Files\UniWake\versions\<versão>`:
+  `& .\node.exe .\server.mjs --export D:\teste.uniwake` (funciona com o serviço rodando).
+
+**O que me mandar:** se a prévia bateu com o que você esperava, se o login com o usuário antigo
+funcionou, se a exportação automática gravou na pasta da rede, e qualquer mensagem de erro.
 
 ## v1.3 "Desligar computadores" — pronta na `dev`, aguardando seu teste em PCs reais
 
@@ -284,23 +349,25 @@ WoL real por modelo de PC, reinício sem ninguém logado, VLANs, HTTPS na rede) 
 ## Agent notes (English)
 
 ### Current state
-- **2026-10-12: v1.3 complete on `dev`** (M16–M20, Phase 10: `specs/validation.md` §v1.3,
-  `specs/reviews/v1.3-final.md`, reviews M16–M19). Not merged, not tagged. Waiting for the owner's
-  real-PC checklist above (includes the deferred M18-T01 user-session window check, R-M18-02 DFC.exe,
-  NFR-302 timing).
-- Remote shutdown lives in `apps/server/src/application/power/*`, `domain/{agenda,readiness}.ts`,
-  `db/repositories/{power-repo,device-agents-repo,hub-keys-repo}.ts`, `http/routes/{agent,power}.ts`,
-  `apps/web/src/features/power/*`, `scripts/agent/*`, `scripts/prepare-target.ps1` step 8; tests
-  `apps/server/test/{agent-*,power-*,agenda,team-power,breakit-m16,breakit-m17}.test.ts`,
-  `apps/server/test/perf/checkin.perf.test.ts`, `scripts/tests/agent-*.Tests.ps1`, `e2e/power.spec.ts`.
-- Team mode: `apps/server/src/application/team/*` (unchanged in v1.3 except signing keys/protocol 2).
-- CI on `dev` uploads `UniWake-Setup-dev` (`DEV_VERSION_BASE` 1.3.0, ADR-041).
+- **2026-10-12: v1.3 and v1.4 complete on `dev`** (M16–M24, Phases 10–12: `specs/validation.md`
+  §v1.3/§v1.4, `specs/reviews/v1.3-final.md`, `v1.4-final.md`, reviews M16–M23). Not merged, not
+  tagged. CLAUDE.md stop point reached: final report given; waiting for the owner's real-PC
+  checklists above (v1.4 and v1.3) and for "pode subir a dev para a main".
+- v1.4 lives in `apps/server/src/application/migration/*` (document, secret-box, export, import,
+  auto-export), `db/sync/import.ts`, `db/repositories/migration-repo.ts`, migration 007,
+  `http/routes/migration.ts`, `cli/migration-cli.ts` (+ `main.ts` flags), `apps/web/src/features/migration/*`;
+  tests `apps/server/test/{export-format,secret-box,migration-*,breakit-m21,breakit-m22,auto-export}.test.ts`,
+  `perf/migration.perf.test.ts`, web `migration-page.test.tsx`, `e2e/migration.spec.ts`.
+- Architect assumptions A-1..A-5 (ADR-049..052) are open to the owner's change.
+- Remote shutdown (v1.3): `application/power/*`, `scripts/agent/*`, `scripts/prepare-target.ps1` step 8.
+- CI on `dev` uploads `UniWake-Setup-dev` (`DEV_VERSION_BASE` 1.4.0, ADR-041).
 
 ### Next steps
-1. Fix whatever the owner's v1.3 checklist finds (tests first). If the warning window does not show
-   in the user session, revisit the "UniWake Aviso" task (ADR-046, M18-T01).
-2. v1.4 (roadmap §D: '.uniwake' backup/restore/migration) through the full SDD loop, per CLAUDE.md.
-3. Merge `dev` → `main` only on "pode subir a dev para a main"; tag only if asked.
+1. Fix whatever the owner's checklists find (tests first). If the warning window does not show in
+   the user session, revisit the "UniWake Aviso" task (ADR-046, M18-T01).
+2. On "pode subir a dev para a main": green verify, merge `dev` → `main`; tag only if asked
+   (release notes for 1.3.0/1.4.0 to write then).
+3. Roadmap after v1.4: RM-1..RM-8 (spec §11); nothing started.
 
 ### Working conventions
 - Commit via the verify-gated helper (scratchpad `commit-task.sh <TASK|-> <msg-file>`: prettier →

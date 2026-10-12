@@ -193,3 +193,48 @@ policies on lab PCs.
 
 ## V3-T03 Verdict
 See `specs/reviews/v1.3-final.md`.
+
+# Validation v1.4 — Backup e migração (M21–M24)
+
+Date: 2026-10-12 · Lead: Debug & Problem Solver · Branch `dev` (not released).
+
+## V4-T01 Acceptance criteria
+`validation-acs.md` (regenerated): **198 criteria, 197 automated, 1 manual (V-T05), 0 without
+evidence**. All 14 v1.4 criteria (AC-401-01 … AC-407-01) are automated:
+
+| Area | Evidence |
+|---|---|
+| File format (FR-401.3, FR-403.5) | `export-format.test.ts`: canonical checksum over manifest + data, edited files damaged, newer format refused with its version (AC-403-04), converter chain, safe names |
+| Secrets (FR-402) | `secret-box.test.ts` (round trip, wrong password, flipped byte, moved secret part → one error, AC-402-01; nothing in clear, AC-402-02), `migration-export.test.ts`, `hub-key.test.ts` (key export/take-over) |
+| Export (FR-401) | `migration-export.test.ts` (AC-401-01/02: sections, no machine settings, no tombstones, audit without password), `breakit-m21.test.ts` (zip bomb, malformed requests, concurrency) |
+| Import (FR-403) | `migration-import.test.ts`: preview by rollback (AC-403-01), merge vs replace with local ids kept (AC-403-02), pre-import backup + undo (AC-403-03), team refusal (AC-403-05), key rule; `breakit-m22.test.ts` (crash → rollback, twice → unchanged, expiry, duplicate MAC, forged plain users ignored) |
+| Standby (FR-404) | AC-404-01: schedules skipped, check-ins 503, activation restores both; `sync-apply` (joining a team clears standby) |
+| Panel (FR-401.1, FR-403.1) | web `migration-page.test.tsx` (export, import wizard, standby, errors); Playwright `e2e/migration.spec.ts` (AC-403-06, two demo hubs); axe sweep of `/backup` |
+| Automatic export (FR-405) | `auto-export.test.ts` (AC-405-01: file, rotation of this PC's files only, failure → health warning, timer) |
+| CLI (FR-406) | `migration-cli.test.ts` (AC-406-01: export next to the database, import refused while a hub answers, exit codes 0/2/3/4) |
+| Help/README (FR-407) | web `help-pages` (AC-407-01); README reviewed against code (install paths, defaults, exit codes) |
+
+## Non-functional requirements
+| NFR | Result |
+|---|---|
+| NFR-401 | `perf/migration.perf.test.ts`: 500 devices, 50 schedules, 18 250 runs → export **222 ms**, file **630 KB**, inspect + preview on another hub **699 ms** (budgets 3 s / 5 MB) |
+| NFR-402 | one transaction per import; crash test rolls back (`breakit-m22`) |
+| NFR-403 | no new runtime dependency (`check:deps` green; gzip `node:zlib`, crypto `node:crypto`) |
+
+## Failure modes found in the v1.4 reviews
+| Finding | Handling | Evidence |
+|---|---|---|
+| A11-01/02 Partial replace; foreign key on a PC with prepared machines | Replace covers dependent sections together; key imported only without local prepared machines | `migration-import` |
+| D11-02 argon2 memory per call | One derivation at a time; files cannot ask for more than 128 MiB | `secret-box`, document schema |
+| A-M22-01 (MAJOR) Replace by delete + re-insert would cascade away local device history | Delete only rows not in the file; update the rest in place | "replace keeps the local id" |
+| A-M23-01 (MAJOR, avoided in design) CLI must never retire the running service's hub key | Read-only key read in the CLI | `migration-cli` |
+| CI on Linux rejected `/tmp` export folders | POSIX absolute path accepted for dev/CI | `auto-export` |
+| (team, found while designing v1.4) Joining a team left v1.3 power jobs outside the change log | Join clears the power tables | `sync-apply` |
+
+## V4-T02 Owner checklist (real PCs)
+In pt-BR in `specs/handoff/NEXT.md` ("Como testar o backup e a migração"). Not automatable: DPAPI
+of the real service when importing the hub key, a network share written by LocalSystem (computer
+account permissions), the CLI from the installed folder.
+
+## V4-T03 Verdict
+See `specs/reviews/v1.4-final.md`.
