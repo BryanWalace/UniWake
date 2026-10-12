@@ -2,11 +2,14 @@
  * M23-T04 (FR-406, ADR-052): `--export` next to the service's database and `--import` only with
  * the service stopped, with the exit codes of FR-406.
  */
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import pino from 'pino';
 import { afterEach, describe, expect, it } from 'vitest';
+import { loopbackPortInUse } from '../src/adapters/port-probe';
 import { DevSecretProtector } from '../src/adapters/secret-protector';
 import type { CliIo } from '../src/cli/migration-cli';
 import { CONFIG_DEFAULTS } from '../src/config';
@@ -127,7 +130,6 @@ describe('command line (FR-406)', () => {
   it('exit codes: usage 2 (no mode, both flags, no database), damaged file 4', async () => {
     const dir = await dataDir();
     const bad = join(tempDir(), 'ruim.uniwake');
-    const { writeFileSync } = await import('node:fs');
     writeFileSync(bad, 'isto não é um backup');
     const notRunning = { hubRunning: () => Promise.resolve(false) };
     expect(
@@ -146,4 +148,50 @@ describe('command line (FR-406)', () => {
     ).toBe(4);
     expect(damaged.err.join(' ')).toMatch(/não é um backup do UniWake/);
   });
+});
+
+describe('command line in its own process (release smoke test finding)', () => {
+  it('a listening panel port is seen; a closed one is not', async () => {
+    const server = createServer();
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
+    const port = (server.address() as AddressInfo).port;
+    expect(await loopbackPortInUse(port)).toBe(true);
+    await new Promise<void>((r) => server.close(() => r()));
+    expect(await loopbackPortInUse(port)).toBe(false);
+  });
+
+  it('--import exits with code 3 (no crash) while something answers on the panel port', async () => {
+    const dir = await dataDir();
+    const file = join(tempDir(), 'x.uniwake');
+    writeFileSync(file, 'x');
+    const server = createServer();
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
+    const port = (server.address() as AddressInfo).port;
+    try {
+      const r = spawnSync(
+        process.execPath,
+        [
+          '--import',
+          'tsx',
+          'apps/server/src/main.ts',
+          '--import',
+          file,
+          '--mode',
+          'merge',
+          '--data-dir',
+          dir,
+        ],
+        {
+          cwd: join(import.meta.dirname, '..', '..', '..'),
+          encoding: 'utf8',
+          env: { ...process.env, UNIWAKE_PANEL_PORT: String(port) },
+          timeout: 60_000,
+        },
+      );
+      expect(r.stderr).toMatch(/Pare o serviço UniWake/);
+      expect(r.status).toBe(3);
+    } finally {
+      await new Promise<void>((r) => server.close(() => r()));
+    }
+  }, 90_000);
 });

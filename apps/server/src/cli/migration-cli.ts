@@ -8,6 +8,7 @@ import { hostname } from 'node:os';
 import { createPrivateKey, createPublicKey } from 'node:crypto';
 import { EXPORT_SECTION_INFO, EXPORT_SECTIONS, type ExportSection } from '@uniwake/shared';
 import { exportCodec } from '../adapters/export-codec';
+import { loopbackPortInUse } from '../adapters/port-probe';
 import { AuditService } from '../application/audit/audit-service';
 import { AppError } from '../application/errors';
 import type { ExportedHubKey } from '../application/migration/document';
@@ -211,15 +212,6 @@ function fail(e: unknown, io: CliIo): number {
 }
 
 /** Whether a hub answers on the loopback panel port (ADR-052). */
-export async function panelAnswers(port: number): Promise<boolean> {
-  try {
-    const res = await fetch(`http://127.0.0.1:${port}/api/health`, {
-      signal: AbortSignal.timeout(2000),
-    });
-    return res.status > 0;
-  } catch {
-    return false;
-  }
-}
+export const panelAnswers = (port: number) => loopbackPortInUse(port);
 
 export { dataPaths };
