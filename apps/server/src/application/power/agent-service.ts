@@ -59,7 +59,7 @@ export interface AgentStatus {
   persistent: boolean;
   sleepAfterMinutes: number | null;
   wakeTimers: string;
-  /** Last check-in rounded down to 30 minutes (ADR-048: little change-log churn). */
+  /** A recent check-in, written at most every 30 minutes (ADR-048: little change-log churn). */
   seenCoarseAt: number;
 }
 
@@ -214,7 +214,12 @@ export class AgentService {
         persistent: req.freeze.persistent,
         sleepAfterMinutes: req.power.sleepAfterMinutes,
         wakeTimers: req.power.wakeTimers,
-        seenCoarseAt: Math.floor(now / COARSE_MS) * COARSE_MS,
+        // Exact time, refreshed at most every 30 min: rounding down made a machine that checks in
+        // only with another team hub look "perdido" here (M17-R).
+        seenCoarseAt:
+          who.row.seenCoarseAt === null || now - who.row.seenCoarseAt >= COARSE_MS
+            ? now
+            : who.row.seenCoarseAt,
       });
       // Rotation uses what the machine just told us about freezing (ADR-043).
       const row = {

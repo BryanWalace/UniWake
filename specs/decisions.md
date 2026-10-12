@@ -799,8 +799,8 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
     sent to two hubs is one entity). Order state changes are LWW; the agent ignores an order id it
     already executed (kept 48 h), so delivery by two hubs before sync is harmless.
   - `device_agent` replicated entity (1:1 with device): token hash(es), issued/rotated/revoked
-    times, agent version, freeze state, last check-in **rounded to 30 min** (coarse, to limit change
-    log churn). Each hub also keeps an exact local `agent_seen_at` for the "perdido" heuristic and
+    times, agent version, freeze state, last check-in written **at most every 30 min** (exact time, to limit change-log
+    churn; rounding down made machines that talk to another hub look "perdido", M17-R). Each hub also keeps an exact local `agent_seen_at` for the "perdido" heuristic and
     the live job view.
   - Hub signing public keys travel in `team_members`; private keys never leave their PC.
   - **Mixed versions are not allowed to sync (Phase 9 finding, CRITICAL):** a v1.2 hub applying a

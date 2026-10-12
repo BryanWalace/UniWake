@@ -644,7 +644,8 @@ export class RemoteApplier {
       native_warning: bool(p.nativeWarning),
       freeze_state: str(p.freezeState),
       detail: str(p.detail),
-      received_at: num(p.receivedAt) ?? e.at,
+      // When this hub first heard of it (local, not replicated).
+      ...(existing === null ? { received_at: e.at } : {}),
     });
   }
 

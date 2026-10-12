@@ -427,7 +427,6 @@ const POWER_SNAPSHOT = {
       native_warning: number;
       freeze_state: string | null;
       detail: string | null;
-      received_at: number;
     }>(
       `SELECT r.*, d.uuid AS device_uuid FROM power_reports r JOIN devices d ON d.id = r.device_id
        WHERE r.id = ?`,
@@ -451,7 +450,7 @@ const POWER_SNAPSHOT = {
         nativeWarning: r.native_warning === 1,
         freezeState: r.freeze_state,
         detail: r.detail,
-        receivedAt: r.received_at,
+        // received_at is when *this* hub got it: local, or two hubs would conflict (M17-D).
       }
     );
   },
