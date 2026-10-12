@@ -26,6 +26,7 @@ export const SETTINGS_GROUPS = {
   enrollment: 'Preparar máquinas',
   retention: 'Retenção de dados',
   backup: 'Backups',
+  export: 'Exportação automática',
   bootstrap: 'Serviço (requer reinício)',
 } as const;
 export type SettingsGroup = keyof typeof SETTINGS_GROUPS;
@@ -70,6 +71,20 @@ function def<S extends z.ZodType>(
 const int = (min: number, max: number) => z.number().int().min(min).max(max);
 const port = int(1, 65535);
 export const timeOfDaySchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use o formato HH:mm');
+
+/** A local folder (`D:\pasta`) or a network share (`\\servidor\pasta`), or empty (FR-405). */
+export const exportFolderSchema = z.union([
+  z.literal(''),
+  z
+    .string()
+    .trim()
+    .max(240)
+    .regex(
+      /^([A-Za-z]:\\|\\\\[^\\/:*?"<>|\s]+\\[^\\/:*?"<>|]+)[^:*?"<>|]*$/,
+      'Use uma pasta como D:\\Exportacoes ou \\\\servidor\\pasta.',
+    )
+    .refine((p) => [...p].every((c) => c.charCodeAt(0) >= 32), 'Caractere inválido na pasta.'),
+]);
 
 export function isValidTimeZone(tz: string): boolean {
   try {
@@ -471,6 +486,35 @@ export const SETTING_DEFS = {
     group: 'backup',
     scope: 'machine',
     label: 'Backups diários mantidos',
+    input: 'number',
+    min: 1,
+    max: 365,
+  }),
+  // Automatic exports (v1.4, FR-405, ADR-052): this PC only; files never carry secrets.
+  'export.autoEnabled': def(z.boolean(), false, {
+    group: 'export',
+    scope: 'machine',
+    label: 'Exportar automaticamente todo dia',
+    help: 'Gera um arquivo .uniwake sem Usuários e sem Desligamento remoto.',
+    input: 'boolean',
+  }),
+  'export.autoFolder': def(exportFolderSchema, '', {
+    group: 'export',
+    scope: 'machine',
+    label: 'Pasta das exportações',
+    help: 'Ex.: D:\\UniWake-exportacoes ou \\\\servidor\\pasta. Numa pasta da rede, a conta do computador precisa poder gravar.',
+    input: 'text',
+  }),
+  'export.autoTime': def(timeOfDaySchema, '02:45', {
+    group: 'export',
+    scope: 'machine',
+    label: 'Horário da exportação',
+    input: 'time',
+  }),
+  'export.autoKeep': def(int(1, 365), 14, {
+    group: 'export',
+    scope: 'machine',
+    label: 'Exportações mantidas na pasta',
     input: 'number',
     min: 1,
     max: 365,

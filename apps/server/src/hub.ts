@@ -498,6 +498,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
         demoAgents.start();
       }
       services.backups?.start();
+      services.autoExport.start();
       services.update.start();
       services.updates.start();
       await services.updates.recordOutcome(paths.updates);
@@ -513,6 +514,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       services.scheduler.stop();
       services.health.stop();
       services.backups?.stop();
+      services.autoExport.stop();
       services.testWol.stop();
       services.runner.stop();
       services.dashboard.stop();

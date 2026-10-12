@@ -35,7 +35,8 @@ export interface HealthWarning {
     | 'pending_reboot'
     | 'active_hours'
     | 'database'
-    | 'remote_shutdown_lost';
+    | 'remote_shutdown_lost'
+    | 'auto_export_failed';
   severity: 'error' | 'warning';
   message: string;
 }
@@ -80,6 +81,8 @@ export interface HealthDeps {
   host: HostChecks | null;
   time: TimeCheck | null;
   powerCounts?: () => { ready: number; needs_preparation: number; revoked: number; lost: number };
+  /** v1.4 automatic export (FR-405): its last result, or null when it never ran. */
+  lastAutoExport?: () => { ok: boolean; error: string | null; at: number } | null;
 }
 
 const MIN = 60_000;
@@ -237,6 +240,14 @@ export class HealthService {
         code: 'active_hours',
         severity: 'warning',
         message: `O "horário ativo" do Windows Update (${this.host.activeHours.start}h–${this.host.activeHours.end}h) não cobre 05:00–08:00: o Windows pode reiniciar durante a ligação da manhã. Ajuste em Windows Update › Opções avançadas.`,
+      });
+    }
+    const auto = this.d.lastAutoExport?.() ?? null;
+    if (auto && !auto.ok) {
+      warnings.push({
+        code: 'auto_export_failed',
+        severity: 'warning',
+        message: `A exportação automática falhou: ${auto.error ?? 'erro desconhecido'}. Confira a pasta em Configurações › Exportação automática (numa pasta da rede, a conta do computador precisa poder gravar).`,
       });
     }
     const counts = this.d.powerCounts?.() ?? null;

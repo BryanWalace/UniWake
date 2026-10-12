@@ -8,6 +8,8 @@ import { AuthService } from './application/auth/auth-service';
 import { BackupService } from './application/backups/backup-service';
 import { ExportService } from './application/migration/export-service';
 import { ImportService } from './application/migration/import-service';
+import { AutoExportService } from './application/migration/auto-export';
+import { nodeExportFolder } from './adapters/export-folder';
 import { SqliteMigrationStateRepo } from './db/repositories/migration-repo';
 import { applyImport, hasPreparedMachines, previewImport } from './db/sync/import';
 import { UsersService } from './application/auth/users-service';
@@ -189,6 +191,8 @@ export interface Services extends HttpServices {
   agentTokens: AgentTokensService;
   /** Lab PCs' shutdown agendas (FR-303.1). */
   agenda: AgendaService;
+  /** v1.4 daily export to a folder (FR-405). */
+  autoExport: AutoExportService;
 }
 
 export function createServices(
@@ -467,6 +471,7 @@ export function createServices(
   // Remote shutdown counts for the health page; the status service is built further down.
   const late: { powerStatus?: PowerStatusService; hubKey?: HubKeyService } = {};
   const health = new HealthService({
+    lastAutoExport: () => migrationState.lastAutoExport(),
     powerCounts: () =>
       late.powerStatus?.counts() ?? { ready: 0, needs_preparation: 0, revoked: 0, lost: 0 },
     clock,
@@ -697,6 +702,15 @@ export function createServices(
     version: opts.version ?? '0.0.0-dev',
   });
 
+  const autoExport = new AutoExportService({
+    exporter,
+    settings,
+    clock,
+    folder: nodeExportFolder,
+    state: migrationState,
+    self: () => team.self(),
+    logger: ports.logger.child({ module: 'auto-export' }),
+  });
   const importer = new ImportService({
     codec: exportCodec,
     store: {
@@ -721,6 +735,7 @@ export function createServices(
     hubKey,
     exporter,
     importer,
+    autoExport,
     agentTokens,
     agent,
     agenda,
