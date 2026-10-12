@@ -115,7 +115,7 @@ const documentSchema = z.object({
     .object({
       kdf: z.object({
         alg: z.literal('argon2id'),
-        memory: z.number().int().min(8192).max(1_048_576),
+        memory: z.number().int().min(8192).max(131_072), // a file cannot make us allocate more than 128 MiB
         passes: z.number().int().min(1).max(10),
         parallelism: z.number().int().min(1).max(16),
         salt: z.string().max(100),
