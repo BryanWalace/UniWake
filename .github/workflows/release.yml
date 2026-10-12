@@ -63,7 +63,10 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npm test
+      - name: Unit and integration tests
+        # R-M16-01: same gate as ci.yml — one rerun only for a native Vitest worker crash, shown as a
+        # warning. Without it the v1.4.0 tag run failed on that crash and published nothing.
+        run: node scripts/ci/test-crash-retry.ts
       - shell: powershell
         run: npm run test:ps
 
