@@ -6,7 +6,7 @@
 
 Wake-on-LAN por sala, etiqueta ou máquina · Desligar e reiniciar com aviso na tela · Painel em
 tempo real · Agendamentos com feriados · Cadastro automático das máquinas · Descoberta na rede ·
-Modo equipe · Atualização automática
+Modo equipe · Backup e migração · Atualização automática
 
 [![Baixar para Windows](https://img.shields.io/badge/Baixar%20para%20Windows-vers%C3%A3o%20mais%20recente-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/BryanWalace/UniWake/releases/latest/download/UniWake-Setup.exe)
 
@@ -45,6 +45,7 @@ Modo equipe · Atualização automática
 - [Uso diário](#uso-diário)
 - [Atualizações](#atualizações)
 - [Backups e restauração](#backups-e-restauração)
+- [Backup e migração (arquivo .uniwake)](#backup-e-migração-arquivo-uniwake)
 - [Segurança](#segurança)
 - [Solução de problemas](#solução-de-problemas)
 - [Roadmap](#roadmap)
@@ -78,11 +79,13 @@ cadastro, sincronizando pela rede local.
 - **Diagnóstico**: taxa de sucesso, "parou de acordar", outra sub-rede, **Testar WoL** e páginas de ajuda.
 - **Usuários e auditoria**: perfis administrador e operador; tudo fica registrado e pode ser exportado em CSV.
 - **Backups**: cópia diária automática, antes de cada atualização, e restauração pelo painel.
+- **Backup e migração**: um arquivo `.uniwake` leva o cadastro para um PC novo (com senha para usuários e chaves), com prévia antes de importar, exportação automática para uma pasta da rede e linha de comando.
 - **Atualização automática**: na janela de manutenção, com volta automática à versão anterior se algo der errado.
 - **Modo demonstração**: uma rede de laboratórios simulada para conhecer o sistema sem enviar nada.
 
 > [!NOTE]
-> O **Modo equipe** chegou na versão **1.2.0** e **Desligar computadores** chega na **1.3.0**.
+> O **Modo equipe** chegou na versão **1.2.0**; **Desligar computadores** chega na **1.3.0** e
+> **Backup e migração** na **1.4.0**.
 > Quem já tem o UniWake instalado recebe a atualização sozinho, na janela de manutenção; para
 > desligar uma máquina, rode nela o comando atualizado de **Preparar máquinas**.
 
@@ -474,6 +477,67 @@ atualiza sozinho, na própria janela de manutenção.
 - **Restaurar:** **Configurações → Backups**, escolha o backup e digite a data dele para confirmar.
   Um backup restaurado vale para o mesmo PC (as chaves do Modo equipe só abrem nele).
 
+## Backup e migração (arquivo .uniwake)
+
+> Disponível a partir da versão **1.4**. Em **Backup e migração** (administradores).
+
+Os backups acima restauram **este** PC. Para levar o UniWake para **outro** PC (ou guardar uma cópia
+fora dele), use um arquivo `.uniwake`:
+
+| Parte | O que leva | Senha |
+|---|---|---|
+| Cadastro | salas, etiquetas, máquinas | não |
+| Agendamentos | ligar e desligar, exceções, pausa | não |
+| Configurações gerais | as que valem para a equipe | não |
+| Usuários | usuários, perfis e senhas | **sim** |
+| Desligamento remoto | máquinas preparadas e a chave deste UniWake | **sim** |
+| Histórico (opcional) | execuções e desligamentos | não |
+
+As configurações deste PC (placas de rede, endereços, portas, atualização, backup) **nunca** vão no
+arquivo. A senha (10+ caracteres) protege usuários e chaves com argon2id + AES-256-GCM; sem ela o
+UniWake não abre essas partes — guarde-a com a documentação da TI.
+
+**Passar para um PC novo:**
+
+1. PC antigo: **Exportar** com todas as partes e uma senha.
+2. PC novo: instale o UniWake, crie o primeiro usuário, **Importar** → senha → **Substituir** →
+   **Ver prévia** → digite `IMPORTAR`. Um backup é feito antes e dá para **desfazer**.
+3. Entre com um usuário do arquivo. O PC novo fica **em espera** (agendamentos parados e nenhuma
+   ordem às máquinas) até você desligar o PC antigo e clicar em **Ativar este UniWake**.
+4. Se o PC novo tiver outro endereço, rode de novo o comando de **Preparar máquinas** nos
+   laboratórios.
+
+**Mesclar** junta o arquivo ao que já existe (nada é apagado; vale a versão mais nova de cada
+item). Um PC em **Modo equipe** não importa: importe num PC fora da equipe e depois pareie.
+
+**Exportação automática:** em **Configurações → Exportação automática**, escolha uma pasta (local
+ou `\\servidor\pasta`), o horário (02:45) e quantos arquivos manter. Ela não leva Usuários nem
+Desligamento remoto. O serviço roda como **Sistema Local**: na pasta da rede, quem precisa poder
+gravar é a **conta do computador** (ex.: `DOMINIO\PC-TI$`). Falhas aparecem em **Saúde do sistema**.
+
+<details>
+<summary><b>Linha de comando</b></summary>
+
+Na pasta da versão instalada (PowerShell como Administrador; troque `1.4.0` pela versão em uso):
+
+```powershell
+cd "C:\Program Files\UniWake\versions\1.4.0"
+# Exportar (funciona com o serviço rodando). Sem senha, sai sem Usuários e Desligamento remoto.
+$env:UNIWAKE_SENHA = 'uma senha longa'
+& .\node.exe .\server.mjs --export D:\uniwake.uniwake --password-env UNIWAKE_SENHA
+
+# Importar: pare o serviço antes.
+Stop-Service UniWake
+& .\node.exe .\server.mjs --import D:\uniwake.uniwake --mode replace --password-env UNIWAKE_SENHA
+Start-Service UniWake
+```
+
+`--sections inventory,schedules,settings,users,agents,history` escolhe as partes. Códigos de saída:
+0 ok, 2 uso incorreto, 3 recusado (serviço rodando, Modo equipe, arquivo de versão mais nova), 4
+senha incorreta ou arquivo danificado.
+
+</details>
+
 ## Segurança
 
 - Painel só no próprio computador por padrão; na rede, **somente HTTPS**.
@@ -509,6 +573,8 @@ atualiza sozinho, na própria janela de manutenção.
 | **Não desliga quando estava em suspensão** | Os **temporizadores de ativação** precisam estar ativados (o preparo ativa na tomada; veja na página da máquina). Em notebooks na bateria eles podem não funcionar. |
 | **Desligou fora do horário ou atrasado** | O relógio da máquina estava muito errado: o UniWake corrige a diferença a cada consulta (veja "Relógio da máquina" na página dela), mas acerte a sincronização de horário do Windows. |
 | **Antivírus bloqueou** | Algumas políticas bloqueiam o PowerShell em tarefas agendadas: libere `C:\ProgramData\UniWake\agent` (scripts `uniwake-agent.ps1` e `uniwake-aviso.ps1`). |
+| **"Este UniWake está em espera"** | Depois de importar um arquivo, o PC fica parado até alguém conferir: em **Backup e migração**, clique em **Ativar este UniWake** (desligue antes o PC antigo). |
+| **Exportação automática falhou** | Veja o motivo em **Saúde do sistema**. Pasta da rede: a conta do computador precisa de permissão de escrita; a pasta precisa existir. |
 | **Deep Freeze / máquina congelada** | Veja [Laboratórios com Deep Freeze ou similar](#laboratórios-com-deep-freeze-ou-similar). |
 | **O serviço não inicia** | Veja o motivo no **Visualizador de Eventos → Aplicativo**, origem **UniWake** (por exemplo, porta 47100 em uso). |
 | **Atualização revertida** | O painel mostra o motivo; os detalhes ficam em `C:\ProgramData\UniWake\logs`. |
@@ -534,7 +600,7 @@ também na rede dessas máquinas, ou informar o **"Broadcast dirigido"** da sala
 | 1.1 | Descobrir na rede | publicada (incluída na 1.2.0) |
 | 1.2 | **Modo equipe** (sincronização entre PCs da TI) | publicada (1.2.0) |
 | 1.3 | **Desligar e reiniciar** pelo painel ou por agendamento, aviso na tela com adiamento, laboratórios com Deep Freeze | pronta, chega com a 1.3.0 |
-| 1.4 | **Backup, restauração e migração** em arquivo `.uniwake` (exportar/importar, com senha) | planejado |
+| 1.4 | **Backup e migração** em arquivo `.uniwake` (exportar/importar com prévia e senha, em espera até ativar, exportação automática, linha de comando) | pronta, chega com a 1.4.0 |
 | — | Reinício agendado, agente por VLAN, notificações (e-mail/Telegram), ferramentas de BIOS dos fabricantes, permissões por sala | ideias |
 
 ## Relatar problemas e sugerir funções

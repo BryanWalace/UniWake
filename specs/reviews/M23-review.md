@@ -7,10 +7,10 @@ Date: 2026-10-12 · Scope: M23-T01..T04 · `web/features/migration/*`, standby b
 - The standby banner reads the dashboard (operators see it too); the admin-only state endpoint
   feeds the page. Automatic exports reuse the export service; the CLI import reuses the full hub
   composition without listening, so it behaves exactly like the panel.
-- **A-M23-01 (MAJOR, fixed before commit)** the first CLI export draft built a `HubKeyService`:
-  if the key could not be opened in the CLI's context it would have **retired the running
-  service's key** and made a new one (lab PCs would stop trusting the hub). The CLI now reads the
-  active key read-only and leaves it out (with a warning) when it cannot open it.
+- **A-M23-01 (MAJOR, avoided in design)** reusing `HubKeyService` in the CLI would be wrong: when
+  the key cannot be opened in the CLI's context it **retires the running service's key** and makes
+  a new one (lab PCs would stop trusting the hub). The CLI reads the active key read-only and
+  leaves it out (with a warning) when it cannot open it.
 
 ## Senior Fullstack
 - Raw upload and file download helpers in the API client (F11-01); typed confirmations for
