@@ -90,10 +90,11 @@ import { HubKeyService } from './application/power/hub-key';
 import { AgentTokensService } from './application/power/agent-tokens';
 import { AgentService, type AgentScripts } from './application/power/agent-service';
 import { SqliteDeviceAgentsRepo } from './db/repositories/device-agents-repo';
-import { SqlitePowerRepo } from './db/repositories/power-repo';
+import { SqlitePowerJobsRepo, SqlitePowerRepo } from './db/repositories/power-repo';
+import { PowerOrdersService } from './application/power/power-orders';
 import { AgendaService } from './application/power/agenda-service';
 import { scheduleRunUuid, uuidV5 } from './db/sync/uuid';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { SqliteReplicaStore } from './db/sync/apply';
 import { changeLog, configureChangeLog } from './db/sync/change-log';
 import type { HttpServices } from './http/context';
@@ -578,6 +579,16 @@ export function createServices(
     digest: (t) => createHash('sha256').update(t).digest('hex'),
     clock,
   });
+  const power = new PowerOrdersService({
+    store: new SqlitePowerJobsRepo(db),
+    resolve: (target) => wake.resolveForPower(target),
+    settings,
+    audit,
+    events,
+    clock,
+    transaction: tx,
+    newUuid: () => randomUUID(),
+  });
   const agentPort = opts.running?.agentPort ?? 47101;
   const agent = new AgentService({
     tokens: agentTokens,
@@ -609,6 +620,7 @@ export function createServices(
     hubKey,
     agentTokens,
     agent,
+    power,
     audit,
     settings,
     auth,

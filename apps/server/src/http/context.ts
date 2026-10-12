@@ -34,6 +34,7 @@ import type { UpdateService } from '../application/update/update-service';
 import type { WakeService } from '../application/wake/wake-service';
 import type { AgentService } from '../application/power/agent-service';
 import type { HubKeyService } from '../application/power/hub-key';
+import type { PowerOrdersService } from '../application/power/power-orders';
 
 export interface HttpServices {
   auth: AuthService;
@@ -68,6 +69,8 @@ export interface HttpServices {
   /** v1.3 lab-PC agent (FR-301..303) and the key that signs its answers (ADR-044). */
   agent: AgentService;
   hubKey: HubKeyService;
+  /** Manual "Desligar" / "Reiniciar" (FR-305). */
+  power: PowerOrdersService;
   /** null when the hub has no backups directory (API tests). */
   backups: BackupService | null;
   /** Hub only: the log viewer source (FR-016). */

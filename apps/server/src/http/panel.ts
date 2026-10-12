@@ -21,6 +21,7 @@ import { testWolRoutes } from './routes/test-wol';
 import { updateRoutes } from './routes/update';
 import { userRoutes } from './routes/users';
 import { wakeRoutes } from './routes/wake';
+import { powerRoutes } from './routes/power';
 import { registerSessionAuth } from './session-auth';
 
 export async function registerPanelRoutes(app: FastifyInstance, s: HttpServices): Promise<void> {
@@ -45,6 +46,7 @@ export async function registerPanelRoutes(app: FastifyInstance, s: HttpServices)
   updateRoutes(app, s);
   discoveryRoutes(app, s);
   teamRoutes(app, s);
+  powerRoutes(app, s);
 }
 
 /**
