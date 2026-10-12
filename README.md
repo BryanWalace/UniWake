@@ -84,8 +84,8 @@ cadastro, sincronizando pela rede local.
 - **Modo demonstração**: uma rede de laboratórios simulada para conhecer o sistema sem enviar nada.
 
 > [!NOTE]
-> O **Modo equipe** chegou na versão **1.2.0**; **Desligar computadores** chega na **1.3.0** e
-> **Backup e migração** na **1.4.0**.
+> O **Modo equipe** chegou na versão **1.2.0**; **Desligar computadores** e **Backup e migração**
+> chegaram na **1.4.0**.
 > Quem já tem o UniWake instalado recebe a atualização sozinho, na janela de manutenção; para
 > desligar uma máquina, rode nela o comando atualizado de **Preparar máquinas**.
 
@@ -324,7 +324,7 @@ registro fica em `C:\ProgramData\UniWake-Prepare\`. Para só ver o que mudaria: 
 
 ## Desligar computadores
 
-> Disponível a partir da versão **1.3**. Máquinas preparadas antes precisam do comando atualizado
+> Disponível a partir da versão **1.4.0**. Máquinas preparadas antes precisam do comando atualizado
 > de **Preparar máquinas**; em **Dispositivos**, cada uma mostra "Pronta para desligar" ou
 > "Precisa do novo preparo".
 
@@ -479,7 +479,7 @@ atualiza sozinho, na própria janela de manutenção.
 
 ## Backup e migração (arquivo .uniwake)
 
-> Disponível a partir da versão **1.4**. Em **Backup e migração** (administradores).
+> Disponível a partir da versão **1.4.0**. Em **Backup e migração** (administradores).
 
 Os backups acima restauram **este** PC. Para levar o UniWake para **outro** PC (ou guardar uma cópia
 fora dele), use um arquivo `.uniwake`:
@@ -599,8 +599,8 @@ também na rede dessas máquinas, ou informar o **"Broadcast dirigido"** da sala
 | 1.0 | Ligar pela rede, painel, agendamentos, preparo e cadastro, usuários, backups, atualização automática | publicada (incluída na 1.2.0) |
 | 1.1 | Descobrir na rede | publicada (incluída na 1.2.0) |
 | 1.2 | **Modo equipe** (sincronização entre PCs da TI) | publicada (1.2.0) |
-| 1.3 | **Desligar e reiniciar** pelo painel ou por agendamento, aviso na tela com adiamento, laboratórios com Deep Freeze | pronta, chega com a 1.3.0 |
-| 1.4 | **Backup e migração** em arquivo `.uniwake` (exportar/importar com prévia e senha, em espera até ativar, exportação automática, linha de comando) | pronta, chega com a 1.4.0 |
+| 1.3 | **Desligar e reiniciar** pelo painel ou por agendamento, aviso na tela com adiamento, laboratórios com Deep Freeze | publicada (incluída na 1.4.0) |
+| 1.4 | **Backup e migração** em arquivo `.uniwake` (exportar/importar com prévia e senha, em espera até ativar, exportação automática, linha de comando) | publicada (1.4.0) |
 | — | Reinício agendado, agente por VLAN, notificações (e-mail/Telegram), ferramentas de BIOS dos fabricantes, permissões por sala | ideias |
 
 ## Relatar problemas e sugerir funções
