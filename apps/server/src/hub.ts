@@ -13,7 +13,7 @@ import { PrepareScriptFile } from './adapters/prepare-script';
 import { createFileLogger } from './adapters/logger';
 import { JsonConfigFile } from './adapters/config-file';
 import { applyPendingRestore, snapshotBefore } from './db/backups';
-import { baselineChangeLog, configureChangeLog } from './db/sync/change-log';
+import { baselineChangeLog, changeLog, configureChangeLog } from './db/sync/change-log';
 import { ensureInstance, rotateInstance } from './db/sync/instance';
 import type { HostChecks, TimeCheck } from './application/health/health-service';
 import { LogFileReader } from './adapters/log-reader';
@@ -30,6 +30,8 @@ import { CompositeProber, PingExeIcmp, powershellSpawner, PsHelperIcmp } from '.
 import { OsNetworkInterfaces } from './adapters/network-interfaces';
 import { NodeProcessRunner } from './adapters/process-runner';
 import { AgentScriptFiles } from './adapters/agent-scripts';
+import { DemoAgentsService } from './application/demo/demo-agents';
+import { SqliteDemoAgentStore } from './db/repositories/power-repo';
 import { DevSecretProtector, DpapiSecretProtector } from './adapters/secret-protector';
 import { NodeSyncNetwork } from './adapters/sync-network';
 import type { SecretProtector, SyncEndpoint } from './application/ports';
@@ -396,6 +398,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
   }
 
   let started = false;
+  let demoAgents: DemoAgentsService | null = null;
 
   async function listen(app: FastifyInstance, name: string, host: string, port: number) {
     try {
@@ -482,6 +485,18 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       services.dashboard.start();
       services.retention.start();
       services.health.start();
+      // FR-310: simulated lab-PC agents, demo mode only (nothing leaves the process).
+      if (sim) {
+        demoAgents = new DemoAgentsService({
+          store: new SqliteDemoAgentStore(db),
+          agenda: (id) => services.agenda.forDevice(id),
+          setPower: (mac, on) => sim.setPower(mac, on),
+          events: services.events,
+          clock,
+          instanceId: () => changeLog(db).instanceId(),
+        });
+        demoAgents.start();
+      }
       services.backups?.start();
       services.update.start();
       services.updates.start();
@@ -492,6 +507,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       );
     },
     async stop() {
+      demoAgents?.stop();
       services.updates.stop();
       services.update.stop();
       services.scheduler.stop();

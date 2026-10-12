@@ -15,6 +15,9 @@ import type { ReportRow } from '../../application/power/power-status';
 import type { AgendaDevice } from '../../domain/agenda';
 import type { Db } from '../connection';
 import { changeLog } from '../sync/change-log';
+import { randomBytes } from 'node:crypto';
+import type { DemoAgentStore } from '../../application/demo/demo-agents';
+import { SqliteDeviceAgentsRepo } from './device-agents-repo';
 
 const OPEN = "('pending', 'delivered')";
 
@@ -541,4 +544,44 @@ export function recentPowerJobIds(db: Db, limit: number): number[] {
       limit,
     ])
     .map((r) => r.id);
+}
+
+/** Demo mode only (FR-310): the store the simulated agents use, over the real tables. */
+export class SqliteDemoAgentStore extends SqlitePowerRepo implements DemoAgentStore {
+  private readonly agents: SqliteDeviceAgentsRepo;
+
+  constructor(private readonly demoDb: Db) {
+    super(demoDb);
+    this.agents = new SqliteDeviceAgentsRepo(demoDb);
+  }
+
+  devices(): { id: number; name: string; mac: string }[] {
+    return this.demoDb.all<{ id: number; name: string; mac: string }>(
+      'SELECT id, name, mac FROM devices WHERE enabled = 1 ORDER BY id',
+    );
+  }
+
+  hasAgent(deviceId: number): boolean {
+    return this.agents.byDevice(deviceId) !== undefined;
+  }
+
+  issue(deviceId: number, now: number): void {
+    // A token nobody holds: the simulated agent does not use HTTP.
+    this.agents.issue(deviceId, randomBytes(32).toString('hex'), now);
+  }
+
+  orderState(uuid: string): string | null {
+    return (
+      this.demoDb.get<{ state: string }>('SELECT state FROM power_orders WHERE uuid = ?', [uuid])
+        ?.state ?? null
+    );
+  }
+
+  jobOf(orderUuid: string): number | null {
+    return (
+      this.demoDb.get<{ job_id: number | null }>('SELECT job_id FROM power_orders WHERE uuid = ?', [
+        orderUuid,
+      ])?.job_id ?? null
+    );
+  }
 }
