@@ -234,6 +234,43 @@ export const ERROR_DEFS = {
     status: 404,
     message: 'Esse aviso já foi resolvido ou o agendamento foi removido.',
   },
+  // v1.3 (plan §15.4). Agent-listener codes go to lab PCs: no detail about why (ADR-043).
+  AGENT_TOKEN_INVALID: {
+    status: 401,
+    message: 'Esta máquina não está autorizada. Execute o comando de "Preparar máquinas" de novo.',
+  },
+  AGENT_RATE_LIMITED: {
+    status: 429,
+    message: 'Muitas consultas desta máquina. Ela tenta de novo no próximo minuto.',
+  },
+  AGENT_PROTOCOL_UNSUPPORTED: {
+    status: 422,
+    message:
+      'Versão do agente não suportada por este UniWake. Execute o comando de preparo de novo.',
+  },
+  AGENT_SCRIPTS_MISSING: {
+    status: 500,
+    message:
+      'Arquivos do agente ausentes nesta instalação do UniWake. Reinstale ou atualize o UniWake.',
+  },
+  POWER_TARGET_EMPTY: {
+    status: 422,
+    message: 'Nenhuma máquina para desligar nessa seleção.',
+  },
+  POWER_NOT_READY: {
+    status: 422,
+    message:
+      'Nenhuma das máquinas está pronta para desligar. Execute o novo comando de "Preparar máquinas" nelas.',
+  },
+  POWER_PROTECTED_CONFIRMATION: {
+    status: 409,
+    message:
+      'A seleção inclui máquinas marcadas "Nunca desligar por agendamento". Confirme para desligá-las também.',
+  },
+  POWER_JOB_NOT_FOUND: {
+    status: 404,
+    message: 'Esse desligamento não foi encontrado. Atualize a página.',
+  },
   INTERNAL_ERROR: {
     status: 500,
     message:

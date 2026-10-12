@@ -87,6 +87,9 @@ import type { SecretProtector, SyncEndpoint, SyncNetwork } from './application/p
 import { SqliteTeamRepo } from './db/repositories/team-repo';
 import { SqliteHubKeysRepo } from './db/repositories/hub-keys-repo';
 import { HubKeyService } from './application/power/hub-key';
+import { AgentTokensService } from './application/power/agent-tokens';
+import { AgentService, type AgentScripts } from './application/power/agent-service';
+import { SqliteDeviceAgentsRepo } from './db/repositories/device-agents-repo';
 import { SqliteReplicaStore } from './db/sync/apply';
 import { changeLog, configureChangeLog } from './db/sync/change-log';
 import type { HttpServices } from './http/context';
@@ -138,6 +141,8 @@ export interface ServiceOptions {
   oui?: () => OuiTable;
   /** prepare-target.ps1 as served by the agent listener (FR-007.3); absent = not installed. */
   prepareScript?: PrepareScript;
+  /** Lab-PC agent scripts (v1.3); absent = none (API tests that do not enroll agents). */
+  agentScripts?: AgentScripts;
   /** Modo equipe (FR-201..204): team port and, in tests, where announcements go. */
   team?: {
     port: number;
@@ -163,6 +168,7 @@ export interface Services extends HttpServices {
   probes: ProbeQueue;
   /** Signs answers to lab PCs (v1.3, ADR-044); `init()` runs at hub start. */
   hubKey: HubKeyService;
+  agentTokens: AgentTokensService;
 }
 
 export function createServices(
@@ -549,11 +555,25 @@ export function createServices(
     clock,
     logger: ports.logger.child({ module: 'hub-key' }),
   });
+  const agentTokens = new AgentTokensService({
+    repo: new SqliteDeviceAgentsRepo(db),
+    audit,
+    clock,
+    transaction: tx,
+  });
+  const agent = new AgentService({
+    tokens: agentTokens,
+    hubKey,
+    scripts: opts.agentScripts ?? { get: () => null },
+    version: opts.version ?? '0.0.0-dev',
+  });
 
   return {
     db,
     clock,
     hubKey,
+    agentTokens,
+    agent,
     audit,
     settings,
     auth,

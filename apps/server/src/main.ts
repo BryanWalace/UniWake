@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { resolvePrepareScriptPath } from './adapters/prepare-script';
+import { resolveAgentScriptsDir } from './adapters/agent-scripts';
 import { GitHubReleaseSource } from './adapters/github-release-source';
 import { resolveOuiPath } from './adapters/oui-file';
 import { GitHubTimeCheck } from './adapters/github-time';
@@ -113,6 +114,7 @@ export async function main(argv: readonly string[], opts: MainOptions = {}): Pro
       },
       certScriptPath: resolveHelperPath(import.meta.dirname, 'new-panel-cert.ps1'),
       prepareScriptPath: resolvePrepareScriptPath(import.meta.dirname),
+      agentScriptsDir: resolveAgentScriptsDir(import.meta.dirname),
       // E2E (demo mode only): keep Modo equipe on loopback, never broadcasting on the real LAN.
       ...(config.demo ? demoTeamHooks(env) : {}),
       // Real health checks only for a real hub (never in demo mode or tests).

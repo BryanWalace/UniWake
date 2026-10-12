@@ -87,6 +87,8 @@ export async function buildApp(opts: {
 
   mkdirSync(join(out, 'scripts'));
   cpSync(join(root, 'scripts/prepare-target.ps1'), join(out, 'scripts/prepare-target.ps1'));
+  // v1.3 lab-PC agent scripts, served by the agent listener (ADR-042/044).
+  cpSync(join(root, 'scripts/agent'), join(out, 'scripts/agent'), { recursive: true });
   mkdirSync(join(out, 'helper'));
   for (const f of readdirSync(join(root, 'apps/server/helper'))) {
     if (f.endsWith('.ps1')) cpSync(join(root, 'apps/server/helper', f), join(out, 'helper', f));

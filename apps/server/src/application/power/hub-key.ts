@@ -125,6 +125,11 @@ export class HubKeyService {
     this.d.logger.info({ keyId }, 'hub signing key created');
   }
 
+  /** Loads the key on first use (routes that sign call this; the hub also inits at start). */
+  async ensure(): Promise<void> {
+    if (!this.loaded) await this.init();
+  }
+
   private key(): Loaded {
     if (!this.loaded) throw new Error('hub signing key not loaded (init not called)');
     return this.loaded;

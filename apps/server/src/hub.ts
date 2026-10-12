@@ -29,6 +29,7 @@ import { SqliteSchedulerRepo } from './db/repositories/scheduler-repo';
 import { CompositeProber, PingExeIcmp, powershellSpawner, PsHelperIcmp } from './adapters/icmp';
 import { OsNetworkInterfaces } from './adapters/network-interfaces';
 import { NodeProcessRunner } from './adapters/process-runner';
+import { AgentScriptFiles } from './adapters/agent-scripts';
 import { DevSecretProtector, DpapiSecretProtector } from './adapters/secret-protector';
 import { NodeSyncNetwork } from './adapters/sync-network';
 import type { SecretProtector, SyncEndpoint } from './application/ports';
@@ -82,6 +83,8 @@ export interface HubOptions {
   updateLauncher?: UpdateLauncher | null;
   /** scripts/prepare-target.ps1 served to target PCs (FR-007.3); null = not available. */
   prepareScriptPath?: string | null;
+  /** scripts\agent (v1.3): uniwake-agent.ps1 and uniwake-aviso.ps1. */
+  agentScriptsDir?: string | null;
   /** Health checks that leave the process (main.ts on a real install); none in tests. */
   hostChecks?: HostChecks | null;
   timeCheck?: TimeCheck | null;
@@ -284,6 +287,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       backupsDir: opts.ports ? null : paths.backups,
       requestRestart: () => opts.requestRestart?.(),
       prepareScript: new PrepareScriptFile(opts.prepareScriptPath ?? null),
+      agentScripts: new AgentScriptFiles(opts.agentScriptsDir ?? null),
       releaseSource: opts.releaseSource ?? null,
       team: {
         port: config.syncPort,

@@ -355,7 +355,7 @@ decisions", ADR-043/045/047/048 amended).
 ## M17 — Agent channel and power orders (hub)
 | ID | Task | Refs | Tests | Done when |
 |---|---|---|---|---|
-| [ ] M17-T01 | Agent tokens: issue at enrollment (when asked), hash, rotation with pending token, no rotation when frozen without persistence, revoke; enrollment answer signed over nonce with script hashes. | FR-302.2; ADR-043 | AC-302-02, AC-302-04 | — |
+| [x] M17-T01 | Agent tokens: issue at enrollment (when asked), hash, rotation with pending token, no rotation when frozen without persistence, revoke; enrollment answer signed over nonce with script hashes. | FR-302.2; ADR-043 | AC-302-02, AC-302-04 | — |
 | [ ] M17-T02 | `POST /agent/v1/checkin` + `GET /agent/v1/scripts/:name`: Zod, per-token/IP rate limits, report dedupe/ack, orders delivery, agenda cache, hub list, signature; route-table authz test updated. | FR-302.1, FR-302.3 | AC-302-01, AC-302-03 | — |
 | [ ] M17-T03 | Power orders: preview (ready vs needs preparation, SR-10), jobs, cancel, expiry, live states with monitor offline confirmation, SSE. | FR-305 | AC-305-01, AC-305-02, AC-305-04 | — |
 | [ ] M17-T04 | Scheduler handles only `action = 'wake'`; shutdown schedules feed agendas only; schedule API accepts action + power fields. | FR-306; ADR-048 | AC-306-01 | — |

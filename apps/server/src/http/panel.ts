@@ -47,10 +47,13 @@ export async function registerPanelRoutes(app: FastifyInstance, s: HttpServices)
   teamRoutes(app, s);
 }
 
-/** Agent listener: exactly health, enrollment and the script download (ADR-011). */
+/**
+ * Agent listener (ADR-011, ADR-043): health, enrollment, the prepare script and, from v1.3, the
+ * agent check-in and agent scripts.
+ */
 export function registerAgentRoutes(
   app: FastifyInstance,
-  s: Pick<HttpServices, 'enrollment'>,
+  s: Pick<HttpServices, 'enrollment' | 'agent' | 'hubKey'>,
 ): void {
   healthRoutes(app);
   prepareScriptRoute(app, s);
