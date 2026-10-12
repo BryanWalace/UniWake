@@ -392,7 +392,7 @@ decisions", ADR-043/045/047/048 amended).
 | [x] M20-T01 | Help pages "Desligar computadores" and "Laboratórios com Deep Freeze ou similar". | FR-311 | AC-311-01 | — |
 | [x] M20-T02 | README: features, preparation step, ports, roadmap (1.3 delivered on release only), troubleshooting (task missing, wake timers, freezing, clock, antivirus). | FR-311 | — | reviewed against code |
 | [x] M20-T03 | Load test: 500 simulated agents every 60 s (NFR-301). | NFR-301 | perf test | — |
-| [ ] M20-T04 | `DEV_VERSION_BASE` → 1.3.0; dev installer artifact. | ADR-041 | CI | — |
+| [x] M20-T04 | `DEV_VERSION_BASE` → 1.3.0; dev installer artifact. | ADR-041 | CI | — |
 
 ## Phase 10 — Validate v1.3 (lead: Debug)
 | ID | Task | Refs | Evidence |
