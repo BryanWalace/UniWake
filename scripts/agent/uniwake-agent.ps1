@@ -33,7 +33,11 @@ $script:UwLateWakeMaxMinutes = 60
 $script:UwSleepGapMs = 3L * 60000
 $script:UwMaxQueuedReports = 500
 $script:UwMaxReportsPerCheckin = 50
+# One timeout per request (HttpWebRequest has no separate connect timeout) and at most 3 attempts
+# per run, so a run with every hub PC off ends in about 15 s of waiting (plan §15.7, NFR-302). The
+# hub that answered last lists itself first, so it is tried first.
 $script:UwHttpTimeoutMs = 5000
+$script:UwMaxHubAttempts = 3
 
 # ------------------------------------------------------------------ signatures (ADR-044)
 
@@ -639,8 +643,11 @@ function Invoke-UwCheckin {
     [Parameter(Mandatory)][hashtable]$Request
   )
   $unauthorized = $false
+  $attempts = 0
   foreach ($hub in @(Get-UwProp $Config 'hubs' @())) {
     foreach ($url in @($hub.urls)) {
+      if ($attempts -ge $script:UwMaxHubAttempts) { break }
+      $attempts++
       $nonce = Get-UwNonce
       $sentAt = Get-UwUtcNow
       $body = [System.Text.Encoding]::UTF8.GetBytes(

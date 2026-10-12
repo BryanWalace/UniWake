@@ -1046,8 +1046,9 @@ features, preparation step, roadmap, troubleshooting (task missing, wake timers,
 - **NFR-301 Load:** 500 machines checking in every 60 s → ≈ 8.3 requests/s; a check-in costs ≤ 5 ms
   of hub CPU without changes and the agenda is cached per device until relevant data change
   [perf test].
-- **NFR-302 Lab PC cost:** the 1-minute task finishes in < 2 s with the hub off (connect timeout
-  3 s, request timeout 10 s) [manual measurement in V3].
+- **NFR-302 Lab PC cost:** the 1-minute task finishes in < 2 s when the hub answers or refuses the
+  connection (service stopped); with every hub PC off it waits at most 3 attempts × 5 s (idle
+  waiting, not CPU; amended in V3-T01: one 5 s timeout per request) [manual measurement in V3].
 - **NFR-303 Security:** per-machine tokens (hash only), rotation, revocation, rate limits, signed
   answers and signed self-update (ADR-043, ADR-044); no inbound port on lab PCs.
 

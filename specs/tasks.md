@@ -397,6 +397,6 @@ decisions", ADR-043/045/047/048 amended).
 ## Phase 10 — Validate v1.3 (lead: Debug)
 | ID | Task | Refs | Evidence |
 |---|---|---|---|
-| [ ] V3-T01 | Walk every v1.3 AC; record evidence in `validation.md` §v1.3. | FR-301..311 | `validation.md` |
+| [x] V3-T01 | Walk every v1.3 AC; record evidence in `validation.md` §v1.3. | FR-301..311 | `validation.md` |
 | [ ] V3-T02 | Owner checklist for real lab PCs (pt-BR, in `NEXT.md`): prepare, manual shutdown, schedule with hub off, postpone, sleep + wake timer, user-session window, (if available) a frozen PC. | B-002 | checklist |
 | [ ] V3-T03 | Final audit (Code Reviewer) and Architect approval → `specs/reviews/v1.3-final.md`. | — | review |

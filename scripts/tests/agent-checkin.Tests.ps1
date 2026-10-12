@@ -132,6 +132,13 @@ Describe 'Check-in client (FR-302.1, ADR-044)' {
 
     Mock Invoke-UwHttp { throw 'desligado' }
     Invoke-UwCheckin -Config $script:Config -Token 't' -Request $script:Build | Should -BeNullOrEmpty
+
+    # Plan §15.7: at most 3 attempts per run, whatever the size of the team.
+    $many = @(1..5 | ForEach-Object { [pscustomobject]@{ instanceId = $null; urls = @("http://10.0.0.1$($_):47101"); keyId = 'k'; publicKey = $script:Hub.Entry.publicKey } })
+    $big = [pscustomobject]@{ protocol = 1; epoch = 0; hubs = $many }
+    Mock Invoke-UwHttp { throw 'desligado' }
+    Invoke-UwCheckin -Config $big -Token 't' -Request $script:Build | Should -BeNullOrEmpty
+    Should -Invoke Invoke-UwHttp -Times 3 -Exactly -ParameterFilter { $Url -like 'http://10.0.0.1*' }
   }
 
   It 'keeps the hub that answered first in the list; ignores lists of an older key epoch' {

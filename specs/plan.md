@@ -669,7 +669,7 @@ SSE: `power.job` `{jobId, counts}`, `power.device` `{jobId, deviceId, state}`, `
   (coarse) → orders `pendente` for the device → mark `entregue` → agenda from cache (key: device +
   data version) → hubs list (team) → hashes → rotation → JSON body → sign → send.
 - **Agent run:** lock (task IgnoreNew) → heartbeat → load state → check folder ACL → check-in
-  (each hub in list order, connect 3 s / total 10 s; stop at first verified answer) → apply answer
+  (each hub in list order, one 5 s timeout per request, at most 3 attempts; stop at first verified answer) → apply answer
   (orders, agenda, hubs, token, self-update) → rewrite "UniWake Despertar" if agenda version
   changed → evaluate rules (ADR-045) → if something is due: warning flow (ADR-046), polling the hub
   every 30 s for cancel → report → `shutdown` wrapper.
@@ -698,7 +698,7 @@ changes the power plan; the scripts' wrappers are mocked and a guard throws on a
 
 ### 15.7 Limits and timeouts
 Check-in body ≤ 64 KB, answer ≤ 256 KB (7 days × few items); reports per request ≤ 50; agenda ≤ 200
-items; orders expire after 120 min; agent HTTP connect 3 s, total 10 s per hub, ≤ 3 hubs per run;
+items; orders expire after 120 min; agent HTTP 5 s per request (HttpWebRequest has one timeout, no separate connect timeout), ≤ 3 attempts per run (amended in V3-T01);
 UI request/response files ≤ 4 KB; local report queue ≤ 500 lines.
 
 ### 15.8 Risks
