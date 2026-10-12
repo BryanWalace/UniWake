@@ -27,6 +27,8 @@
   Identificação da chave do UniWake (vem no comando do painel): confere que a resposta veio dele.
 .PARAMETER PersistentPath
   Pasta que sobrevive ao congelamento (ex.: ThawSpace do Deep Freeze, T:\UniWake) para a agenda.
+.PARAMETER UwfExclude
+  Em computadores com o Filtro de Gravação Unificado (UWF), exclui a pasta de dados do agente.
 .PARAMETER RemoveAgent
   Remove o desligamento remoto deste computador (tarefas e arquivos do agente).
 .PARAMETER SkipEnrollment
@@ -46,6 +48,7 @@ param(
   [switch]$NoFirewallChange,
   [string]$HubKeyId = '',
   [string]$PersistentPath = '',
+  [switch]$UwfExclude,
   [switch]$RemoveAgent
 )
 
@@ -659,9 +662,107 @@ function Set-UwWakeTimer {
   & powercfg.exe /SETACTIVE SCHEME_CURRENT | Out-Null
 }
 
-# Freezing software (FR-308.1, ADR-047): filled in by M18-T06.
+# Freezing software on this computer (FR-308.1, ADR-047).
 function Get-UwFreezeState {
-  return @{ product = $null; state = 'unverified' }
+  try {
+    $services = @(Get-Service -Name 'DFServ', 'DfServEx' -ErrorAction SilentlyContinue | ForEach-Object Name)
+    $processes = @(Get-Process -Name 'FrzState2k', 'DFServ', 'shield', 'shdserv', 'shdtray', 'DefenderDaemon' -ErrorAction SilentlyContinue | ForEach-Object ProcessName)
+    $dfcExit = $null
+    if ($services.Count -gt 0 -or $processes -contains 'FrzState2k') {
+      # DFC.exe location is not documented for every version (ADR-047): PATH, then the usual folders.
+      $candidates = @(Get-Command 'DFC.exe' -ErrorAction SilentlyContinue | ForEach-Object Source) +
+        @("$env:WINDIR\SysWOW64\DFC.exe", "$env:WINDIR\System32\DFC.exe")
+      $dfc = @($candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1)
+      if ($dfc.Count -gt 0) {
+        & $dfc[0] get /ISFROZEN | Out-Null
+        $dfcExit = $LASTEXITCODE
+      }
+    }
+    $uwf = $null
+    try {
+      $f = Get-CimInstance -Namespace 'root\standardcimv2\embedded' -ClassName 'UWF_Filter' -ErrorAction Stop | Select-Object -First 1
+      if ($f) { $uwf = @{ CurrentEnabled = [bool]$f.CurrentEnabled; NextEnabled = [bool]$f.NextEnabled } }
+    } catch {
+      $uwf = $null # no UWF on this edition
+    }
+    return Resolve-UwFreezeState @{ Services = $services; Processes = $processes; DfcExit = $dfcExit; Uwf = $uwf; Failed = $false }
+  } catch {
+    return @{ product = $null; state = 'unverified' }
+  }
+}
+
+<#
+  Freezing software (FR-308.1, ADR-047), from facts gathered by Get-UwFreezeFact. Pure. Only what
+  ADR-047 lists: Deep Freeze state from `DFC.exe get /ISFROZEN` (exit 0 thawed, 1 frozen; third-
+  party sources), UWF from UWF_Filter.CurrentEnabled (Microsoft); Reboot Restore Rx and Shadow
+  Defender are only detected (state "não verificado"). Returns @{ product; state } with state
+  none | frozen | thawed | present_unknown | unverified.
+#>
+function Resolve-UwFreezeState {
+  [CmdletBinding()]
+  param($Facts)
+  # StrictMode: a missing key throws, so read every fact through ContainsKey.
+  $get = { param($k) if ($Facts -is [hashtable] -and $Facts.ContainsKey($k)) { $Facts[$k] } else { $null } }
+  if ($null -eq $Facts -or (& $get 'Failed')) { return @{ product = $null; state = 'unverified' } }
+  $dfcExit = & $get 'DfcExit'
+  $uwf = & $get 'Uwf'
+  $names = @(@(& $get 'Services') + @(& $get 'Processes') | Where-Object { $_ } | ForEach-Object { ([string]$_).ToLowerInvariant() })
+  $found = New-Object System.Collections.ArrayList
+  if ($names -contains 'dfserv' -or $names -contains 'dfservex' -or $names -contains 'frzstate2k') {
+    $state = 'present_unknown'
+    if ($dfcExit -eq 0) { $state = 'thawed' } elseif ($dfcExit -eq 1) { $state = 'frozen' }
+    [void]$found.Add(@{ product = 'deep_freeze'; state = $state })
+  }
+  if ($null -ne $uwf) {
+    $state = 'thawed'
+    if ($uwf.CurrentEnabled) { $state = 'frozen' }
+    [void]$found.Add(@{ product = 'uwf'; state = $state })
+  }
+  if ($names -contains 'shield' -or $names -contains 'shdserv' -or $names -contains 'shdtray') {
+    [void]$found.Add(@{ product = 'reboot_restore_rx'; state = 'present_unknown' })
+  }
+  if ($names -contains 'defenderdaemon') {
+    [void]$found.Add(@{ product = 'shadow_defender'; state = 'present_unknown' })
+  }
+  if ($found.Count -eq 0) { return @{ product = $null; state = 'none' } }
+  # The most constraining one is what matters: frozen, then unknown, then thawed.
+  foreach ($want in 'frozen', 'present_unknown', 'thawed') {
+    foreach ($f in $found) { if ($f.state -eq $want) { return $f } }
+  }
+  return $found[0]
+}
+
+$script:UwFreezeProducts = @{
+  deep_freeze = 'Deep Freeze'; uwf = 'Filtro de Gravação Unificado (UWF)'
+  reboot_restore_rx = 'Reboot Restore Rx'; shadow_defender = 'Shadow Defender'
+}
+
+<# The pt-BR "Congelamento" text of FR-308.1. #>
+function Format-UwFreezeLabel {
+  param($Freeze)
+  $product = ''
+  if ($Freeze.product) { $product = ": $($script:UwFreezeProducts[[string]$Freeze.product])" }
+  switch ($Freeze.state) {
+    'none' { return 'não detectado' }
+    'frozen' { return "detectado (congelada)$product" }
+    'thawed' { return "detectado (descongelada)$product" }
+    'present_unknown' { return "detectado (estado não verificado)$product" }
+    default { return 'não verificado' }
+  }
+}
+
+function Add-UwUwfExclusion {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param([string]$Path)
+  if (-not $PSCmdlet.ShouldProcess($Path, 'Excluir do Filtro de Gravação Unificado (UWF)')) { return 0 }
+  & uwfmgr.exe file add-exclusion $Path | Out-Null
+  return $LASTEXITCODE
+}
+
+function Test-UwPersistentPath {
+  param([string]$Path)
+  $root = [IO.Path]::GetPathRoot($Path)
+  return [bool]($root -and (Test-Path -LiteralPath $root))
 }
 
 <#
@@ -697,7 +798,7 @@ function Invoke-UwPowerPlanStep {
   signed answer), the token and the hub list, registers the tasks and starts the first check-in.
 #>
 function Invoke-UwRemoteShutdownStep {
-  param([string]$HubUrl, [string]$HubKeyId, [string]$Nonce, [string]$PersistentPath)
+  param([string]$HubUrl, [string]$HubKeyId, [string]$Nonce, [string]$PersistentPath, [switch]$UwfExclude)
   $name = 'Desligamento remoto'
   if (-not $HubKeyId) {
     Add-UwStep $name $script:UwStatus.NotApplies 'comando antigo: copie o comando atualizado em "Preparar máquinas" para ativar o desligamento remoto'
@@ -752,6 +853,8 @@ function Invoke-UwRemoteShutdownStep {
     Register-UwAgentTask -AgentDir $dir
     Invoke-UwPowerPlanStep
     $freeze = Get-UwFreezeState
+    Add-UwStep 'Congelamento' $script:UwStatus.Ok (Format-UwFreezeLabel $freeze)
+    Invoke-UwPersistenceStep -Freeze $freeze -PersistentPath $PersistentPath -UwfExclude:$UwfExclude -DataDir (Join-Path $dir 'data')
     if ($freeze.state -eq 'frozen') {
       Add-UwStep $name 'ATENÇÃO' ("a máquina está congelada ($($freeze.product)): descongele (Thawed / modo manutenção), execute o comando de novo e congele outra vez")
     } else {
@@ -760,6 +863,34 @@ function Invoke-UwRemoteShutdownStep {
     }
   } catch {
     Add-UwStep $name $script:UwStatus.Failed $_.Exception.Message
+  }
+}
+
+<#
+  FR-308.4: where the agenda survives a frozen restart — the -PersistentPath folder (e.g. a Deep
+  Freeze ThawSpace) or, with -UwfExclude on a UWF computer, an exclusion of the agent's data folder
+  (takes effect after the next restart, Microsoft Learn).
+#>
+function Invoke-UwPersistenceStep {
+  param($Freeze, [string]$PersistentPath, [switch]$UwfExclude, [string]$DataDir)
+  if ($PersistentPath) {
+    if (Test-UwPersistentPath $PersistentPath) {
+      Add-UwStep 'Pasta persistente' $script:UwStatus.Ok "agenda e relatórios em $PersistentPath"
+    } else {
+      Add-UwStep 'Pasta persistente' $script:UwStatus.Attention "$PersistentPath não existe neste computador: a agenda fica na pasta do agente"
+    }
+  }
+  if ($UwfExclude) {
+    if ($Freeze.product -ne 'uwf') {
+      Add-UwStep 'Exclusão do UWF' $script:UwStatus.NotApplies 'o UWF não está neste computador'
+    } else {
+      $code = Add-UwUwfExclusion -Path $DataDir
+      if ($code -eq 0) {
+        Add-UwStep 'Exclusão do UWF' $script:UwStatus.Ok "$DataDir (vale depois de reiniciar)"
+      } else {
+        Add-UwStep 'Exclusão do UWF' $script:UwStatus.Failed "uwfmgr saiu com código $code"
+      }
+    }
   }
 }
 
@@ -816,6 +947,7 @@ function Invoke-UwPrepare {
     [switch]$NoFirewallChange,
     [string]$HubKeyId = '',
     [string]$PersistentPath = '',
+    [switch]$UwfExclude,
     [switch]$RemoveAgent
   )
   $script:UwSteps.Clear()
@@ -865,7 +997,7 @@ function Invoke-UwPrepare {
     } else {
       $enrolled = Invoke-UwEnrollStep -Nic $pick.Chosen -Adapters $adapters -HubUrl $HubUrl -RoomCode $RoomCode -Token $Token -HubKeyId $HubKeyId
       if ($enrolled) {
-        Invoke-UwRemoteShutdownStep -HubUrl $HubUrl -HubKeyId $HubKeyId -Nonce $script:UwEnrollNonce -PersistentPath $PersistentPath
+        Invoke-UwRemoteShutdownStep -HubUrl $HubUrl -HubKeyId $HubKeyId -Nonce $script:UwEnrollNonce -PersistentPath $PersistentPath -UwfExclude:$UwfExclude
       }
     }
     Write-UwSummary
@@ -881,5 +1013,5 @@ function Invoke-UwPrepare {
 
 # Dot-sourcing (tests) only loads the functions above.
 if ($MyInvocation.InvocationName -ne '.') {
-  exit (Invoke-UwPrepare -HubUrl $HubUrl -RoomCode $RoomCode -Token $Token -SkipEnrollment:$SkipEnrollment -NoFirewallChange:$NoFirewallChange -HubKeyId $HubKeyId -PersistentPath $PersistentPath -RemoveAgent:$RemoveAgent)
+  exit (Invoke-UwPrepare -HubUrl $HubUrl -RoomCode $RoomCode -Token $Token -SkipEnrollment:$SkipEnrollment -NoFirewallChange:$NoFirewallChange -HubKeyId $HubKeyId -PersistentPath $PersistentPath -UwfExclude:$UwfExclude -RemoveAgent:$RemoveAgent)
 }

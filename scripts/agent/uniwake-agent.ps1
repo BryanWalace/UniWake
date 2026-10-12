@@ -282,13 +282,79 @@ function Get-UwSessionInfo {
   }
 }
 
-# Freezing software (FR-308.1, ADR-047); filled in by M18-T06.
+# Freezing software (FR-308.1, ADR-047), reported in every check-in.
 function Get-UwFreezeInfo {
   [CmdletBinding()]
   param()
   Assert-UwRealSystem 'Get-UwFreezeInfo'
-  return @{ product = $null; state = 'unverified'; persistent = $false }
+  try {
+    $services = @(Get-Service -Name 'DFServ', 'DfServEx' -ErrorAction SilentlyContinue | ForEach-Object Name)
+    $processes = @(Get-Process -Name 'FrzState2k', 'DFServ', 'shield', 'shdserv', 'shdtray', 'DefenderDaemon' -ErrorAction SilentlyContinue | ForEach-Object ProcessName)
+    $dfcExit = $null
+    if ($services.Count -gt 0 -or $processes -contains 'FrzState2k') {
+      # DFC.exe location is not documented for every version (ADR-047): PATH, then the usual folders.
+      $candidates = @(Get-Command 'DFC.exe' -ErrorAction SilentlyContinue | ForEach-Object Source) +
+        @("$env:WINDIR\SysWOW64\DFC.exe", "$env:WINDIR\System32\DFC.exe")
+      $dfc = @($candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1)
+      if ($dfc.Count -gt 0) {
+        & $dfc[0] get /ISFROZEN | Out-Null
+        $dfcExit = $LASTEXITCODE
+      }
+    }
+    $uwf = $null
+    try {
+      $f = Get-CimInstance -Namespace 'root\standardcimv2\embedded' -ClassName 'UWF_Filter' -ErrorAction Stop | Select-Object -First 1
+      if ($f) { $uwf = @{ CurrentEnabled = [bool]$f.CurrentEnabled; NextEnabled = [bool]$f.NextEnabled } }
+    } catch {
+      $uwf = $null # no UWF on this edition
+    }
+    return Resolve-UwFreezeState @{ Services = $services; Processes = $processes; DfcExit = $dfcExit; Uwf = $uwf; Failed = $false }
+  } catch {
+    return @{ product = $null; state = 'unverified' }
+  }
 }
+
+<#
+  Freezing software (FR-308.1, ADR-047), from facts gathered by Get-UwFreezeFact. Pure. Only what
+  ADR-047 lists: Deep Freeze state from `DFC.exe get /ISFROZEN` (exit 0 thawed, 1 frozen; third-
+  party sources), UWF from UWF_Filter.CurrentEnabled (Microsoft); Reboot Restore Rx and Shadow
+  Defender are only detected (state "não verificado"). Returns @{ product; state } with state
+  none | frozen | thawed | present_unknown | unverified.
+#>
+function Resolve-UwFreezeState {
+  [CmdletBinding()]
+  param($Facts)
+  # StrictMode: a missing key throws, so read every fact through ContainsKey.
+  $get = { param($k) if ($Facts -is [hashtable] -and $Facts.ContainsKey($k)) { $Facts[$k] } else { $null } }
+  if ($null -eq $Facts -or (& $get 'Failed')) { return @{ product = $null; state = 'unverified' } }
+  $dfcExit = & $get 'DfcExit'
+  $uwf = & $get 'Uwf'
+  $names = @(@(& $get 'Services') + @(& $get 'Processes') | Where-Object { $_ } | ForEach-Object { ([string]$_).ToLowerInvariant() })
+  $found = New-Object System.Collections.ArrayList
+  if ($names -contains 'dfserv' -or $names -contains 'dfservex' -or $names -contains 'frzstate2k') {
+    $state = 'present_unknown'
+    if ($dfcExit -eq 0) { $state = 'thawed' } elseif ($dfcExit -eq 1) { $state = 'frozen' }
+    [void]$found.Add(@{ product = 'deep_freeze'; state = $state })
+  }
+  if ($null -ne $uwf) {
+    $state = 'thawed'
+    if ($uwf.CurrentEnabled) { $state = 'frozen' }
+    [void]$found.Add(@{ product = 'uwf'; state = $state })
+  }
+  if ($names -contains 'shield' -or $names -contains 'shdserv' -or $names -contains 'shdtray') {
+    [void]$found.Add(@{ product = 'reboot_restore_rx'; state = 'present_unknown' })
+  }
+  if ($names -contains 'defenderdaemon') {
+    [void]$found.Add(@{ product = 'shadow_defender'; state = 'present_unknown' })
+  }
+  if ($found.Count -eq 0) { return @{ product = $null; state = 'none' } }
+  # The most constraining one is what matters: frozen, then unknown, then thawed.
+  foreach ($want in 'frozen', 'present_unknown', 'thawed') {
+    foreach ($f in $found) { if ($f.state -eq $want) { return $f } }
+  }
+  return $found[0]
+}
+
 
 # Power plan facts read, never changed (owner Q-3); filled in by M18-T05.
 function Get-UwPowerInfo {
@@ -1002,6 +1068,9 @@ function Invoke-UwRun {
     Paths = $paths; Config = $config; State = $state; Last = $null
     Boot = (Get-UwBootTime); Freeze = (Get-UwFreezeInfo); Power = (Get-UwPowerInfo); Session = (Get-UwSessionInfo)
   }
+  # FR-308.4: data kept in a folder that survives freezing (ThawSpace, UWF exclusion) when configured.
+  $persistent = Get-UwProp $config 'persistentPath'
+  $ctx.Freeze = @{ product = $ctx.Freeze.product; state = $ctx.Freeze.state; persistent = [bool]$persistent }
   # No GetNewClosure(): it runs the block in another module, without this script's functions.
   $script:UwPollContext = $ctx
   $poll = { Invoke-UwPoll -Context $script:UwPollContext }

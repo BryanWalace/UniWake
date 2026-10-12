@@ -144,6 +144,30 @@ Describe 'Remote shutdown step (FR-301)' {
     (Get-Step 'Desligamento remoto')[0].Detalhe | Should -BeLike '*comando atualizado*'
   }
 
+  It 'AC-308-02: on a frozen machine the step ends ATENÇÃO with the instruction; enrollment still succeeds' {
+    Mock Get-UwFreezeState { @{ product = 'deep_freeze'; state = 'frozen' } }
+    Invoke-UwPrepare @PrepArgs | Should -Be 0
+    $step = (Get-Step 'Desligamento remoto')[0]
+    $step.Resultado | Should -Be 'ATENÇÃO'
+    $step.Detalhe | Should -BeLike '*descongele (Thawed / modo manutenção), execute o comando de novo e congele outra vez*'
+    (Get-Step 'Congelamento')[0].Detalhe | Should -Be 'detectado (congelada): Deep Freeze'
+    (Get-Step 'Cadastro no UniWake')[0].Resultado | Should -Be 'OK'
+    Should -Invoke Start-UwAgentTask -Times 0
+  }
+
+  It 'AC-308-04: -PersistentPath is kept for the agent and checked; -UwfExclude excludes the data folder on UWF' {
+    Mock Get-UwFreezeState { @{ product = 'uwf'; state = 'thawed' } }
+    Mock Add-UwUwfExclusion { 0 }
+    Invoke-UwPrepare @PrepArgs -PersistentPath 'T:\UniWake' -UwfExclude | Should -Be 0
+    ([Text.Encoding]::UTF8.GetString($script:Written['config.json'].Bytes) | ConvertFrom-Json).persistentPath | Should -Be 'T:\UniWake'
+    (Get-Step 'Pasta persistente')[0].Resultado | Should -Be 'OK'
+    (Get-Step 'Exclusão do UWF')[0].Detalhe | Should -BeLike '*\agent\data (vale depois de reiniciar)'
+    Should -Invoke Add-UwUwfExclusion -Times 1 -Exactly
+    Mock Test-UwPersistentPath { $false }
+    Invoke-UwPrepare @PrepArgs -PersistentPath 'T:\UniWake' | Should -Be 0
+    (Get-Step 'Pasta persistente')[0].Resultado | Should -Be 'ATENÇÃO'
+  }
+
   It 'reads powercfg values by position, whatever the Windows language' {
     $ptBR = @(
       'GUID do Esquema de Energia: 381b4222-f694-41f0-9685-ff5bb260df2e  (Equilibrado)',

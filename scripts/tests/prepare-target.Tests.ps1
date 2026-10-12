@@ -55,7 +55,7 @@ Describe 'test safety net' {
     $ast = [Management.Automation.Language.Parser]::ParseInput($script, [ref]$tokens, [ref]$errors)
     $pure = @('Add-UwStep', 'Select-UwWiredAdapter', 'Get-UwWantedValue', 'Get-UwErrorMessage', 'Write-UwSummary',
       'ConvertFrom-UwBase64Url', 'ConvertTo-UwBase64Url', 'Get-UwSha256Hex', 'Get-UwKeyId', 'Test-UwSignature', 'Get-UwNonce',
-      'ConvertFrom-UwPowercfgOutput')
+      'ConvertFrom-UwPowercfgOutput', 'Resolve-UwFreezeState', 'Format-UwFreezeLabel')
     $defined = $ast.FindAll({ $args[0] -is [Management.Automation.Language.FunctionDefinitionAst] }, $false) |
       ForEach-Object { $_.Name } |
       Where-Object { $_ -notlike 'Invoke-Uw*' -and $pure -notcontains $_ }
