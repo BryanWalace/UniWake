@@ -1,0 +1,83 @@
+/**
+ * Loads what a lab PC's agenda depends on and calls the pure generator (FR-303.1, ADR-045). Cached
+ * per device while the replicated data are unchanged (the change log's highest sequence) and for
+ * at most ten minutes, so 500 PCs checking in every minute cost almost nothing (NFR-301).
+ */
+import type { Agenda } from '@uniwake/shared';
+import {
+  buildAgenda,
+  type AgendaDevice,
+  type AgendaPause,
+  type AgendaSchedule,
+} from '../../domain/agenda';
+import type { ExceptionRange } from '../../domain/schedule';
+import type { Clock } from '../ports';
+import { rowsToTarget, type ScheduleRecord, type TargetRefs } from '../schedules/schedules-service';
+
+export interface AgendaDeps {
+  schedules: () => ScheduleRecord[];
+  exceptions: () => ExceptionRange[];
+  pause: () => AgendaPause | null;
+  device: (deviceId: number) => AgendaDevice | undefined;
+  refs: TargetRefs;
+  /** Changes whenever any replicated data change (highest change-log sequence). */
+  dataVersion: () => number;
+  occurrenceId: (scheduleUuid: string, at: number) => string;
+  digest: (text: string) => string;
+  clock: Clock;
+}
+
+const BUCKET_MS = 10 * 60_000;
+
+export class AgendaService {
+  private cache = new Map<number, { key: string; agenda: Agenda }>();
+  private cachedVersion = -1;
+
+  constructor(private readonly d: AgendaDeps) {}
+
+  forDevice(deviceId: number): Agenda | null {
+    const now = this.d.clock.now();
+    const version = this.d.dataVersion();
+    if (version !== this.cachedVersion) {
+      this.cache = new Map();
+      this.cachedVersion = version;
+    }
+    const key = `${version}:${Math.floor(now / BUCKET_MS)}`;
+    const hit = this.cache.get(deviceId);
+    if (hit?.key === key) return hit.agenda;
+    const device = this.d.device(deviceId);
+    if (!device) return null;
+    const agenda = buildAgenda({
+      device,
+      schedules: this.schedules(),
+      exceptions: this.d.exceptions(),
+      pause: this.d.pause(),
+      now,
+      occurrenceId: this.d.occurrenceId,
+      digest: this.d.digest,
+    });
+    this.cache.set(deviceId, { key, agenda });
+    return agenda;
+  }
+
+  private schedules(): AgendaSchedule[] {
+    return this.d
+      .schedules()
+      .filter((s) => s.uuid)
+      .map((s) => ({
+        id: s.id,
+        uuid: s.uuid!,
+        enabled: s.enabled,
+        action: s.action ?? 'wake',
+        weekdays: s.weekdays,
+        timeLocal: s.timeLocal,
+        timezone: s.timezone,
+        target: rowsToTarget(s.targets, this.d.refs),
+        warningMinutes: s.warningMinutes ?? null,
+        allowPostpone: s.allowPostpone ?? null,
+        postponeMax: s.postponeMax ?? null,
+        postponeMinutes: s.postponeMinutes ?? null,
+        excludeTags: s.excludeTags ?? [],
+      }));
+  }
+}

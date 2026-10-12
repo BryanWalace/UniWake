@@ -116,10 +116,10 @@ describe('route-table authorization (IMP-014, constitution §5)', () => {
     );
   });
 
-  it('agent listener exposes nothing beyond health, enrollment and the script (ADR-011)', async () => {
+  it('agent listener exposes nothing beyond health, enrollment, scripts and check-in (ADR-011/043)', async () => {
     for (const r of hub.agent.routeTable) {
       expect(AGENT_ALLOWED.has(`${r.method} ${r.url}`), `${r.method} ${r.url}`).toBe(true);
-      expect(['public', 'enrollment']).toContain(r.auth);
+      expect(['public', 'enrollment', 'agent']).toContain(r.auth);
     }
     expect(await checkRouteTable(hub.agent, { host: '10.0.3.15:47101' })).toEqual([]);
   });

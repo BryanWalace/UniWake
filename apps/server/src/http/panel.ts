@@ -1,7 +1,7 @@
 /** All panel-listener routes (plan §6.1). Shared by the hub and API tests. */
 import type { FastifyInstance } from 'fastify';
 import type { HttpServices } from './context';
-import { enrollRoute, prepareScriptRoute } from './routes/agent';
+import { agentScriptsRoute, checkinRoute, enrollRoute, prepareScriptRoute } from './routes/agent';
 import { auditRoutes } from './routes/audit';
 import { authRoutes } from './routes/auth';
 import { backupRoutes } from './routes/backups';
@@ -58,4 +58,6 @@ export function registerAgentRoutes(
   healthRoutes(app);
   prepareScriptRoute(app, s);
   enrollRoute(app, s);
+  checkinRoute(app, s);
+  agentScriptsRoute(app, s);
 }

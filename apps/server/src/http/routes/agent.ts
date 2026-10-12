@@ -1,5 +1,10 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { enrollAgentRequestSchema, type EnrollRequest } from '@uniwake/shared';
+import {
+  CHECKIN_MAX_BODY_BYTES,
+  checkinRequestSchema,
+  enrollAgentRequestSchema,
+  type EnrollRequest,
+} from '@uniwake/shared';
 import { AppError } from '../../application/errors';
 import type { HttpServices } from '../context';
 
@@ -63,6 +68,65 @@ export function enrollRoute(
         extra = { agentUnavailable: e.message };
       }
       return sendSigned(reply, s.hubKey, asked.data.nonce, { ...result, ...extra });
+    },
+  );
+}
+
+const AGENT_BEARER = /^Bearer ([A-Za-z0-9_-]{43})$/;
+
+function agentToken(req: FastifyRequest): string {
+  const m = AGENT_BEARER.exec(req.headers.authorization ?? '');
+  if (!m) throw new AppError('AGENT_TOKEN_INVALID');
+  return m[1]!;
+}
+
+/**
+ * The lab PCs' check-in (FR-302.1, ADR-043): per-IP limit and token presence before the body is
+ * read, then the machine's own limit, validation, and an answer signed over its nonce.
+ */
+export function checkinRoute(
+  app: FastifyInstance,
+  s: Pick<HttpServices, 'agent' | 'hubKey'>,
+): void {
+  app.post(
+    '/agent/v1/checkin',
+    {
+      config: { auth: 'agent' },
+      bodyLimit: CHECKIN_MAX_BODY_BYTES,
+      onRequest: async (req) => {
+        if (!s.agent.allowFrom(req.ip)) throw new AppError('AGENT_RATE_LIMITED');
+        agentToken(req);
+      },
+    },
+    async (req, reply) => {
+      const who = s.agent.identify(agentToken(req));
+      const parsed = checkinRequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        throw new AppError(
+          'VALIDATION_FAILED',
+          {},
+          parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        );
+      }
+      await s.hubKey.ensure();
+      const answer = s.agent.checkin(who, parsed.data, { ip: req.ip, host: req.headers.host });
+      return sendSigned(reply, s.hubKey, parsed.data.nonce, answer);
+    },
+  );
+}
+
+/** Agent scripts for preparation and self-update; integrity comes from signed hashes (ADR-044). */
+export function agentScriptsRoute(app: FastifyInstance, s: Pick<HttpServices, 'agent'>): void {
+  app.get<{ Params: { name: string } }>(
+    '/agent/v1/scripts/:name',
+    { config: { auth: 'public' } },
+    async (req, reply) => {
+      const script = s.agent.script(req.params.name);
+      if (!script) throw new AppError('NOT_FOUND');
+      return reply
+        .header('content-type', 'text/plain; charset=utf-8')
+        .header('cache-control', 'no-store')
+        .send(script.bytes);
     },
   );
 }

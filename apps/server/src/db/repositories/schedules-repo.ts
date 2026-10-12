@@ -24,6 +24,22 @@ interface Row {
   created_by: number | null;
   created_at: number;
   updated_at: number;
+  action: 'wake' | 'shutdown';
+  warning_minutes: number | null;
+  allow_postpone: number | null;
+  postpone_max: number | null;
+  postpone_minutes: number | null;
+  exclude_tags: string;
+}
+
+/** A stored JSON list of UUIDs; anything unreadable is an empty list. */
+function parseUuidList(text: string): string[] {
+  try {
+    const v: unknown = JSON.parse(text);
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
 }
 
 export class SqliteSchedulesRepo implements SchedulesRepo {
@@ -62,6 +78,12 @@ export class SqliteSchedulesRepo implements SchedulesRepo {
       createdAt: r.created_at,
       updatedAt: r.updated_at,
       targets: targets.get(r.id) ?? [],
+      action: r.action,
+      warningMinutes: r.warning_minutes,
+      allowPostpone: r.allow_postpone === null ? null : r.allow_postpone === 1,
+      postponeMax: r.postpone_max,
+      postponeMinutes: r.postpone_minutes,
+      excludeTags: parseUuidList(r.exclude_tags),
     }));
   }
 

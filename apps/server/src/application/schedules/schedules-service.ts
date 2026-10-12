@@ -52,6 +52,14 @@ export interface ScheduleRecord {
   createdAt: number;
   updatedAt: number;
   targets: TargetRow[];
+  /** v1.3 (FR-306): "Ligar" or "Desligar" and the shutdown policy (null for wake schedules). */
+  action?: 'wake' | 'shutdown';
+  warningMinutes?: number | null;
+  allowPostpone?: boolean | null;
+  postponeMax?: number | null;
+  postponeMinutes?: number | null;
+  /** Tag UUIDs a shutdown schedule skips (FR-306.2). */
+  excludeTags?: string[];
 }
 
 export type ScheduleWrite = Omit<ScheduleRecord, 'id' | 'uuid' | 'createdAt' | 'createdBy'>;

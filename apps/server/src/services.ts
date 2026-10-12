@@ -90,6 +90,10 @@ import { HubKeyService } from './application/power/hub-key';
 import { AgentTokensService } from './application/power/agent-tokens';
 import { AgentService, type AgentScripts } from './application/power/agent-service';
 import { SqliteDeviceAgentsRepo } from './db/repositories/device-agents-repo';
+import { SqlitePowerRepo } from './db/repositories/power-repo';
+import { AgendaService } from './application/power/agenda-service';
+import { scheduleRunUuid, uuidV5 } from './db/sync/uuid';
+import { createHash } from 'node:crypto';
 import { SqliteReplicaStore } from './db/sync/apply';
 import { changeLog, configureChangeLog } from './db/sync/change-log';
 import type { HttpServices } from './http/context';
@@ -317,8 +321,9 @@ export function createServices(
     tag: (id: number) => tagsRepo.get(id) !== undefined,
     device: (id: number) => devicesRepo.get(id) !== undefined,
   };
+  const schedulesRepo = new SqliteSchedulesRepo(db);
   const schedules = new SchedulesService({
-    repo: new SqliteSchedulesRepo(db),
+    repo: schedulesRepo,
     refs,
     describeTargets: (targets) => wake.describeTargets(targets),
     settings,
@@ -561,10 +566,40 @@ export function createServices(
     clock,
     transaction: tx,
   });
+  const powerRepo = new SqlitePowerRepo(db);
+  const agenda = new AgendaService({
+    schedules: () => schedulesRepo.list(),
+    exceptions: () => schedulesRepo.exceptions(),
+    pause: () => schedulerRepo.pause(),
+    device: (id) => powerRepo.agendaDevice(id),
+    refs,
+    dataVersion: () => powerRepo.dataVersion(),
+    occurrenceId: scheduleRunUuid,
+    digest: (t) => createHash('sha256').update(t).digest('hex'),
+    clock,
+  });
+  const agentPort = opts.running?.agentPort ?? 47101;
   const agent = new AgentService({
     tokens: agentTokens,
     hubKey,
     scripts: opts.agentScripts ?? { get: () => null },
+    store: powerRepo,
+    agenda,
+    settings,
+    clock,
+    transaction: tx,
+    hub: (host) => {
+      // The address the machine used reaches this hub; otherwise the one chosen for enrollment.
+      const fromHost =
+        host && /^\d{1,3}(\.\d{1,3}){3}:\d{1,5}$/.test(host) ? `http://${host}` : null;
+      const chosen = settings.get('enrollment.hubAddress');
+      return {
+        instanceId: changeLog(db).instanceId(),
+        epoch: team.epoch() ?? 0,
+        selfUrl: fromHost ?? (chosen ? `http://${chosen}:${agentPort}` : null),
+      };
+    },
+    cancelId: (orderUuid) => uuidV5(`power-cancel:${orderUuid}`),
     version: opts.version ?? '0.0.0-dev',
   });
 

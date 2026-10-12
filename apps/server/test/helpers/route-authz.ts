@@ -16,11 +16,13 @@ export interface AuthzFailure {
   status: number;
 }
 
-/** Agent listener routes allowed by ADR-011. */
+/** Agent listener routes allowed by ADR-011 and ADR-043 (v1.3). */
 export const AGENT_ALLOWED = new Set([
   'GET /api/health',
   'POST /agent/enroll',
   'GET /agent/prepare-target.ps1',
+  'POST /agent/v1/checkin',
+  'GET /agent/v1/scripts/:name',
 ]);
 
 export async function checkRouteTable(
@@ -36,7 +38,12 @@ export async function checkRouteTable(
       headers: { host },
       ...(route.method === 'GET' || route.method === 'DELETE' ? {} : { payload: {} }),
     };
-    if (route.auth === 'operator' || route.auth === 'admin' || route.auth === 'enrollment') {
+    if (
+      route.auth === 'operator' ||
+      route.auth === 'admin' ||
+      route.auth === 'enrollment' ||
+      route.auth === 'agent'
+    ) {
       const r = await app.inject(base);
       if (r.statusCode !== 401)
         failures.push({ route, check: 'anonymous → 401', status: r.statusCode });

@@ -72,7 +72,8 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Unit and integration tests
-        run: npm test
+        # R-M16-01: one rerun only for a native Vitest worker crash, shown as a warning.
+        run: node scripts/ci/test-crash-retry.ts
       - name: PowerShell scripts (PSScriptAnalyzer + Pester)
         shell: powershell
         run: npm run test:ps
