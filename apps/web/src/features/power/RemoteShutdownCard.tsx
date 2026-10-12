@@ -10,6 +10,7 @@ import { ApiRequestError } from '../../api/client';
 import { useMe } from '../../auth/auth';
 import { ErrorState, LoadingState } from '../../components/Banner';
 import { FormError } from '../../components/form';
+import { HelpLink } from '../help/HelpPage';
 import { Button, ConfirmDialog } from '../../components/ui';
 import { formatDateTime, plural } from '../../lib/format';
 import { READINESS_SHORT, READINESS_TONE, revokeAgent, useDeviceAgent } from './api';
@@ -151,6 +152,11 @@ function AgentDetails({ agent: a }: { agent: DeviceAgentInfo }) {
         <p className="text-sm text-slate-700">
           Para desligar esta máquina pelo UniWake, execute nela o comando atualizado de "Preparar
           máquinas".
+        </p>
+      )}
+      {(a.readiness === 'lost' || a.readiness === 'needs_preparation') && (
+        <p className="text-sm">
+          <HelpLink topic={a.readiness === 'lost' ? 'frozen-labs' : 'remote-shutdown'} />
         </p>
       )}
       {a.readiness !== 'needs_preparation' && (

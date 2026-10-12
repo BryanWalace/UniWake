@@ -255,6 +255,166 @@ export const HELP: Record<HelpTopic, { title: string; summary: string; body: Rea
       </>
     ),
   },
+  'remote-shutdown': {
+    title: 'Desligar computadores',
+    summary:
+      'Como o UniWake desliga e reinicia as máquinas, o aviso para quem está usando e o que fazer quando uma não desliga.',
+    body: (
+      <>
+        <p>
+          O UniWake não entra nos computadores pela rede para desligá-los. Cada máquina preparada
+          tem uma tarefa agendada do Windows (“UniWake”) que, a cada minuto, pergunta ao UniWake se
+          há algo a fazer. Ela também guarda os desligamentos agendados dos próximos 14 dias e os
+          executa no horário mesmo que nenhum PC da TI esteja ligado.
+        </p>
+        <h2 className="text-lg font-bold">Preparar uma máquina</h2>
+        <Steps>
+          <li>
+            Em <PrepareLink />, copie o comando e execute-o na máquina, em um PowerShell como
+            Administrador. Máquinas preparadas antes da versão 1.3 precisam do comando atualizado.
+          </li>
+          <li>
+            O comando cria três tarefas (“UniWake”, “UniWake Despertar” e “UniWake Aviso”), a pasta{' '}
+            <code>C:\ProgramData\UniWake</code> (só Administradores e o sistema podem alterá-la) e
+            ativa os temporizadores de ativação do plano de energia (na tomada).
+          </li>
+          <li>
+            Em Dispositivos, a máquina passa a mostrar “Pronta para desligar”. Na página da máquina,
+            o quadro “Desligamento remoto” mostra a última consulta, a versão e o congelamento.
+          </li>
+        </Steps>
+        <h2 className="text-lg font-bold">Desligar ou reiniciar agora</h2>
+        <p>
+          Use “Desligar” ou “Reiniciar” na página da sala, da máquina ou com várias máquinas
+          selecionadas. Antes de confirmar, o UniWake mostra quantas máquinas recebem a ordem,
+          quantas têm alguém usando e quais ainda precisam do novo preparo. O aviso padrão é de 1
+          minuto, sem adiamento; também dá para escolher 5 minutos com adiamento. A máquina recebe a
+          ordem na próxima consulta (até 1 minuto). Uma ordem que nenhuma máquina buscou em 2 horas
+          expira.
+        </p>
+        <h2 className="text-lg font-bold">Agendar desligamentos</h2>
+        <p>
+          Em Agendamentos, escolha a Ação “Desligar”. Para não desligar certas máquinas (a do
+          professor, por exemplo), marque nelas “Nunca desligar por agendamento” ou exclua uma
+          etiqueta no agendamento. Uma máquina que estava em suspensão no horário acorda sozinha
+          (temporizador de ativação) e desliga; se acordar mais de 60 minutos atrasada, ou depois do
+          próximo “Ligar”, ela não desliga e o Histórico mostra “Pulado: acordou … min após o
+          horário”.
+        </p>
+        <h2 className="text-lg font-bold">O aviso para quem está usando</h2>
+        <Bullets>
+          <li>
+            Aparece uma janela: “Este computador será desligado às … pela equipe de TI. Salve seus
+            arquivos: o que não for salvo será perdido.” O texto pode ser alterado em Configurações.
+          </li>
+          <li>
+            Nos agendamentos, a pessoa pode adiar (por padrão 2 vezes, de 15 minutos). Quando os
+            adiamentos acabam, o computador desliga.
+          </li>
+          <li>
+            Se a janela não puder ser mostrada, o Windows mostra o aviso próprio dele, sem a opção
+            de adiar. Sem ninguém logado, o computador desliga em 30 segundos.
+          </li>
+          <li>
+            O UniWake registra apenas se havia alguém logado e quantas sessões. Nunca guarda nomes
+            de usuários.
+          </li>
+        </Bullets>
+        <h2 className="text-lg font-bold">Quando uma máquina não desliga</h2>
+        <Bullets>
+          <li>
+            “Precisa do novo preparo”: execute nela o comando atualizado de <PrepareLink />.
+          </li>
+          <li>
+            “Desligamento remoto perdido”: a máquina responde na rede há 15 minutos sem consultar o
+            UniWake. Confira no Agendador de Tarefas se a tarefa “UniWake” existe e está ativa, se o
+            antivírus bloqueou o PowerShell e se a máquina não está congelada (veja “Laboratórios
+            com Deep Freeze ou similar”). Executar o comando de preparo de novo resolve a maioria
+            dos casos.
+          </li>
+          <li>
+            “Não confirmou”: a ordem foi executada, mas a máquina continuou respondendo na rede.
+            Alguém pode ter cancelado o desligamento ou um programa impediu o Windows de desligar.
+          </li>
+          <li>
+            Relógio da máquina muito errado: o UniWake corrige a diferença a cada consulta, mas
+            acerte o horário do Windows (sincronização com o domínio) para evitar surpresas.
+          </li>
+        </Bullets>
+        <h2 className="text-lg font-bold">Revogar ou remover</h2>
+        <p>
+          Na página da máquina, um administrador pode usar “Revogar desligamento remoto”: a máquina
+          deixa de receber ordens e agendamentos de desligar e continua sendo ligada normalmente.
+          Para tirar também as tarefas e arquivos, baixe o <code>prepare-target.ps1</code> em{' '}
+          <PrepareLink /> e execute <code>.\prepare-target.ps1 -RemoveAgent</code> como
+          Administrador.
+        </p>
+      </>
+    ),
+  },
+  'frozen-labs': {
+    title: 'Laboratórios com Deep Freeze ou similar',
+    summary:
+      'Em máquinas que desfazem as alterações ao reiniciar, o desligamento agendado precisa de uma pasta preservada.',
+    body: (
+      <>
+        <p>
+          Programas como Deep Freeze, Reboot Restore Rx, Shadow Defender e o Filtro de Gravação
+          Unificado (UWF) do Windows desfazem tudo o que foi alterado quando a máquina reinicia. O
+          UniWake detecta esses programas e mostra na página da máquina: “Congelamento: não
+          detectado”, “detectado (congelada)”, “detectado (descongelada)” ou “detectado (estado não
+          verificado)”.
+        </p>
+        <h2 className="text-lg font-bold">Preparar uma máquina congelada</h2>
+        <Steps>
+          <li>Descongele a máquina (Thawed / modo manutenção) e reinicie.</li>
+          <li>
+            Execute o comando de <PrepareLink />. Se a máquina estiver congelada, o resumo avisa: as
+            tarefas funcionam só até o próximo reinício.
+          </li>
+          <li>Congele de novo.</li>
+        </Steps>
+        <h2 className="text-lg font-bold">O que muda com a máquina congelada</h2>
+        <p>
+          A tarefa busca a agenda a cada vez que a máquina liga, então o desligamento agendado
+          funciona sempre que a máquina consegue falar com o UniWake depois de ligar. Sem uma pasta
+          preservada, a agenda e os relatórios guardados se perdem a cada reinício:{' '}
+          <strong>
+            o desligamento agendado depende de a máquina ter falado com o UniWake depois do último
+            reinício
+          </strong>
+          . Os relatórios perdidos aparecem no Histórico como “Provavelmente desligou (sem
+          relatório)” quando a máquina sumiu da rede perto do horário.
+        </p>
+        <h2 className="text-lg font-bold">Usar uma pasta preservada</h2>
+        <Bullets>
+          <li>
+            Deep Freeze: crie uma área ThawSpace (por exemplo, a unidade T:). Em <PrepareLink />,
+            abra “Laboratório com Deep Freeze ou similar”, informe <code>T:\UniWake</code> em “Pasta
+            persistente” e clique em “Atualizar comando”.
+          </li>
+          <li>
+            Use uma pasta nova, só do UniWake: o preparo deixa a pasta acessível apenas para
+            Administradores e o sistema. Por isso o UniWake recusa pastas do Windows (como Windows,
+            Users ou ProgramData) e pastas que já têm outros arquivos.
+          </li>
+          <li>
+            UWF: marque “Excluir a pasta do agente do Filtro de Gravação Unificado (UWF)”. A
+            exclusão vale depois do próximo reinício.
+          </li>
+          <li>
+            Deep Freeze: o estado “congelada/descongelada” é lido pelo programa de linha de comando
+            do Deep Freeze quando ele está disponível; sem ele, aparece “estado não verificado”.
+          </li>
+        </Bullets>
+        <h2 className="text-lg font-bold">Ligar continua igual</h2>
+        <p>
+          O congelamento não afeta o Wake on LAN: ligar pela rede depende só da BIOS e da placa de
+          rede.
+        </p>
+      </>
+    ),
+  },
 };
 
 export function HelpIndexPage() {
@@ -262,7 +422,8 @@ export function HelpIndexPage() {
     <section className="space-y-4">
       <PageHeader title="Ajuda" />
       <p className="text-sm text-slate-700">
-        Por que um computador não liga pela rede, como resolver, e como usar o Modo equipe.
+        Por que um computador não liga pela rede, como resolver, como desligar computadores pelo
+        UniWake e como usar o Modo equipe.
       </p>
       <ul className="space-y-3">
         {HELP_TOPICS.map((topic) => (

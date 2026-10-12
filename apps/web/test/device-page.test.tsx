@@ -460,6 +460,9 @@ describe('"Desligamento remoto" card (M19-T03, FR-309, owner Q-3/Q-6)', () => {
     const card = await screen.findByRole('region', { name: 'Desligamento remoto' });
     expect(await within(card).findByText(/comando atualizado de "Preparar/)).toBeInTheDocument();
     expect(within(card).queryByRole('button', { name: /Revogar/ })).not.toBeInTheDocument();
+    expect(
+      within(card).getByRole('link', { name: /Como resolver: Desligar computadores/ }),
+    ).toHaveAttribute('href', '/ajuda/remote-shutdown');
   });
 
   it('shows an error with a retry when the agent cannot be read', async () => {

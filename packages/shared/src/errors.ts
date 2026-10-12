@@ -11,6 +11,8 @@ export const HELP_TOPICS = [
   'firewall-icmp',
   'vlan-broadcast',
   'team-mode',
+  'remote-shutdown',
+  'frozen-labs',
 ] as const;
 export type HelpTopic = (typeof HELP_TOPICS)[number];
 
