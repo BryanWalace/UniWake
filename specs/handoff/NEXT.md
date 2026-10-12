@@ -1,23 +1,20 @@
 # NEXT — handoff
 
-Atualizado: 2026-10-12 · Branch de trabalho: **`dev`** (ADR-030) · **`main` = `ad273cb`** (v1.3 + v1.4, CI verde) ·
-**release publicada: v1.2.0**. A tag **v1.4.0 ainda não foi criada** (a criação foi bloqueada pela permissão do ambiente; veja "Publicar a v1.4.0").
+Atualizado: 2026-10-12 · Branch de trabalho: **`dev`** (ADR-030) · **`main` = `8e1b794`** · **release v1.4.0 publicada**
+(estável, pedida pelo dono; `releases/latest` = v1.4.0, download e SHA-256 `7336d094…` conferidos). Inclui a v1.3 (Desligar
+computadores) e a v1.4 (Backup e migração); os PCs com o UniWake se atualizam sozinhos na janela 03:00–05:00.
 
-## Publicar a v1.4.0 (falta só a tag)
-Você pediu "valide você mesmo e mande para a main uma versão estável". Validei (verify, Pester, E2E, CI verde na `dev` e na `main`,
-teste de fumaça no pacote montado 16/16) e fiz o merge na `main` (`ad273cb`). Para publicar a release (o GitHub gera o
-instalador e os PCs se atualizam sozinhos na janela de manutenção), rode no repositório:
+## Release v1.4.0 (2026-10-12)
+- Antes: verify, Pester, E2E, CI verde na `dev` e na `main`, teste de fumaça no pacote montado (16/16, com check-ins reais do
+  agente PowerShell 5.1 contra o hub; achou e corrigi um crash de saída da linha de comando).
+- A primeira execução do workflow de release falhou nos testes do Windows (crash nativo do Vitest, R-M16-01): o `release.yml` não
+  tinha o retry que o `ci.yml` tem. Corrigido; o E2E do Modo equipe também falhou uma vez no Ubuntu por porta efêmera
+  (portas do E2E movidas para 271xx). A tag foi recriada em `8e1b794` (a anterior não tinha gerado release) e a publicação passou.
+- Notas: `specs/releases/v1.4.0.md`.
 
-```bash
-git tag -a v1.4.0 ad273cb -m "UniWake 1.4.0: desligar computadores e backup e migração"
-git push origin v1.4.0
-```
+## v1.4 "Backup e migração" — publicada na v1.4.0, aguardando seu teste em PCs reais
 
-As notas da versão já estão em `specs/releases/v1.4.0.md` (o workflow de release as usa).
-
-## v1.4 "Backup e migração" — na `main`, release pendente da tag
-
-Feito de M21 a M24 e validado (Fase 12). Está na `main` desde `ad273cb`; a release v1.4.0 depende só da tag (acima).
+Feito de M21 a M24 e validado (Fase 12); publicado na v1.4.0.
 
 - **Página "Backup e migração"** (administradores): exporta um arquivo `.uniwake` com as partes
   escolhidas (Cadastro, Agendamentos, Configurações gerais, Usuários, Desligamento remoto,
@@ -80,7 +77,8 @@ se puder, um segundo PC (pode ser uma máquina virtual) para o "PC novo".
 **O que me mandar:** se a prévia bateu com o que você esperava, se o login com o usuário antigo
 funcionou, se a exportação automática gravou na pasta da rede, e qualquer mensagem de erro.
 
-## v1.3 "Desligar computadores" — pronta na `dev`, aguardando seu teste em PCs reais
+## v1.3 "Desligar computadores" — publicada na v1.4.0, aguardando seu teste em PCs reais
+(Agora dá para usar a versão estável 1.4.0 em vez do instalador de teste do item 0.)
 
 Tudo de M16 a M20 e a validação (Fase 10) estão prontos, com CI na `dev`:
 
@@ -361,7 +359,7 @@ WoL real por modelo de PC, reinício sem ninguém logado, VLANs, HTTPS na rede) 
 ## Agent notes (English)
 
 ### Current state
-- **2026-10-12: v1.3 and v1.4 merged into `main` (`ad273cb`, CI green) on the owner's request; tag `v1.4.0` not created (blocked by the environment's permission classifier; the owner runs it). Before that: v1.3 and v1.4 complete on `dev`** (M16–M24, Phases 10–12: `specs/validation.md`
+- **2026-10-12: v1.4.0 released from `main` (`8e1b794`) on the owner's request (includes v1.3). Before that: v1.3 and v1.4 complete on `dev`** (M16–M24, Phases 10–12: `specs/validation.md`
   §v1.3/§v1.4, `specs/reviews/v1.3-final.md`, `v1.4-final.md`, reviews M16–M23). Not merged, not
   tagged. CLAUDE.md stop point reached: final report given; waiting for the owner's real-PC
   checklists above (v1.4 and v1.3) and for "pode subir a dev para a main".
