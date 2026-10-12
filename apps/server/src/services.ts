@@ -174,6 +174,8 @@ export interface Services extends HttpServices {
   /** Signs answers to lab PCs (v1.3, ADR-044); `init()` runs at hub start. */
   hubKey: HubKeyService;
   agentTokens: AgentTokensService;
+  /** Lab PCs' shutdown agendas (FR-303.1). */
+  agenda: AgendaService;
 }
 
 export function createServices(
@@ -331,6 +333,11 @@ export function createServices(
     audit,
     clock,
     transaction: tx,
+    tagUuids: {
+      toUuid: (id) => (tagsRepo.get(id) ? changeLog(db).uuidOf('tag', id) : null),
+      toId: (uuid) =>
+        db.get<{ id: number }>('SELECT id FROM tags WHERE uuid = ?', [uuid])?.id ?? null,
+    },
   });
 
   const schedulerRepo = new SqliteSchedulerRepo(db);
@@ -620,6 +627,7 @@ export function createServices(
     hubKey,
     agentTokens,
     agent,
+    agenda,
     power,
     audit,
     settings,

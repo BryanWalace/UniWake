@@ -25,6 +25,9 @@ const SCHEDULE: Schedule = {
   nextRun: new Date(2026, 9, 6, 6, 50).getTime(), // local time: tests run in any zone
   createdAt: 0,
   updatedAt: 0,
+  action: 'wake',
+  power: null,
+  excludeTagIds: [],
 };
 
 function api(list: Schedule[] = [SCHEDULE]): FakeApi {

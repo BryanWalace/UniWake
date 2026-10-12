@@ -42,6 +42,18 @@ function parseUuidList(text: string): string[] {
   }
 }
 
+/** The FR-306 columns of a write (a write without them is a "Ligar" schedule). */
+function powerValues(s: ScheduleWrite): (string | number | null)[] {
+  return [
+    s.action ?? 'wake',
+    s.warningMinutes ?? null,
+    s.allowPostpone === null || s.allowPostpone === undefined ? null : s.allowPostpone ? 1 : 0,
+    s.postponeMax ?? null,
+    s.postponeMinutes ?? null,
+    JSON.stringify(s.excludeTags ?? []),
+  ];
+}
+
 export class SqliteSchedulesRepo implements SchedulesRepo {
   constructor(private readonly db: Db) {}
 
@@ -109,8 +121,9 @@ export class SqliteSchedulesRepo implements SchedulesRepo {
   insert(s: ScheduleWrite, createdBy: number | null, now: number): number {
     const id = this.db.run(
       `INSERT INTO schedules (name, enabled, weekdays, time_local, timezone, only_offline, batch_size,
-         batch_delay_ms, confirmed_count, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         batch_delay_ms, confirmed_count, created_by, created_at, updated_at, action, warning_minutes,
+         allow_postpone, postpone_max, postpone_minutes, exclude_tags)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         s.name,
         s.enabled ? 1 : 0,
@@ -124,6 +137,7 @@ export class SqliteSchedulesRepo implements SchedulesRepo {
         createdBy,
         now,
         now,
+        ...powerValues(s),
       ],
     ).lastInsertRowid;
     this.writeTargets(id, s.targets);
@@ -134,7 +148,9 @@ export class SqliteSchedulesRepo implements SchedulesRepo {
   update(id: number, s: ScheduleWrite, now: number): void {
     this.db.run(
       `UPDATE schedules SET name = ?, enabled = ?, weekdays = ?, time_local = ?, timezone = ?,
-         only_offline = ?, batch_size = ?, batch_delay_ms = ?, confirmed_count = ?, updated_at = ?
+         only_offline = ?, batch_size = ?, batch_delay_ms = ?, confirmed_count = ?, updated_at = ?,
+         action = ?, warning_minutes = ?, allow_postpone = ?, postpone_max = ?, postpone_minutes = ?,
+         exclude_tags = ?
        WHERE id = ?`,
       [
         s.name,
@@ -147,6 +163,7 @@ export class SqliteSchedulesRepo implements SchedulesRepo {
         s.batchDelayMs,
         s.confirmedCount,
         now,
+        ...powerValues(s),
         id,
       ],
     );

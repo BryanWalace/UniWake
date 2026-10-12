@@ -6,6 +6,11 @@ import { z } from 'zod';
 import { timeZoneSchema } from '../settings';
 import { nameSchema } from './common';
 import { staggerOverrideSchema, type WakeTarget, wakeTargetSchema } from './wake';
+import { powerPolicySchema, type PowerPolicy } from '../agent/checkin';
+
+/** FR-306: what a schedule does. "Desligar" runs on each machine from its agenda (ADR-048). */
+export const SCHEDULE_ACTIONS = ['wake', 'shutdown'] as const;
+export type ScheduleAction = (typeof SCHEDULE_ACTIONS)[number];
 
 export const WEEKDAY_LABELS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'] as const;
 
@@ -32,13 +37,23 @@ export const scheduleCreateSchema = z.object({
   stagger: staggerOverrideSchema.nullable().optional(),
   /** Large targets (SR-10) are confirmed once, when saved: must equal the resolved count. */
   confirm: z.object({ count: z.number().int().min(0) }).optional(),
+  action: z.enum(SCHEDULE_ACTIONS).default('wake'),
+  /** "Desligar" only; missing fields take the "Desligar computadores" settings (FR-306.1). */
+  power: powerPolicySchema.partial().optional(),
+  /** "Desligar" only: "não desligar máquinas com as etiquetas…" (FR-306.2). */
+  excludeTagIds: z.array(z.number().int().positive()).max(50).default([]),
 });
 export type ScheduleCreate = z.input<typeof scheduleCreateSchema>;
 
 export const scheduleUpdateSchema = scheduleCreateSchema
-  .omit({ enabled: true, onlyOffline: true })
+  .omit({ enabled: true, onlyOffline: true, action: true, excludeTagIds: true })
   .partial()
-  .extend({ enabled: z.boolean().optional(), onlyOffline: z.boolean().optional() });
+  .extend({
+    enabled: z.boolean().optional(),
+    onlyOffline: z.boolean().optional(),
+    action: z.enum(SCHEDULE_ACTIONS).optional(),
+    excludeTagIds: z.array(z.number().int().positive()).max(50).optional(),
+  });
 export type ScheduleUpdate = z.input<typeof scheduleUpdateSchema>;
 
 export interface Schedule {
@@ -65,6 +80,11 @@ export interface Schedule {
   needsReconfirm: boolean;
   /** Next run (UTC ms) after now, skipping exceptions; null when disabled. */
   nextRun: number | null;
+  action: ScheduleAction;
+  /** Warning and postpone policy of a "Desligar" schedule; null for "Ligar". */
+  power: PowerPolicy | null;
+  /** Tags whose machines a "Desligar" schedule skips (FR-306.2). */
+  excludeTagIds: number[];
   createdAt: number;
   updatedAt: number;
 }
