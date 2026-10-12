@@ -367,8 +367,8 @@ decisions", ADR-043/045/047/048 amended).
 ## M18 — Lab-PC scripts (PowerShell 5.1, built-in components only)
 | ID | Task | Refs | Tests | Done when |
 |---|---|---|---|---|
-| [ ] M18-T01 | Spike on a test PC (owner or CI-Win where possible): group-principal task started on demand shows a window in the user's session; record in ADR-046 (or switch to the fallback design). | ADR-046 | [manual] + notes | ADR-046 updated |
-| [ ] M18-T02 | Wrapper layer + unmocked-call guard; `uniwake-agent.ps1` check-in client (exact bytes, signature, nonce, hub list, timeouts), token/hub files, folder owner/ACL check. | FR-302; ADR-044 | Pester | — |
+| [x] M18-T01 | Spike on a test PC (owner or CI-Win where possible): group-principal task started on demand shows a window in the user's session; record in ADR-046 (or switch to the fallback design). | ADR-046 | [manual] + notes | ADR-046 updated |
+| [x] M18-T02 | Wrapper layer + unmocked-call guard; `uniwake-agent.ps1` check-in client (exact bytes, signature, nonce, hub list, timeouts), token/hub files, folder owner/ACL check. | FR-302; ADR-044 | Pester | — |
 | [ ] M18-T03 | Agent executor: agenda storage, clock offset, expiry, boot rule, sleep rule + 60 min cap, heartbeat, Despertar triggers rewrite, report queue + pre-shutdown send, orders and cancel (`shutdown /a`), self-update with hash check. | FR-303, FR-304.3–.5 | AC-303-02, AC-303-03, AC-303-04, AC-303-05, AC-303-06, AC-304-04 | contract fixtures pass |
 | [ ] M18-T04 | Warning: `uniwake-aviso.ps1` (WinForms, countdown, Adiar), file channel with request id, SYSTEM-side limits, reparse checks, native fallback, no-user path. | FR-304.1–.3; ADR-046 | AC-304-01, AC-304-02, AC-304-03, AC-304-05 | — |
 | [ ] M18-T05 | `prepare-target.ps1`: `Invoke-UwRemoteShutdownStep` (hardened folder, scripts download + hash, token, three tasks, RTCWAKE per Q-3), `-HubKeyId` (script parameter **and** the panel's one-liner, M16-T02), `-RemoveAgent`, `-WhatIf`, summary line, exit codes unchanged. | FR-301 | AC-301-01, AC-301-02, AC-301-03, AC-301-04 | PSScriptAnalyzer clean |

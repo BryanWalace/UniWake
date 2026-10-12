@@ -730,6 +730,12 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
     no close-to-cancel.
   - That a group-principal task started on demand runs in each interactive member's session (also
     with fast user switching) is **não verificado** → spike M18-T01 on a test PC; fallback below.
+    M18-T01 (2026-10-11): not run on the developer's PC — it needs a real scheduled task and an
+    interactive session on a lab-like PC, a change the agent does not make on the owner's machine
+    unasked. Moved to the owner's checklist (V3-T02, step "janela de aviso"). Until then the design
+    does not depend on it: the agent waits 20 s for the window's heartbeat file and otherwise uses
+    the native `shutdown /t` warning (reported "aviso nativo (sem adiar)"), so a failure costs only
+    the "Adiar" button.
   - **Channel:** `C:\ProgramData\UniWake\ui\request\` (SYSTEM writes, Users read) holds
     `{requestId, T, postponesLeft, postponeMinutes, message}`; `ui\response\` (Users may create
     files, SYSTEM reads) receives `{requestId, action: "postpone"}`. SYSTEM **never writes or
