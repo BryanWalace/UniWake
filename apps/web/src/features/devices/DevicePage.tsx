@@ -16,6 +16,7 @@ import { Button, PageHeader, SelectField, StatusBadge, TagChip } from '../../com
 import { formatDateTime } from '../../lib/format';
 import { useUptime } from '../dashboard/api';
 import { useWakeUi } from '../wake/WakeProvider';
+import { usePowerUi } from '../power/PowerProvider';
 import { DeviceFormDialog } from './DeviceFormDialog';
 import { HelpLink } from '../help/HelpPage';
 import { TestWolDialog } from './TestWolDialog';
@@ -53,6 +54,7 @@ export function DevicePage() {
   const id = Number(useParams().id);
   const device = useDevice(id);
   const { requestWake } = useWakeUi();
+  const { requestPower } = usePowerUi();
   const [editing, setEditing] = useState(false);
   const [testing, setTesting] = useState(false);
   const [notice, setNotice] = useState<{ text: string; warnings: string[] } | null>(null);
@@ -94,6 +96,28 @@ export function DevicePage() {
               }
             >
               Ligar
+            </Button>
+            <Button
+              onClick={() =>
+                requestPower({
+                  title: `Desligar ${d.name}`,
+                  action: 'shutdown',
+                  target: { type: 'devices', deviceIds: [d.id] },
+                })
+              }
+            >
+              Desligar
+            </Button>
+            <Button
+              onClick={() =>
+                requestPower({
+                  title: `Reiniciar ${d.name}`,
+                  action: 'restart',
+                  target: { type: 'devices', deviceIds: [d.id] },
+                })
+              }
+            >
+              Reiniciar
             </Button>
             <Button disabled={!d.enabled} onClick={() => setTesting(true)}>
               Testar WoL

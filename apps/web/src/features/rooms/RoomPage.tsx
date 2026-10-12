@@ -10,6 +10,7 @@ import { DeviceFormDialog } from '../devices/DeviceFormDialog';
 import { DevicesTable } from '../devices/DevicesTable';
 import { noticeFromSave, SaveNotice, useSelection } from '../devices/DevicesPage';
 import { useWakeUi } from '../wake/WakeProvider';
+import { usePowerUi } from '../power/PowerProvider';
 import { RoomFormDialog } from './RoomFormDialog';
 
 /** Bookmarkable room page `/salas/:id` (FR-008.3). Wake buttons arrive in M3. */
@@ -26,6 +27,7 @@ export function RoomPage() {
   const devices = useDevices({ roomId: id, page: 1, pageSize: 200 });
   const selection = useSelection();
   const { requestWake } = useWakeUi();
+  const { requestPower } = usePowerUi();
   const [editing, setEditing] = useState<Device | undefined>(undefined);
   const [deviceFormOpen, setDeviceFormOpen] = useState(false);
   const [roomFormOpen, setRoomFormOpen] = useState(false);
@@ -80,6 +82,28 @@ export function RoomPage() {
               }
             >
               Ligar só os desligados
+            </Button>
+            <Button
+              onClick={() =>
+                requestPower({
+                  title: `Desligar sala ${r.name}`,
+                  action: 'shutdown',
+                  target: { type: 'rooms', roomIds: [id], includeNoRoom: false },
+                })
+              }
+            >
+              Desligar
+            </Button>
+            <Button
+              onClick={() =>
+                requestPower({
+                  title: `Reiniciar sala ${r.name}`,
+                  action: 'restart',
+                  target: { type: 'rooms', roomIds: [id], includeNoRoom: false },
+                })
+              }
+            >
+              Reiniciar
             </Button>
             <Button onClick={() => setRoomFormOpen(true)}>Editar sala</Button>
             <Button

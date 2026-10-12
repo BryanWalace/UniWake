@@ -78,6 +78,8 @@ describe('manual shutdown (FR-305)', () => {
     expect(p.status).toBe(200);
     expect(p.body).toMatchObject({ count: 10, withUser: 3, needsConfirmation: false });
     expect(p.body.needsPreparation.map((d) => d.name)).toEqual(['PC-11', 'PC-12']);
+    // The room breakdown counts only the machines that receive the order (E2E found 12 here).
+    expect(p.body.rooms).toEqual([{ roomId: expect.any(Number), name: 'Lab 3', count: 10 }]);
     expect(p.body.policy).toEqual({
       warningMinutes: 1,
       allowPostpone: false,

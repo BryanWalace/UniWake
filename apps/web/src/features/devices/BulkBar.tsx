@@ -3,6 +3,7 @@ import { ApiRequestError } from '../../api/client';
 import { type RoomWithCount, type TagWithCount, useBulkDevices } from '../../api/hooks';
 import { Button, ConfirmDialog } from '../../components/ui';
 import { useWakeUi } from '../wake/WakeProvider';
+import { usePowerUi } from '../power/PowerProvider';
 
 /** Bulk actions for the selected devices (FR-002.2). Delete asks for confirmation with the count. */
 export function BulkBar({
@@ -18,6 +19,7 @@ export function BulkBar({
 }) {
   const bulk = useBulkDevices();
   const { requestWake } = useWakeUi();
+  const { requestPower } = usePowerUi();
   const [roomId, setRoomId] = useState('');
   const [tagId, setTagId] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -52,6 +54,28 @@ export function BulkBar({
           }
         >
           Ligar selecionados
+        </Button>
+        <Button
+          onClick={() =>
+            requestPower({
+              title: `Desligar ${n} dispositivo(s) selecionado(s)`,
+              action: 'shutdown',
+              target: { type: 'devices', deviceIds: selected },
+            })
+          }
+        >
+          Desligar selecionados
+        </Button>
+        <Button
+          onClick={() =>
+            requestPower({
+              title: `Reiniciar ${n} dispositivo(s) selecionado(s)`,
+              action: 'restart',
+              target: { type: 'devices', deviceIds: selected },
+            })
+          }
+        >
+          Reiniciar selecionados
         </Button>
         <div className="flex items-end gap-2">
           <label className="text-sm">

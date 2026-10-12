@@ -141,7 +141,8 @@ export class PowerOrdersService {
       lost,
       action: req.action,
       count: ready.length,
-      rooms: r.rooms,
+      // Only the machines that receive the order (the others are listed apart).
+      rooms: readyRooms(r.rooms, ready),
       needsConfirmation: r.needsConfirmation,
       needsPreparation,
       revoked,
@@ -252,6 +253,19 @@ export class PowerOrdersService {
     this.d.events.publish({ type: 'power.job', jobId });
     return this.get(jobId);
   }
+}
+
+/** Per-room counts of the machines that will receive the order, with the rooms' names. */
+function readyRooms(
+  rooms: WakePreview['rooms'],
+  ready: readonly DeviceSnap[],
+): WakePreview['rooms'] {
+  const counts = new Map<number | null, number>();
+  for (const d of ready) counts.set(d.roomId, (counts.get(d.roomId) ?? 0) + 1);
+  return rooms.flatMap((r) => {
+    const count = counts.get(r.roomId) ?? 0;
+    return count > 0 ? [{ ...r, count }] : [];
+  });
 }
 
 /** The panel state of one machine of a job, from its order and the monitor (AC-305-02). */
