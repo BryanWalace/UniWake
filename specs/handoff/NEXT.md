@@ -1,22 +1,119 @@
 # NEXT — handoff
 
-Atualizado: 2026-10-11 · Branch de trabalho: **`dev`** (ADR-030) · **`main` = `9d7cc31`** · **release v1.2.0 publicada**
-(estável, pedida pelo dono; `releases/latest` = v1.2.0, download e SHA-256 conferidos)
+Atualizado: 2026-10-12 · Branch de trabalho: **`dev`** (ADR-030) · **`main` = `9d7cc31`** · **release v1.2.0 publicada**
+(estável; `releases/latest` = v1.2.0). A v1.3 está só na `dev`: nada foi para a `main`, nenhuma tag.
 
-## v1.3 "Desligar" — M16 e M17 prontas na `dev`; próxima: M18 (2026-10-11)
-Só documentos, nada de código: spec §6b (FR-301..311), plano §15, ADR-042..048, constituição v1.3,
-tarefas M16–M20 + Fase 10, revisões `specs/reviews/phase-9-*.md`. M16 (fundações) concluída: verificação de assinatura no PowerShell 5.1 comprovada, chave do hub,
-migração 006, contrato do agente, configurações "Desligar computadores" e gerador da agenda. A revisão
-achou e corrigiu um problema grave: o agendador ligaria as salas no horário de um agendamento de
-desligar (agora só executa "Ligar"). Nada disso aparece no painel ainda (vem na M19).
-M17 (hub) concluída: token por máquina, consulta das máquinas a cada minuto (assinada), Desligar/
-Reiniciar manuais, agendamentos com "Ação: Desligar", prontidão e "perdido", histórico por
-ocorrência e Modo equipe (máquina preparada num PC consulta o outro). Falta o lado das máquinas
-(M18: scripts PowerShell), o painel (M19) e documentação (M20).
-Você aprovou e respondeu Q-1..Q-10 (tabela "Owner decisions" no fim da spec §6b). Perguntas eram:
-etiquetas que nunca desligam, usuário ativo, temporizador de ativação, validade da agenda (7 dias),
-tolerância do "perdido" (15 min), nome do usuário no relatório, padrão do "Desligar" manual, texto
-do aviso, acordar atrasado (60 min) e "Reiniciar" em agendamentos.
+## v1.3 "Desligar computadores" — pronta na `dev`, aguardando seu teste em PCs reais
+
+Tudo de M16 a M20 e a validação (Fase 10) estão prontos, com CI na `dev`:
+
+- **Painel:** botões **Desligar** e **Reiniciar** na sala, na máquina e na seleção; resumo antes de
+  confirmar (quantas recebem, quantas têm alguém usando, quais precisam do novo preparo); painel
+  lateral com o andamento; **Ação: Desligar** nos agendamentos (aviso, adiamentos, etiquetas
+  excluídas); "Nunca desligar por agendamento" na máquina; selo de prontidão em Dispositivos; quadro
+  **Desligamento remoto** na página da máquina (com "Revogar"); desligamentos no **Histórico**;
+  opções de Deep Freeze/UWF em **Preparar máquinas**; duas páginas de ajuda; README.
+- **Máquinas dos laboratórios:** o comando de preparo instala três tarefas do Windows (UniWake,
+  UniWake Despertar, UniWake Aviso) e scripts PowerShell simples; nada é baixado de fora, nenhuma
+  porta é aberta, nenhuma senha compartilhada. Elas consultam o UniWake a cada minuto e desligam no
+  horário mesmo com o PC da TI desligado.
+- **Revisões e correções desta reta final:** a "Pasta persistente" aceitava pastas do Windows (o
+  preparo trancaria as permissões delas) → agora recusa; `-RemoveAgent` apagaria
+  `C:\ProgramData\UniWake` inteira (no PC da TI isso é o banco e os backups!) → agora remove só as
+  pastas do agente; o agente tentava todos os PCs da equipe a cada minuto → no máximo 3 tentativas.
+- **Medição de carga:** 500 máquinas consultando a cada minuto custam 2,4 ms por consulta no hub
+  (meta: 5 ms).
+
+Ficou para você confirmar em PCs reais (não dá para testar aqui sem desligar máquinas de verdade):
+a janela de aviso aparecer na sessão do usuário (spike M18-T01), o temporizador de ativação tirar o
+PC da suspensão, Deep Freeze/UWF de verdade e o tempo da tarefa com o hub desligado (NFR-302).
+Itens **não verificados**: local do `DFC.exe` do Deep Freeze e se ele pede senha; `powercfg` em
+Windows que não seja pt-BR; PCs com Modern Standby.
+
+### Como testar o desligamento em PCs reais (passo a passo)
+
+Use **um PC de laboratório de teste** (fora de aula) e o seu PC da TI. Nada disso exige programa
+extra nas máquinas.
+
+**0. Instalar a versão de teste no PC da TI**
+1. GitHub → **Actions** → o último "CI" verde da branch `dev` → em **Artifacts**, baixe
+   **UniWake-Setup-dev** (`UniWake-Setup-1.3.0-dev.N.exe` + `.sha256`).
+2. Confira o SHA-256: `Get-FileHash .\UniWake-Setup-1.3.0-dev.N.exe` (PowerShell) e compare com o
+   arquivo `.sha256`.
+3. Instale por cima da 1.2.0 (um backup é feito antes). Essa versão de teste só se atualiza sozinha
+   para uma release estável mais nova.
+4. Abra o painel → **Saúde do sistema**: versão `1.3.0-dev.N`.
+
+**1. Preparar o PC de teste**
+1. **Preparar máquinas** → escolha a sala → **Gerar código** → **Copiar comando**.
+2. No PC de teste: botão direito em Iniciar → **Terminal (Administrador)** → cole → Enter.
+3. No resumo, confira: **Desligamento remoto: OK**, **Temporizadores de ativação**, **Congelamento**.
+   Tire um print do resumo.
+4. Abra o **Agendador de Tarefas** → Biblioteca: devem existir **UniWake**, **UniWake Despertar** e
+   **UniWake Aviso**.
+5. No painel, em até 1 minuto: **Dispositivos** mostra "Pronta para desligar" nessa máquina; a página
+   dela mostra o quadro **Desligamento remoto** (última consulta, versão, suspensão, temporizadores).
+
+**2. Desligar sem ninguém logado**
+1. Faça logoff no PC de teste (tela de login).
+2. No painel, na página da máquina: **Desligar** → confirme.
+3. Esperado: desliga em ~1 min (consulta + 30 s); o painel lateral termina em **Desligou**.
+
+**3. Desligar com alguém usando (o teste mais importante)**
+1. Ligue o PC de teste (**Ligar** no painel) e entre com um usuário comum (não administrador).
+2. **Desligar** → em "Aviso na tela", escolha **5 min com adiamento**.
+3. Esperado: aparece a **janela do UniWake** com a mensagem, a hora e o botão **Adiar**. Clique em
+   **Adiar** uma vez: o painel mostra o adiamento; depois desliga.
+4. **Me diga exatamente o que apareceu.** Se em vez da janela aparecer o aviso padrão do Windows
+   ("Você será desconectado…", sem Adiar), é o plano B (ADR-046) funcionando, e eu preciso ajustar a
+   tarefa "UniWake Aviso" (M18-T01).
+5. Repita com **Aviso: 1 min** e clique em **Cancelar o que ainda não executou** no painel lateral antes do fim: não deve
+   desligar.
+
+**4. Reiniciar**
+- **Reiniciar** na página da máquina → ela reinicia e volta a aparecer como ligada.
+
+**5. Agendamento com o PC da TI desligado**
+1. **Agendamentos** → Novo → **Ação: Desligar**, a sala do PC de teste, horário daqui a ~10 min.
+2. Espere 1–2 min (a máquina recebe a agenda) e **pare o UniWake**: `services.msc` → UniWake →
+   Parar (ou desligue o PC da TI).
+3. Esperado: no horário o PC de teste mostra o aviso e desliga sozinho.
+4. Ligue o UniWake de novo, ligue o PC de teste → em até 1 min o **Histórico** mostra a ocorrência
+   ("1/1 desligou").
+
+**6. Suspensão + temporizador de ativação**
+1. Crie um agendamento Desligar para daqui a ~10 min.
+2. Coloque o PC de teste em **suspensão** (Iniciar → Energia → Suspender) antes do horário.
+3. Esperado: ele acorda sozinho no horário e desliga. Se não acordar, me mande o que a página da
+   máquina mostra em "Temporizadores de ativação" e o modelo do PC.
+
+**7. Tempo da tarefa com o hub desligado (NFR-302)**
+- Com o serviço UniWake parado, no PC de teste: Agendador de Tarefas → **UniWake** → aba
+  **Histórico** (habilite em "Ativar Histórico de Todas as Tarefas" se estiver desabilitado): veja a
+  duração entre "Tarefa iniciada" e "Tarefa concluída". Esperado: menos de 2 s com o serviço parado
+  e até ~15 s com o PC da TI desligado.
+
+**8. Deep Freeze ou UWF (se tiver uma máquina assim)**
+1. Prepare com a máquina **descongelada**; congele de novo.
+2. A página da máquina deve mostrar "Congelamento: detectado (congelada): Deep Freeze" ou "detectado
+   (estado não verificado)". Me diga qual, e onde fica o `DFC.exe` nessa máquina.
+3. Se tiver ThawSpace (ex.: `T:`): em **Preparar máquinas → Laboratório com Deep Freeze ou
+   similar**, informe `T:\UniWake`, **Atualizar comando**, rode de novo (descongelada) e repita o
+   passo 5 depois de reiniciar a máquina congelada.
+
+**9. Revogar e remover**
+1. Na página da máquina (como administrador): **Revogar desligamento remoto** → a máquina passa a
+   "Desligamento revogado" e **Desligar** não a inclui mais.
+2. Para remover tudo: baixe o `prepare-target.ps1` em **Preparar máquinas** e rode
+   `.\prepare-target.ps1 -RemoveAgent` como Administrador. As três tarefas e a pasta
+   `C:\ProgramData\UniWake\agent` somem.
+
+**O que me mandar:** prints do resumo do preparo e do quadro "Desligamento remoto", o que apareceu
+no passo 3, e qualquer passo que não deu o resultado esperado (com o horário, para eu cruzar com os
+logs em **Logs**). Não publique IPs, MACs ou nomes reais em issues públicas.
+
+Depois do seu teste: eu corrijo o que aparecer. A v1.3 só vai para a `main` quando você disser
+"pode subir a dev para a main", e a tag só se você pedir.
 
 ## ✅ Merge feito (2026-10-09)
 Antes do merge: `npm run verify` (807 testes), 23 E2E, PSScriptAnalyzer + 28 Pester, CI verde na `dev`
@@ -187,30 +284,23 @@ WoL real por modelo de PC, reinício sem ninguém logado, VLANs, HTTPS na rede) 
 ## Agent notes (English)
 
 ### Current state
-- **2026-10-11: v1.3 approved; M16 and M17 done (`specs/reviews/M16-review.md`, `M17-review.md`,
-  no open CRITICAL/MAJOR). Next: M18-T01 (user-session task spike: needs a test PC, document what
-  can be checked here) then M18-T02..T06 (lab-PC scripts). Hub contract for the scripts: shared
-  fixtures in `packages/shared/fixtures/agent/`; check-in route `apps/server/src/http/routes/agent.ts`.** Notes for M17 in the
-  M16 review (R-M16-03/04). Original order note: M16-T01 (RSA verify spike in PowerShell 5.1) and M18-T01 (user-session task spike) first,
-  because ADR-044/046 depend on them. Bump `DEV_VERSION_BASE` to 1.3.0 when M16 starts (M20-T04).
-- Branch `dev`, ahead of `main` (`7297341`). v1.0/v1.1 (M1–M9, Phase 5), M10 (sync-ready data),
-  Phase 6/7 specs, M11–M15 and Phase 8 (`specs/validation.md` §v1.2, `specs/reviews/v1.2-final.md`)
-  are done. Owner instruction of 2026-10-09: build v1.2 + README + community files, then STOP. Do not
-  start v1.3/v1.4 until the owner says so. Never merge into `main` or tag unless asked (ADR-030).
-- Team mode lives in `apps/server/src/application/team/*`, `adapters/sync-network.ts`,
-  `adapters/secret-protector.ts`, `db/sync/*`, `db/repositories/team-repo.ts`,
-  `apps/web/src/features/team/*`; tests `apps/server/test/team-*.test.ts`, `sync-*.test.ts`,
-  `e2e/team.spec.ts`.
-- CI on `dev` uploads the test installer artifact `UniWake-Setup-dev` (ADR-041,
-  `DEV_VERSION_BASE` in `ci.yml`; bump it when v1.3 work starts).
+- **2026-10-12: v1.3 complete on `dev`** (M16–M20, Phase 10: `specs/validation.md` §v1.3,
+  `specs/reviews/v1.3-final.md`, reviews M16–M19). Not merged, not tagged. Waiting for the owner's
+  real-PC checklist above (includes the deferred M18-T01 user-session window check, R-M18-02 DFC.exe,
+  NFR-302 timing).
+- Remote shutdown lives in `apps/server/src/application/power/*`, `domain/{agenda,readiness}.ts`,
+  `db/repositories/{power-repo,device-agents-repo,hub-keys-repo}.ts`, `http/routes/{agent,power}.ts`,
+  `apps/web/src/features/power/*`, `scripts/agent/*`, `scripts/prepare-target.ps1` step 8; tests
+  `apps/server/test/{agent-*,power-*,agenda,team-power,breakit-m16,breakit-m17}.test.ts`,
+  `apps/server/test/perf/checkin.perf.test.ts`, `scripts/tests/agent-*.Tests.ps1`, `e2e/power.spec.ts`.
+- Team mode: `apps/server/src/application/team/*` (unchanged in v1.3 except signing keys/protocol 2).
+- CI on `dev` uploads `UniWake-Setup-dev` (`DEV_VERSION_BASE` 1.3.0, ADR-041).
 
-### Next steps (only after the owner replies)
-1. Fix whatever the two-PC checklist finds (tests first).
-2. Done 2026-10-09: `main` = `52bdd85` (merge of `dev`). Next merges the same way, only on the
-   owner's explicit request. Tag only if asked.
-3. After a release: README download buttons → `releases/latest/download/UniWake-Setup.exe`.
-4. v1.3 specified (pull model with scheduled tasks, ADR-042 supersedes roadmap §C's service);
-   implement M16–M20 + Phase 10 after approval → v1.4 (§D) through the full SDD loop.
+### Next steps
+1. Fix whatever the owner's v1.3 checklist finds (tests first). If the warning window does not show
+   in the user session, revisit the "UniWake Aviso" task (ADR-046, M18-T01).
+2. v1.4 (roadmap §D: '.uniwake' backup/restore/migration) through the full SDD loop, per CLAUDE.md.
+3. Merge `dev` → `main` only on "pode subir a dev para a main"; tag only if asked.
 
 ### Working conventions
 - Commit via the verify-gated helper (scratchpad `commit-task.sh <TASK|-> <msg-file>`: prettier →
