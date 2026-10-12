@@ -454,7 +454,7 @@ export function createServices(
     : null;
   backupsRef.current = backups;
   // Remote shutdown counts for the health page; the status service is built further down.
-  const late: { powerStatus?: PowerStatusService } = {};
+  const late: { powerStatus?: PowerStatusService; hubKey?: HubKeyService } = {};
   const health = new HealthService({
     powerCounts: () =>
       late.powerStatus?.counts() ?? { ready: 0, needs_preparation: 0, revoked: 0, lost: 0 },
@@ -503,6 +503,13 @@ export function createServices(
     transaction: tx,
     agentPort: opts.running?.agentPort ?? 47101,
     onMoved: (move) => notices.onDeviceMoved(move),
+    hubKeyId: () => {
+      try {
+        return late.hubKey?.keyId() ?? null;
+      } catch {
+        return null; // not loaded yet
+      }
+    },
   });
 
   const update = new UpdateService({
@@ -580,6 +587,7 @@ export function createServices(
     clock,
     logger: ports.logger.child({ module: 'hub-key' }),
   });
+  late.hubKey = hubKey;
   const agentTokens = new AgentTokensService({
     repo: new SqliteDeviceAgentsRepo(db),
     audit,

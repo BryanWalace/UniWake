@@ -220,3 +220,14 @@ Describe 'Applying an answer (FR-302..304)' {
     [System.IO.File]::ReadAllText($path) | Should -Be 'novo'
   }
 }
+
+Describe 'Power plan facts in the check-in (owner Q-3)' {
+  It 'reports the AC sleep minutes and the wake-timer state, read by position' {
+    $lines = @('      Configuração Mínima Possível: 0x00000000', '    Índice CA Atual: 0x00000708', '    Índice CC Atual: 0x00000000')
+    $info = ConvertTo-UwPowerInfo -Sleep (ConvertFrom-UwPowercfgOutput -Lines $lines) -Timers @{ Ac = 2; Dc = 0 }
+    $info.sleepAfterMinutes | Should -Be 30
+    $info.wakeTimers | Should -Be 'important_only'
+    (ConvertTo-UwPowerInfo -Sleep @{ Ac = 0; Dc = 0 } -Timers $null).sleepAfterMinutes | Should -Be 0
+    (ConvertTo-UwPowerInfo -Sleep $null -Timers $null).wakeTimers | Should -Be 'unknown'
+  }
+}

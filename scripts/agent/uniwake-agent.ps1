@@ -295,7 +295,37 @@ function Get-UwPowerInfo {
   [CmdletBinding()]
   param()
   Assert-UwRealSystem 'Get-UwPowerInfo'
-  return @{ sleepAfterMinutes = $null; wakeTimers = 'unknown' }
+  $query = { param($setting) ConvertFrom-UwPowercfgOutput -Lines @(& powercfg.exe /QUERY SCHEME_CURRENT SUB_SLEEP $setting 2>$null) }
+  return ConvertTo-UwPowerInfo -Sleep (& $query 'STANDBYIDLE') -Timers (& $query 'RTCWAKE')
+}
+
+<#
+  AC and DC indexes from `powercfg /QUERY`. Labels are localized (pt-BR Windows prints Portuguese),
+  so only the hex values are read: the last two are the current AC and DC indexes (ADR-045).
+#>
+function ConvertFrom-UwPowercfgOutput {
+  [CmdletBinding()]
+  param([AllowEmptyCollection()][string[]]$Lines)
+  $hex = @($Lines | ForEach-Object { if ($_ -match ':\s*0x([0-9a-fA-F]+)\s*$') { [Convert]::ToInt64($Matches[1], 16) } })
+  if ($hex.Count -lt 2) { return $null }
+  return @{ Ac = $hex[$hex.Count - 2]; Dc = $hex[$hex.Count - 1] }
+}
+
+# What the check-in reports about the power plan (owner Q-3): sleep minutes on AC (0 = never).
+function ConvertTo-UwPowerInfo {
+  [CmdletBinding()]
+  param($Sleep, $Timers)
+  $minutes = $null
+  if ($null -ne $Sleep) { $minutes = [int][Math]::Round($Sleep.Ac / 60) }
+  $wake = 'unknown'
+  if ($null -ne $Timers) {
+    switch ([int]$Timers.Ac) {
+      0 { $wake = 'disabled' }
+      1 { $wake = 'enabled' }
+      2 { $wake = 'important_only' }
+    }
+  }
+  return @{ sleepAfterMinutes = $minutes; wakeTimers = $wake }
 }
 
 function Invoke-UwShutdown {

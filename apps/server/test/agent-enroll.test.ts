@@ -116,6 +116,35 @@ describe('agent part of the enrollment answer (FR-301.1, ADR-044)', () => {
   });
 });
 
+describe('the copied command pins the hub key (FR-301.1, ADR-044)', () => {
+  it('carries -HubKeyId with this hub key id', async () => {
+    const h = await apiHarness(undefined, {
+      prepareScript: { bytes: () => Buffer.from('script') },
+    });
+    cleanups.push(() => h.close());
+    const cookie = await h.as('operator');
+    const room = h.services.rooms.create({ name: 'Lab 3' }, ACTOR);
+    const tok = (
+      await h.inject({
+        method: 'POST',
+        url: '/api/enrollment/tokens',
+        cookie,
+        payload: { roomId: room.id },
+      })
+    ).json<CreatedEnrollmentToken>().token;
+    const r = await h.inject({
+      method: 'POST',
+      url: '/api/enrollment/command',
+      cookie,
+      payload: { token: tok, address: '10.0.3.15' },
+    });
+    expect(r.statusCode).toBe(200);
+    expect(r.json<{ command: string }>().command).toContain(
+      `-HubKeyId '${h.services.hubKey.keyId()}' } }`,
+    );
+  });
+});
+
 describe('agent tokens (FR-302.2, ADR-043)', () => {
   async function enrolled() {
     const s = await setup();

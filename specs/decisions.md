@@ -699,7 +699,9 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
     `/SETACTIVE SCHEME_CURRENT`. It **only reads** the AC sleep timeout (alias `STANDBYIDLE`, never
     changed) and reports "Suspensão: após N min" / "nunca". `powercfg /QUERY` output is localized
     (pt-BR Windows prints Portuguese labels), so values are read by position of the hex indexes or
-    from CIM `root\cimv2\power` — choice and verification in M18-T05 (**não verificado** yet).
+    from CIM `root\cimv2\power`. M18-T05: the hex values are read by position (last two = AC, DC);
+    checked read-only on the developer's Windows 11 pt-BR, whose labels ("Índice de Configurações de
+    Correntes Alternadas Atuais") differ from the English ones; other builds **não verificado**.
     The default value varies by plan and vendor (**não verificado**); value 2 likely blocks task
     wake timers (**não verificado**); behaviour on Modern Standby (S0) PCs **não verificado**. GPOs
     or firmware can still block wake timers → the late-wake rule.

@@ -102,6 +102,8 @@ export interface EnrollmentDeps {
   agentPort: number;
   /** AC-007-07: moved machines are listed on the dashboard for 24 h. */
   onMoved: (move: EnrollMove) => void;
+  /** v1.3: the hub key id for `-HubKeyId`; null while the key is not loaded. */
+  hubKeyId?: () => string | null;
 }
 
 /** FR-007.2: enrollment requests per source IP per minute. */
@@ -151,8 +153,11 @@ export function buildCommand(p: {
   sha256: string;
   roomCode: string;
   token: string;
+  /** v1.3: the hub key the script checks the signed answer against (ADR-044). */
+  hubKeyId?: string | null;
 }): string {
   for (const v of Object.values(p)) {
+    if (v === null || v === undefined) continue;
     if (!/^[A-Za-z0-9:/._-]+$/.test(v)) throw new Error(`unsafe value in command: ${v}`);
   }
   const hash = p.sha256.toUpperCase();
@@ -163,7 +168,9 @@ export function buildCommand(p: {
     `if ((Get-FileHash -Algorithm SHA256 -LiteralPath $f).Hash -ne '${hash}') ` +
     `{ Remove-Item -LiteralPath $f; Write-Host 'Arquivo alterado — não execute' -ForegroundColor Red } ` +
     `else { powershell.exe -NoProfile -ExecutionPolicy Bypass -File $f ` +
-    `-HubUrl '${p.hubUrl}' -RoomCode '${p.roomCode}' -Token '${p.token}' } }`
+    `-HubUrl '${p.hubUrl}' -RoomCode '${p.roomCode}' -Token '${p.token}'` +
+    (p.hubKeyId ? ` -HubKeyId '${p.hubKeyId}'` : '') +
+    ' } }'
   );
 }
 
@@ -291,6 +298,7 @@ export class EnrollmentService {
       sha256,
       roomCode: t.roomCode,
       token: input.token,
+      hubKeyId: this.d.hubKeyId?.() ?? null,
     });
     this.d.transaction(() => {
       if (this.d.settings.get('enrollment.hubAddress') !== input.address) {
