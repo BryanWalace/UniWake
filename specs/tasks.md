@@ -438,7 +438,7 @@ milestone after milestone autonomously; assumptions A-1..A-5 are recorded as ADR
 |---|---|---|---|---|
 | [x] M24-T01 | Help page "Backup e migração"; README section (move to a new PC, password, standby, share permissions). | FR-407 | AC-407-01 | reviewed against code |
 | [x] M24-T02 | Perf: export + preview with 500 devices, 50 schedules, a year of runs (NFR-401). | NFR-401 | perf test | — |
-| [ ] M24-T03 | `DEV_VERSION_BASE` → 1.4.0. | ADR-041 | CI | — |
+| [x] M24-T03 | `DEV_VERSION_BASE` → 1.4.0. | ADR-041 | CI | — |
 
 ## Phase 12 — Validate v1.4 (lead: Debug)
 | ID | Task | Refs | Evidence |

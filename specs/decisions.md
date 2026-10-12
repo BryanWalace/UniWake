@@ -553,7 +553,7 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
   only `v*` tags on `main` publish installers (ADR-030) and agents never tag. The CI installer job
   only builds throwaway 0.0.x installers for its smoke tests.
 - **Decision:** On pushes to `dev`, the Windows installer job also builds
-  `UniWake-Setup-<next>-dev.<run>.exe` (now `1.3.0-dev.N`, base in `DEV_VERSION_BASE`) with its
+  `UniWake-Setup-<next>-dev.<run>.exe` (now `1.4.0-dev.N`, base in `DEV_VERSION_BASE`) with its
   SHA-256 and uploads them as the Actions artifact **UniWake-Setup-dev** (14-day retention). It is
   not a release: no tag, no GitHub Release, nothing a hub's update check can see. A hub installed
   from it is a prerelease version: it never updates to another prerelease (AC-001-05) and updates
