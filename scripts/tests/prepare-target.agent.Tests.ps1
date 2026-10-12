@@ -170,6 +170,27 @@ Describe 'Remote shutdown step (FR-301)' {
     (Get-Step 'Pasta persistente')[0].Resultado | Should -Be 'ATENÇÃO'
   }
 
+  It 'D-M19-01: never locks a Windows folder or a folder that already holds other files' {
+    foreach ($bad in 'C:\Windows', 'C:\windows.\System32', 'D:\Users', 'T:\..\Windows', 'T:\a\..\b', 'T:\', 'C:\ProgramData\UniWake', 'T:\Uni Wake') {
+      Test-UwPersistentPathSafe $bad | Should -Not -BeNullOrEmpty -Because $bad
+    }
+    foreach ($good in 'T:\UniWake', 'D:\Persistente\UniWake', 'T:\uni-wake_1.0') {
+      Test-UwPersistentPathSafe $good | Should -BeNullOrEmpty -Because $good
+    }
+    Mock Protect-UwFolder {}
+    Invoke-UwPrepare @PrepArgs -PersistentPath 'C:\Windows' | Should -Be 0
+    (Get-Step 'Pasta persistente')[0].Detalhe | Should -BeLike 'C:\Windows não foi usada (é uma pasta do Windows): a agenda fica na pasta do agente'
+    Mock Get-UwFolderState { 'in_use' }
+    Invoke-UwPrepare @PrepArgs -PersistentPath 'D:\Dados' | Should -Be 0
+    (Get-Step 'Pasta persistente')[0].Detalhe | Should -BeLike '*já tem arquivos que não são do UniWake*'
+    ([Text.Encoding]::UTF8.GetString($script:Written['config.json'].Bytes) | ConvertFrom-Json).persistentPath | Should -BeNullOrEmpty
+    Should -Invoke Protect-UwFolder -Times 0
+    # A folder this script already prepared (marker inside) is reused.
+    Mock Get-UwFolderState { 'ours' }
+    Invoke-UwPrepare @PrepArgs -PersistentPath 'T:\UniWake' | Should -Be 0
+    Should -Invoke Protect-UwFolder -Times 1 -Exactly -ParameterFilter { $Path -eq 'T:\UniWake' -and $Marker }
+  }
+
   It 'reads powercfg values by position, whatever the Windows language' {
     $ptBR = @(
       'GUID do Esquema de Energia: 381b4222-f694-41f0-9685-ff5bb260df2e  (Equilibrado)',

@@ -173,7 +173,20 @@ describe('command options for frozen labs (FR-308.4) and the device flag (FR-306
     expect(ok.json<{ command: string }>().command).toMatch(
       /-PersistentPath 'T:\\UniWake' -UwfExclude } }$/,
     );
-    for (const bad of ['T:\\Uni Wake', "T:\\a';rm", 'UniWake', 'T:\\a"b']) {
+    // D-M19-01: the preparation locks the folder down, so never a Windows folder or "..".
+    for (const bad of [
+      'T:\\Uni Wake',
+      "T:\\a';rm",
+      'UniWake',
+      'T:\\a"b',
+      'C:\\Windows',
+      'c:\\windows.\\System32',
+      'D:\\Users\\Public',
+      'C:\\ProgramData\\UniWake',
+      'T:\\..\\Windows',
+      'T:\\a\\..\\b',
+      'T:\\\\',
+    ]) {
       expect((await command({ persistentPath: bad })).statusCode, bad).toBe(422);
     }
   });

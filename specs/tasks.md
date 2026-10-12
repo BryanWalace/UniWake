@@ -384,7 +384,7 @@ decisions", ADR-043/045/047/048 amended).
 | [x] M19-T03 | Readiness badges, freeze field, last check-in, agent version, "Revogar desligamento remoto"; prepare command with `-HubKeyId` and optional persistent path. | FR-309, FR-302.2, FR-308.4 | UI tests | — |
 | [x] M19-T04 | History: shutdown rows with aggregated outcomes, including those executed with the hub off. | FR-307 | UI test | — |
 | [x] M19-T05 | Demo mode: simulated agents (ready, v1.2, postponing twice, frozen → perdido); never touches real hosts. | FR-310 | AC-310-01 | — |
-| [ ] M19-R | Code review → `specs/reviews/M19-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+| [x] M19-R | Code review → `specs/reviews/M19-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
 
 ## M20 — Docs, load, hardening
 | ID | Task | Refs | Tests | Done when |

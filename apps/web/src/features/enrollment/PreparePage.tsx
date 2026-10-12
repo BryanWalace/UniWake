@@ -234,8 +234,14 @@ function CommandSection({ token }: { token: CreatedEnrollmentToken }) {
             <input type="checkbox" checked={uwf} onChange={(e) => setUwf(e.target.checked)} />
             Excluir a pasta do agente do Filtro de Gravação Unificado (UWF)
           </label>
-          <div>
+          <div className="flex flex-wrap items-center gap-3">
             <Button type="submit">Atualizar comando</Button>
+            {(persistent.trim() !== (applied.persistentPath ?? '') ||
+              uwf !== (applied.uwfExclude ?? false)) && (
+              <span className="text-sm text-amber-900">
+                O comando abaixo ainda não tem estas opções.
+              </span>
+            )}
           </div>
         </form>
       </details>

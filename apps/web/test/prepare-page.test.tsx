@@ -188,7 +188,11 @@ describe('options for labs with freezing software (M19-T03, FR-308.4)', () => {
     await user.clear(within(section).getByLabelText('Pasta persistente'));
     await user.type(within(section).getByLabelText('Pasta persistente'), 'T:\\UniWake');
     await user.click(within(section).getByLabelText(/Filtro de Gravação Unificado/));
+    expect(
+      within(section).getByText('O comando abaixo ainda não tem estas opções.'),
+    ).toBeInTheDocument();
     await user.click(within(section).getByRole('button', { name: 'Atualizar comando' }));
+    expect(within(section).queryByText('O comando abaixo ainda não tem estas opções.')).toBeNull();
     await waitFor(() =>
       expect(fake.calls.filter((c) => c.path === '/api/enrollment/command').at(-1)?.body).toEqual({
         token: 'token-de-teste-aaaaaaaa',
@@ -198,4 +202,25 @@ describe('options for labs with freezing software (M19-T03, FR-308.4)', () => {
       }),
     );
   });
+});
+
+it('D-M19-01: refuses a Windows folder before building the command', async () => {
+  const fake = api();
+  const user = userEvent.setup();
+  renderApp('/preparar');
+  await user.selectOptions(await screen.findByLabelText('Sala'), 'Lab 3 (LAB3)');
+  await user.click(screen.getByRole('button', { name: 'Gerar código' }));
+  const section = await screen.findByRole('region', { name: '2. Comando para a sala Lab 3' });
+  await user.click(within(section).getByText(/Deep Freeze ou similar/));
+  await user.type(within(section).getByLabelText('Pasta persistente'), 'C:\\Windows');
+  await user.click(within(section).getByRole('button', { name: 'Atualizar comando' }));
+  expect(await within(section).findByText(/não uma pasta do Windows/)).toBeInTheDocument();
+  expect(
+    fake.calls.some(
+      (c) =>
+        c.path === '/api/enrollment/command' &&
+        (c.body as object) &&
+        'persistentPath' in (c.body as object),
+    ),
+  ).toBe(false);
 });

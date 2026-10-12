@@ -1000,7 +1000,10 @@ help page. "Saúde do sistema" shows how many machines are in this state.
 persistent area is configured (`-PersistentPath`, e.g. Deep Freeze ThawSpace `T:\UniWake`) or the
 product allows an exclusion (UWF file exclusion, ADR-047), the agenda and pending reports are kept
 there. Otherwise: **the scheduled shutdown depends on the machine having talked to the hub after its
-last restart**; the help page and README explain it.
+last restart**; the help page and README explain it. The persistent folder is locked down to
+Administrators and SYSTEM, so it must be a folder of its own: the panel and the script refuse a
+top-level Windows folder (Windows, Users, ProgramData, Recovery, Boot, PerfLogs, EFI), "." or ".."
+parts, and (script) an existing folder that already holds files not created by UniWake (D-M19-01).
 
 **FR-308.5** Help page and README section "Laboratórios com Deep Freeze ou similar".
 **FR-308.6** (roadmap only) Integration with the products' own features (e.g. Deep Freeze

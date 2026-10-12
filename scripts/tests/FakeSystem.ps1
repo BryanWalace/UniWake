@@ -15,7 +15,8 @@ $script:UwSystemFunctions = @(
   # v1.3 remote shutdown step (FR-301)
   'Send-UwAgentEnrollment', 'Get-UwAgentScriptContent', 'Initialize-UwAgentFolder', 'Write-UwAgentFile',
   'Register-UwAgentTask', 'Start-UwAgentTask', 'Unregister-UwAgentTask', 'Remove-UwAgentFolder',
-  'Get-UwPowercfg', 'Set-UwWakeTimer', 'Get-UwFreezeState', 'Add-UwUwfExclusion', 'Test-UwPersistentPath', 'Protect-UwFolder'
+  'Get-UwPowercfg', 'Set-UwWakeTimer', 'Get-UwFreezeState', 'Add-UwUwfExclusion', 'Test-UwPersistentPath', 'Protect-UwFolder',
+  'Get-UwFolderState'
 )
 
 function Register-UwFakeSystem {
@@ -40,6 +41,7 @@ function Register-UwFakeSystem {
   Mock Get-UwPowercfg { if ($Setting -eq 'RTCWAKE') { @{ Ac = 1; Dc = 1 } } else { @{ Ac = 1800; Dc = 900 } } }
   Mock Get-UwFreezeState { @{ product = $null; state = 'none' } }
   Mock Test-UwPersistentPath { $true }
+  Mock Get-UwFolderState { 'missing' }
   Mock Get-UwAgentScriptContent { throw 'sem rede no teste' }
   foreach ($setter in 'Set-UwPowerManagement', 'Enable-UwDeviceWake', 'Set-UwHiberboot', 'Set-UwAdvancedProperty', 'Set-UwIcmpRule', 'Send-UwEnrollment',
     'Send-UwAgentEnrollment', 'Initialize-UwAgentFolder', 'Write-UwAgentFile', 'Register-UwAgentTask', 'Start-UwAgentTask',

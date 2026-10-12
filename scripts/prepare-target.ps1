@@ -760,9 +760,51 @@ function Add-UwUwfExclusion {
 }
 
 <# Owner Administrators, no inherited rules, Administrators and SYSTEM only (ADR-042, M18-D). #>
+# D-M19-01: a persistent folder is locked down, so it must be a folder of its own, never a Windows
+# folder or one that already holds other files (their users would lose access).
+$script:UwPersistMarker = 'uniwake-pasta-persistente.txt'
+$script:UwReservedFolders = @('windows', 'users', 'programdata', 'recovery', 'boot', 'perflogs', 'efi')
+
+function Test-UwPersistentPathSafe {
+  param([string]$Path)
+  if ($Path -notmatch '^[A-Za-z]:\\[A-Za-z0-9._\\-]{1,120}$') { return 'caminho inválido' }
+  $parts = @($Path.Substring(3).Split('\') | Where-Object { $_ -ne '' })
+  if ($parts.Count -eq 0) { return 'use uma pasta, não a raiz do disco' }
+  foreach ($p in $parts) {
+    if ($p -match '^\.+$') { return 'o caminho não pode ter "." nem ".."' }
+  }
+  # Windows ignores trailing dots: "Windows." is "Windows".
+  if ($script:UwReservedFolders -contains $parts[0].TrimEnd('.').ToLowerInvariant()) { return 'é uma pasta do Windows' }
+  return $null
+}
+
+function Get-UwFolderState {
+  param([string]$Path)
+  if (-not (Test-Path -LiteralPath $Path)) { return 'missing' }
+  $item = Get-Item -LiteralPath $Path -Force
+  if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { return 'in_use' }
+  if (Test-Path -LiteralPath (Join-Path $Path $script:UwPersistMarker)) { return 'ours' }
+  if (@(Get-ChildItem -LiteralPath $Path -Force | Select-Object -First 1).Count -eq 0) { return 'empty' }
+  return 'in_use'
+}
+
+<#
+  Why a -PersistentPath cannot be used, or $null when it can (D-M19-01).
+#>
+function Get-UwPersistentRefusal {
+  param([string]$Path)
+  $why = Test-UwPersistentPathSafe $Path
+  if ($why) { return "$Path não foi usada ($why)" }
+  if (-not (Test-UwPersistentPath $Path)) { return "$Path não existe neste computador" }
+  if ((Get-UwFolderState $Path) -eq 'in_use') {
+    return "$Path já tem arquivos que não são do UniWake (use uma pasta nova, como T:\UniWake)"
+  }
+  return $null
+}
+
 function Protect-UwFolder {
   [CmdletBinding(SupportsShouldProcess = $true)]
-  param([string]$Path)
+  param([string]$Path, [switch]$Marker)
   if (-not $PSCmdlet.ShouldProcess($Path, 'Restringir a pasta a Administradores e SYSTEM')) { return }
   if (-not (Test-Path -LiteralPath $Path)) { New-Item -ItemType Directory -Force -Path $Path | Out-Null }
   $acl = New-Object Security.AccessControl.DirectorySecurity
@@ -774,6 +816,9 @@ function Protect-UwFolder {
           [Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit', 'None', 'Allow')))
   }
   Set-Acl -LiteralPath $Path -AclObject $acl
+  if ($Marker) {
+    Set-Content -LiteralPath (Join-Path $Path $script:UwPersistMarker) -Encoding UTF8 -Value 'Pasta do UniWake (agenda do desligamento remoto). Não apague.'
+  }
 }
 
 function Test-UwPersistentPath {
@@ -861,9 +906,10 @@ function Invoke-UwRemoteShutdownStep {
       Write-UwAgentFile -Path (Join-Path $dir $s) -Bytes $files[$s] -UsersRead:($s -eq 'uniwake-aviso.ps1')
     }
     Write-UwAgentFile -Path (Join-Path $dir 'token.txt') -Bytes ([Text.Encoding]::ASCII.GetBytes([string]$a.token))
+    $refusal = if ($PersistentPath) { Get-UwPersistentRefusal $PersistentPath } else { $null }
     $config = [ordered]@{
       protocol = 1; epoch = 0
-      persistentPath = $(if ($PersistentPath) { $PersistentPath } else { $null })
+      persistentPath = $(if ($PersistentPath -and -not $refusal) { $PersistentPath } else { $null })
       hubs = @([ordered]@{ instanceId = $null; urls = @($HubUrl.TrimEnd('/')); keyId = $HubKeyId; publicKey = $a.hubKey })
     }
     Write-UwAgentFile -Path (Join-Path $dir 'config.json') -Bytes ([Text.Encoding]::UTF8.GetBytes((ConvertTo-Json $config -Depth 6 -Compress)))
@@ -871,7 +917,7 @@ function Invoke-UwRemoteShutdownStep {
     Invoke-UwPowerPlanStep
     $freeze = Get-UwFreezeState
     Add-UwStep 'Congelamento' $script:UwStatus.Ok (Format-UwFreezeLabel $freeze)
-    Invoke-UwPersistenceStep -Freeze $freeze -PersistentPath $PersistentPath -UwfExclude:$UwfExclude -DataDir (Join-Path $dir 'data')
+    Invoke-UwPersistenceStep -Freeze $freeze -PersistentPath $PersistentPath -Refusal $refusal -UwfExclude:$UwfExclude -DataDir (Join-Path $dir 'data')
     if ($freeze.state -eq 'frozen') {
       Add-UwStep $name 'ATENÇÃO' ("a máquina está congelada ($($freeze.product)): descongele (Thawed / modo manutenção), execute o comando de novo e congele outra vez")
     } else {
@@ -889,14 +935,14 @@ function Invoke-UwRemoteShutdownStep {
   (takes effect after the next restart, Microsoft Learn).
 #>
 function Invoke-UwPersistenceStep {
-  param($Freeze, [string]$PersistentPath, [switch]$UwfExclude, [string]$DataDir)
+  param($Freeze, [string]$PersistentPath, [string]$Refusal, [switch]$UwfExclude, [string]$DataDir)
   if ($PersistentPath) {
-    if (Test-UwPersistentPath $PersistentPath) {
+    if (-not $Refusal) {
       # SYSTEM writes there: locked down like the agent folder (M18-D), or users could redirect it.
-      Protect-UwFolder -Path $PersistentPath
+      Protect-UwFolder -Path $PersistentPath -Marker
       Add-UwStep 'Pasta persistente' $script:UwStatus.Ok "agenda e relatórios em $PersistentPath"
     } else {
-      Add-UwStep 'Pasta persistente' $script:UwStatus.Attention "$PersistentPath não existe neste computador: a agenda fica na pasta do agente"
+      Add-UwStep 'Pasta persistente' $script:UwStatus.Attention "$($Refusal): a agenda fica na pasta do agente"
     }
   }
   if ($UwfExclude) {
