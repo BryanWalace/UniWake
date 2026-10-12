@@ -35,6 +35,8 @@ import type { WakeService } from '../application/wake/wake-service';
 import type { AgentService } from '../application/power/agent-service';
 import type { HubKeyService } from '../application/power/hub-key';
 import type { PowerOrdersService } from '../application/power/power-orders';
+import type { PowerStatusService } from '../application/power/power-status';
+import type { AgentTokensService } from '../application/power/agent-tokens';
 
 export interface HttpServices {
   auth: AuthService;
@@ -71,6 +73,9 @@ export interface HttpServices {
   hubKey: HubKeyService;
   /** Manual "Desligar" / "Reiniciar" (FR-305). */
   power: PowerOrdersService;
+  /** Readiness, agent details and shutdown history (FR-307, FR-309). */
+  powerStatus: PowerStatusService;
+  agentTokens: AgentTokensService;
   /** null when the hub has no backups directory (API tests). */
   backups: BackupService | null;
   /** Hub only: the log viewer source (FR-016). */

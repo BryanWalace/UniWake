@@ -18,6 +18,7 @@ import {
   type WakeTarget,
 } from '@uniwake/shared';
 import type { DeviceSnap } from '../../domain/scope';
+import { agentReadiness, type ReadinessInput } from '../../domain/readiness';
 import type { Actor, AuditService } from '../audit/audit-service';
 import { AppError } from '../errors';
 import type { EventsBus } from '../events-bus';
@@ -25,10 +26,8 @@ import type { Clock } from '../ports';
 import type { SettingsService } from '../settings/settings-service';
 import type { WakePreview } from '@uniwake/shared';
 
-export type Readiness = 'ready' | 'needs_preparation' | 'revoked';
-
-export interface PowerDeviceInfo {
-  readiness: Readiness;
+/** What readiness and the preview need about one machine (FR-305, FR-309). */
+export interface PowerDeviceInfo extends ReadinessInput {
   userLoggedOn: boolean | null;
   neverScheduledShutdown: boolean;
 }
@@ -121,19 +120,25 @@ export class PowerOrdersService {
     const ready: DeviceSnap[] = [];
     const needsPreparation: PowerDeviceRef[] = [];
     const revoked: PowerDeviceRef[] = [];
+    const lost: PowerDeviceRef[] = [];
+    const now = this.d.clock.now();
     for (const dev of r.devices) {
       const i = info.get(dev.id);
-      if (!i || i.readiness === 'needs_preparation') needsPreparation.push(ref(dev));
-      else if (i.readiness === 'revoked') revoked.push(ref(dev));
+      // AC-309-01: only ready machines receive orders.
+      const state = i ? agentReadiness(i, now) : 'needs_preparation';
+      if (state === 'needs_preparation') needsPreparation.push(ref(dev));
+      else if (state === 'revoked') revoked.push(ref(dev));
+      else if (state === 'lost') lost.push(ref(dev));
       else ready.push(dev);
     }
     const protectedDevs = ready.filter((dev) => info.get(dev.id)?.neverScheduledShutdown);
-    return { r, info, ready, needsPreparation, revoked, protectedDevs };
+    return { r, info, ready, needsPreparation, revoked, lost, protectedDevs };
   }
 
   preview(req: PowerRequestParams): PowerPreview {
-    const { r, info, ready, needsPreparation, revoked, protectedDevs } = this.plan(req);
+    const { r, info, ready, needsPreparation, revoked, lost, protectedDevs } = this.plan(req);
     return {
+      lost,
       action: req.action,
       count: ready.length,
       rooms: r.rooms,

@@ -25,6 +25,27 @@ export function powerRoutes(app: FastifyInstance, s: HttpServices): void {
     s.power.get(req.params.id),
   );
 
+  r.get('/api/power/agents', { config: auth }, async () => s.powerStatus.list());
+
+  r.get('/api/power/history', { config: auth }, async () => s.powerStatus.history());
+
+  r.get(
+    '/api/devices/:id/agent',
+    { config: auth, schema: { params: idParamSchema } },
+    async (req) => s.powerStatus.device(req.params.id),
+  );
+
+  /** FR-302.2 "Revogar desligamento remoto": only this machine's token stops working. */
+  r.post(
+    '/api/devices/:id/agent/revoke',
+    { config: { auth: 'admin' }, schema: { params: idParamSchema } },
+    async (req) => {
+      const device = s.devices.get(req.params.id);
+      s.agentTokens.revoke(device.id, device.name, actorOf(req));
+      return s.powerStatus.device(device.id);
+    },
+  );
+
   r.post(
     '/api/power/jobs/:id/cancel',
     { config: auth, schema: { params: idParamSchema } },

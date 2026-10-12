@@ -90,7 +90,15 @@ import { HubKeyService } from './application/power/hub-key';
 import { AgentTokensService } from './application/power/agent-tokens';
 import { AgentService, type AgentScripts } from './application/power/agent-service';
 import { SqliteDeviceAgentsRepo } from './db/repositories/device-agents-repo';
-import { SqlitePowerJobsRepo, SqlitePowerRepo } from './db/repositories/power-repo';
+import {
+  agentRows,
+  deviceExtras,
+  occurrenceReports,
+  recentPowerJobIds,
+  SqlitePowerJobsRepo,
+  SqlitePowerRepo,
+} from './db/repositories/power-repo';
+import { PowerStatusService } from './application/power/power-status';
 import { PowerOrdersService } from './application/power/power-orders';
 import { AgendaService } from './application/power/agenda-service';
 import { scheduleRunUuid, uuidV5 } from './db/sync/uuid';
@@ -445,7 +453,11 @@ export function createServices(
       })
     : null;
   backupsRef.current = backups;
+  // Remote shutdown counts for the health page; the status service is built further down.
+  const late: { powerStatus?: PowerStatusService } = {};
   const health = new HealthService({
+    powerCounts: () =>
+      late.powerStatus?.counts() ?? { ready: 0, needs_preparation: 0, revoked: 0, lost: 0 },
     clock,
     logger: ports.logger.child({ module: 'health' }),
     version: opts.version ?? '0.0.0-dev',
@@ -596,6 +608,19 @@ export function createServices(
     transaction: tx,
     newUuid: () => randomUUID(),
   });
+  const powerStatus = new PowerStatusService({
+    agents: (ids) => agentRows(db, ids),
+    occurrenceReports: (since) => occurrenceReports(db, since),
+    deviceExtras: (ids) => deviceExtras(db, ids),
+    schedules: () => schedulesRepo.list(),
+    refs,
+    resolve: (target) => wake.resolveForPower(target),
+    occurrenceId: scheduleRunUuid,
+    recentJobIds: (limit) => recentPowerJobIds(db, limit),
+    orders: power,
+    clock,
+  });
+  late.powerStatus = powerStatus;
   const agentPort = opts.running?.agentPort ?? 47101;
   const agent = new AgentService({
     tokens: agentTokens,
@@ -629,6 +654,7 @@ export function createServices(
     agent,
     agenda,
     power,
+    powerStatus,
     audit,
     settings,
     auth,

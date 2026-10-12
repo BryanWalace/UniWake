@@ -359,7 +359,7 @@ decisions", ADR-043/045/047/048 amended).
 | [x] M17-T02 | `POST /agent/v1/checkin` + `GET /agent/v1/scripts/:name`: Zod, per-token/IP rate limits, report dedupe/ack, orders delivery, agenda cache, hub list, signature; route-table authz test updated. | FR-302.1, FR-302.3 | AC-302-01, AC-302-03 | — |
 | [x] M17-T03 | Power orders: preview (ready vs needs preparation, SR-10), jobs, cancel, expiry, live states with monitor offline confirmation, SSE. | FR-305 | AC-305-01, AC-305-02, AC-305-04 | — |
 | [x] M17-T04 | Scheduler handles only `action = 'wake'`; shutdown schedules feed agendas only; schedule API accepts action + power fields. | FR-306; ADR-048 | AC-306-01 | — |
-| [ ] M17-T05 | Readiness + "perdido" heuristic + freeze field; history aggregation per occurrence and job, "sem relatório" inference; audit entries. | FR-307, FR-308.3, FR-309 | AC-307-01, AC-308-03, AC-309-01 | — |
+| [x] M17-T05 | Readiness + "perdido" heuristic + freeze field; history aggregation per occurrence and job, "sem relatório" inference; audit entries. | FR-307, FR-308.3, FR-309 | AC-307-01, AC-308-03, AC-309-01 | — |
 | [ ] M17-T06 | Team mode: replicate new entities, signing keys in members, hub list with epoch, two-instance test (machine checks in with B, order made on A, report seen on A). | ADR-048 | integration | — |
 | [ ] M17-D | Break-it: token replay after revoke, 7th check-in, 64 KB+1 body, duplicate reports from two hubs, hub killed mid-check-in, clock jumps, order cancelled while delivered. | tasks §Break-it | regressions | findings filed |
 | [ ] M17-R | Code review → `specs/reviews/M17-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |

@@ -93,6 +93,8 @@ describe('route-table authorization (IMP-014, constitution §5)', () => {
       '/api/update/install',
       '/api/team', // Modo equipe (FR-201.5): pairing, revocation and leaving are admin actions
     ];
+    // v1.3 (plan §15.4): revoking a machine's remote shutdown is an admin action.
+    const ADMIN_ROUTES = new Set(['POST /api/devices/:id/agent/revoke']);
     const PUBLIC = new Set([
       'GET /api/health',
       'GET /api/auth/setup-status',
@@ -103,7 +105,8 @@ describe('route-table authorization (IMP-014, constitution §5)', () => {
     const expected = (method: string, url: string) =>
       PUBLIC.has(`${method} ${url}`)
         ? 'public'
-        : ADMIN_PREFIXES.some((p) => url === p || url.startsWith(`${p}/`))
+        : ADMIN_ROUTES.has(`${method} ${url}`) ||
+            ADMIN_PREFIXES.some((p) => url === p || url.startsWith(`${p}/`))
           ? 'admin'
           : 'operator';
     const wrong = hub.panel.routeTable

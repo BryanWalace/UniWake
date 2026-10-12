@@ -11,10 +11,100 @@ import type {
   PowerDeviceInfo,
   PowerJobsStore,
 } from '../../application/power/power-orders';
+import type { ReportRow } from '../../application/power/power-status';
 import type { AgendaDevice } from '../../domain/agenda';
 import type { Db } from '../connection';
 
 const OPEN = "('pending', 'delivered')";
+
+/** One machine with its agent, last check-in and monitor state (FR-309). */
+export interface AgentDbRow {
+  deviceId: number;
+  name: string;
+  roomId: number | null;
+  neverScheduledShutdown: boolean;
+  hasToken: boolean;
+  issuedAt: number | null;
+  rotatedAt: number | null;
+  revokedAt: number | null;
+  agentVersion: string | null;
+  freezeProduct: string | null;
+  freezeState: string | null;
+  persistent: boolean;
+  sleepAfterMinutes: number | null;
+  wakeTimers: string | null;
+  /** The newest of this hub's exact sighting and the team's coarse time (ADR-048). */
+  lastCheckin: number | null;
+  clockOffsetMs: number | null;
+  userLoggedOn: boolean | null;
+  sessions: number | null;
+  status: string;
+  onlineSince: number | null;
+}
+
+/** Every device (or the given ones) with what readiness and the panel show about its agent. */
+export function agentRows(db: Db, deviceIds?: readonly number[]): AgentDbRow[] {
+  const rows = db.all<{
+    id: number;
+    name: string;
+    room_id: number | null;
+    never_scheduled_shutdown: number;
+    token_hash: string | null;
+    issued_at: number | null;
+    rotated_at: number | null;
+    revoked_at: number | null;
+    agent_version: string | null;
+    freeze_product: string | null;
+    freeze_state: string | null;
+    persistent: number | null;
+    sleep_after_minutes: number | null;
+    wake_timers: string | null;
+    seen_coarse_at: number | null;
+    seen_at: number | null;
+    clock_offset_ms: number | null;
+    user_logged_on: number | null;
+    session_count: number | null;
+    status: string | null;
+    online_since: number | null;
+  }>(
+    `SELECT d.id, d.name, d.room_id, d.never_scheduled_shutdown, a.token_hash, a.issued_at, a.rotated_at,
+       a.revoked_at, a.agent_version, a.freeze_product, a.freeze_state, a.persistent,
+       a.sleep_after_minutes, a.wake_timers, a.seen_coarse_at, s.seen_at, s.clock_offset_ms,
+       s.user_logged_on, s.session_count, st.status, st.online_since
+     FROM devices d
+     LEFT JOIN device_agents a ON a.device_id = d.id
+     LEFT JOIN agent_seen s ON s.device_id = d.id
+     LEFT JOIN device_state st ON st.device_id = d.id
+     ${deviceIds ? 'WHERE d.id IN (SELECT value FROM json_each(?))' : ''}
+     ORDER BY d.name COLLATE NOCASE, d.id`,
+    deviceIds ? [JSON.stringify(deviceIds)] : [],
+  );
+  return rows.map((r) => ({
+    deviceId: r.id,
+    name: r.name,
+    roomId: r.room_id,
+    neverScheduledShutdown: r.never_scheduled_shutdown === 1,
+    hasToken: r.token_hash !== null,
+    issuedAt: r.issued_at,
+    rotatedAt: r.rotated_at,
+    revokedAt: r.revoked_at,
+    agentVersion: r.agent_version,
+    freezeProduct: r.freeze_product,
+    freezeState: r.freeze_state,
+    persistent: r.persistent === 1,
+    sleepAfterMinutes: r.sleep_after_minutes,
+    wakeTimers: r.wake_timers,
+    lastCheckin:
+      r.seen_at === null && r.seen_coarse_at === null
+        ? null
+        : Math.max(r.seen_at ?? 0, r.seen_coarse_at ?? 0),
+    clockOffsetMs: r.clock_offset_ms,
+    userLoggedOn: r.user_logged_on === null ? null : r.user_logged_on === 1,
+    sessions: r.session_count,
+    status: r.status ?? 'desconhecido',
+    onlineSince: r.online_since,
+  }));
+}
 
 /**
  * Power orders, reports and agent sightings (migration 006). Orders and reports are replicated in
@@ -208,34 +298,17 @@ export class SqlitePowerJobsRepo implements PowerJobsStore {
   constructor(private readonly db: Db) {}
 
   info(deviceIds: readonly number[]): Map<number, PowerDeviceInfo> {
-    const rows = this.db.all<{
-      id: number;
-      never_scheduled_shutdown: number;
-      token_hash: string | null;
-      revoked_at: number | null;
-      has_agent: number | null;
-      user_logged_on: number | null;
-    }>(
-      `SELECT d.id, d.never_scheduled_shutdown, a.token_hash, a.revoked_at, a.device_id AS has_agent,
-         s.user_logged_on
-       FROM devices d
-       LEFT JOIN device_agents a ON a.device_id = d.id
-       LEFT JOIN agent_seen s ON s.device_id = d.id
-       WHERE d.id IN (SELECT value FROM json_each(?))`,
-      [JSON.stringify(deviceIds)],
-    );
     return new Map(
-      rows.map((r) => [
-        r.id,
+      agentRows(this.db, deviceIds).map((r) => [
+        r.deviceId,
         {
-          readiness:
-            r.has_agent === null || r.token_hash === null
-              ? 'needs_preparation'
-              : r.revoked_at !== null
-                ? 'revoked'
-                : 'ready',
-          userLoggedOn: r.user_logged_on === null ? null : r.user_logged_on === 1,
-          neverScheduledShutdown: r.never_scheduled_shutdown === 1,
+          hasToken: r.hasToken,
+          revoked: r.revokedAt !== null,
+          lastCheckin: r.lastCheckin,
+          online: r.status === 'online',
+          onlineSince: r.onlineSince,
+          userLoggedOn: r.userLoggedOn,
+          neverScheduledShutdown: r.neverScheduledShutdown,
         },
       ]),
     );
@@ -361,4 +434,78 @@ export class SqlitePowerJobsRepo implements PowerJobsStore {
       [id, at],
     ).changes;
   }
+}
+
+/** Reports of scheduled occurrences planned since `since` (FR-307), oldest first. */
+export function occurrenceReports(db: Db, since: number): ReportRow[] {
+  return db
+    .all<{
+      occurrence_uuid: string;
+      device_id: number;
+      name: string;
+      action: 'shutdown' | 'restart';
+      outcome: ReportRow['outcome'];
+      reason: string | null;
+      planned_at: number | null;
+      executed_at: number | null;
+      postpones: number;
+      was_asleep: number;
+      late_minutes: number | null;
+      native_warning: number;
+      user_logged_on: number | null;
+    }>(
+      `SELECT r.occurrence_uuid, r.device_id, d.name, r.action, r.outcome, r.reason, r.planned_at,
+         r.executed_at, r.postpones, r.was_asleep, r.late_minutes, r.native_warning, r.user_logged_on
+       FROM power_reports r JOIN devices d ON d.id = r.device_id
+       WHERE r.occurrence_uuid IS NOT NULL AND COALESCE(r.planned_at, r.received_at) >= ?
+       ORDER BY COALESCE(r.planned_at, r.received_at), r.id`,
+      [since],
+    )
+    .map((r) => ({
+      occurrence: r.occurrence_uuid,
+      deviceId: r.device_id,
+      deviceName: r.name,
+      action: r.action,
+      outcome: r.outcome,
+      reason: r.reason,
+      plannedAt: r.planned_at,
+      executedAt: r.executed_at,
+      postpones: r.postpones,
+      wasAsleep: r.was_asleep === 1,
+      lateMinutes: r.late_minutes,
+      nativeWarning: r.native_warning === 1,
+      userLoggedOn: r.user_logged_on === null ? null : r.user_logged_on === 1,
+    }));
+}
+
+/** Boot time from the last check-in and tag UUIDs per device. */
+export function deviceExtras(
+  db: Db,
+  ids: readonly number[],
+): Map<number, { bootTime: number | null; tagUuids: string[] }> {
+  const out = new Map<number, { bootTime: number | null; tagUuids: string[] }>();
+  for (const id of ids) out.set(id, { bootTime: null, tagUuids: [] });
+  const json = JSON.stringify(ids);
+  for (const r of db.all<{ device_id: number; boot_time: number | null }>(
+    'SELECT device_id, boot_time FROM agent_seen WHERE device_id IN (SELECT value FROM json_each(?))',
+    [json],
+  )) {
+    out.get(r.device_id)!.bootTime = r.boot_time;
+  }
+  for (const r of db.all<{ device_id: number; uuid: string | null }>(
+    `SELECT dt.device_id, t.uuid FROM device_tags dt JOIN tags t ON t.id = dt.tag_id
+     WHERE dt.device_id IN (SELECT value FROM json_each(?))`,
+    [json],
+  )) {
+    if (r.uuid) out.get(r.device_id)!.tagUuids.push(r.uuid);
+  }
+  return out;
+}
+
+export function recentPowerJobIds(db: Db, limit: number): number[] {
+  return db
+    .all<{ id: number }>('SELECT id FROM power_jobs ORDER BY created_at DESC, id DESC LIMIT ?', [
+      limit,
+    ])
+    .map((r) => r.id);
 }
