@@ -723,7 +723,7 @@ copy is "em espera" until activated.
 ### 16.2 Modules
 | Module | Responsibility |
 |---|---|
-| `domain/export-format.ts` | sections ↔ entities, manifest, canonical JSON + checksum, format converters, limits (pure) |
+| `application/migration/document.ts` | sections ↔ entities, manifest, canonical JSON + checksum, format converters, limits (no I/O; uses node:crypto, so not in domain/) |
 | `application/migration/export-service.ts` | build document from snapshots (`ReplicaStore`-like reader), secrets via `SecretBox`, file name |
 | `application/migration/import-service.ts` | parse/verify, decrypt, preview (rollback), apply merge/replace, key import rule, standby, audit, pre-import backup |
 | `application/migration/secret-box.ts` | argon2id + AES-256-GCM with AAD (node:crypto) |
