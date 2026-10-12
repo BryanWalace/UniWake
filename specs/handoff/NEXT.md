@@ -1,11 +1,23 @@
 # NEXT — handoff
 
-Atualizado: 2026-10-12 · Branch de trabalho: **`dev`** (ADR-030) · **`main` = `9d7cc31`** · **release v1.2.0 publicada**
-(estável; `releases/latest` = v1.2.0). As v1.3 e v1.4 estão só na `dev`: nada foi para a `main`, nenhuma tag.
+Atualizado: 2026-10-12 · Branch de trabalho: **`dev`** (ADR-030) · **`main` = `ad273cb`** (v1.3 + v1.4, CI verde) ·
+**release publicada: v1.2.0**. A tag **v1.4.0 ainda não foi criada** (a criação foi bloqueada pela permissão do ambiente; veja "Publicar a v1.4.0").
 
-## v1.4 "Backup e migração" — pronta na `dev`, aguardando seu teste
+## Publicar a v1.4.0 (falta só a tag)
+Você pediu "valide você mesmo e mande para a main uma versão estável". Validei (verify, Pester, E2E, CI verde na `dev` e na `main`,
+teste de fumaça no pacote montado 16/16) e fiz o merge na `main` (`ad273cb`). Para publicar a release (o GitHub gera o
+instalador e os PCs se atualizam sozinhos na janela de manutenção), rode no repositório:
 
-Feito de M21 a M24 e validado (Fase 12), com CI na `dev`. Nada foi para a `main`, nenhuma tag.
+```bash
+git tag -a v1.4.0 ad273cb -m "UniWake 1.4.0: desligar computadores e backup e migração"
+git push origin v1.4.0
+```
+
+As notas da versão já estão em `specs/releases/v1.4.0.md` (o workflow de release as usa).
+
+## v1.4 "Backup e migração" — na `main`, release pendente da tag
+
+Feito de M21 a M24 e validado (Fase 12). Está na `main` desde `ad273cb`; a release v1.4.0 depende só da tag (acima).
 
 - **Página "Backup e migração"** (administradores): exporta um arquivo `.uniwake` com as partes
   escolhidas (Cadastro, Agendamentos, Configurações gerais, Usuários, Desligamento remoto,
@@ -349,7 +361,7 @@ WoL real por modelo de PC, reinício sem ninguém logado, VLANs, HTTPS na rede) 
 ## Agent notes (English)
 
 ### Current state
-- **2026-10-12: v1.3 and v1.4 complete on `dev`** (M16–M24, Phases 10–12: `specs/validation.md`
+- **2026-10-12: v1.3 and v1.4 merged into `main` (`ad273cb`, CI green) on the owner's request; tag `v1.4.0` not created (blocked by the environment's permission classifier; the owner runs it). Before that: v1.3 and v1.4 complete on `dev`** (M16–M24, Phases 10–12: `specs/validation.md`
   §v1.3/§v1.4, `specs/reviews/v1.3-final.md`, `v1.4-final.md`, reviews M16–M23). Not merged, not
   tagged. CLAUDE.md stop point reached: final report given; waiting for the owner's real-PC
   checklists above (v1.4 and v1.3) and for "pode subir a dev para a main".
