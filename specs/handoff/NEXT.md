@@ -3,12 +3,16 @@
 Atualizado: 2026-10-11 · Branch de trabalho: **`dev`** (ADR-030) · **`main` = `9d7cc31`** · **release v1.2.0 publicada**
 (estável, pedida pelo dono; `releases/latest` = v1.2.0, download e SHA-256 conferidos)
 
-## v1.3 "Desligar" — M16 pronta na `dev`; próxima: M17 (2026-10-11)
+## v1.3 "Desligar" — M16 e M17 prontas na `dev`; próxima: M18 (2026-10-11)
 Só documentos, nada de código: spec §6b (FR-301..311), plano §15, ADR-042..048, constituição v1.3,
 tarefas M16–M20 + Fase 10, revisões `specs/reviews/phase-9-*.md`. M16 (fundações) concluída: verificação de assinatura no PowerShell 5.1 comprovada, chave do hub,
 migração 006, contrato do agente, configurações "Desligar computadores" e gerador da agenda. A revisão
 achou e corrigiu um problema grave: o agendador ligaria as salas no horário de um agendamento de
 desligar (agora só executa "Ligar"). Nada disso aparece no painel ainda (vem na M19).
+M17 (hub) concluída: token por máquina, consulta das máquinas a cada minuto (assinada), Desligar/
+Reiniciar manuais, agendamentos com "Ação: Desligar", prontidão e "perdido", histórico por
+ocorrência e Modo equipe (máquina preparada num PC consulta o outro). Falta o lado das máquinas
+(M18: scripts PowerShell), o painel (M19) e documentação (M20).
 Você aprovou e respondeu Q-1..Q-10 (tabela "Owner decisions" no fim da spec §6b). Perguntas eram:
 etiquetas que nunca desligam, usuário ativo, temporizador de ativação, validade da agenda (7 dias),
 tolerância do "perdido" (15 min), nome do usuário no relatório, padrão do "Desligar" manual, texto
@@ -183,8 +187,10 @@ WoL real por modelo de PC, reinício sem ninguém logado, VLANs, HTTPS na rede) 
 ## Agent notes (English)
 
 ### Current state
-- **2026-10-11: v1.3 approved; M16 done (`specs/reviews/M16-review.md`, no open CRITICAL/MAJOR).
-  Next: M17-T01 (agent tokens + signed enrollment answer), then M17-T02..T06.** Notes for M17 in the
+- **2026-10-11: v1.3 approved; M16 and M17 done (`specs/reviews/M16-review.md`, `M17-review.md`,
+  no open CRITICAL/MAJOR). Next: M18-T01 (user-session task spike: needs a test PC, document what
+  can be checked here) then M18-T02..T06 (lab-PC scripts). Hub contract for the scripts: shared
+  fixtures in `packages/shared/fixtures/agent/`; check-in route `apps/server/src/http/routes/agent.ts`.** Notes for M17 in the
   M16 review (R-M16-03/04). Original order note: M16-T01 (RSA verify spike in PowerShell 5.1) and M18-T01 (user-session task spike) first,
   because ADR-044/046 depend on them. Bump `DEV_VERSION_BASE` to 1.3.0 when M16 starts (M20-T04).
 - Branch `dev`, ahead of `main` (`7297341`). v1.0/v1.1 (M1–M9, Phase 5), M10 (sync-ready data),
