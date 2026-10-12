@@ -223,11 +223,25 @@ export class RemoteApplier {
           this.maybeChanged.add(d.id);
         db.run("UPDATE schedule_targets SET ref_id = NULL WHERE type = 'tag' AND ref_id = ?", [id]);
         break;
-      case 'device':
+      case 'device': {
         db.run("UPDATE schedule_targets SET ref_id = NULL WHERE type = 'device' AND ref_id = ?", [
           id,
         ]);
         this.maybeChanged.delete(id);
+        // ADR-048: its agent, orders and reports go with it (they cascade in SQLite).
+        const ids = (sql: string) => db.all<{ id: number }>(sql, [id]).map((r) => r.id);
+        this.log.tombstone('device_agent', ids('SELECT id FROM device_agents WHERE device_id = ?'));
+        this.log.tombstone('power_order', ids('SELECT id FROM power_orders WHERE device_id = ?'));
+        this.log.tombstone('power_report', ids('SELECT id FROM power_reports WHERE device_id = ?'));
+        break;
+      }
+      case 'power_job':
+        this.log.tombstone(
+          'power_order',
+          db
+            .all<{ id: number }>('SELECT id FROM power_orders WHERE job_id = ?', [id])
+            .map((r) => r.id),
+        );
         break;
       case 'schedule': {
         const ids = (sql: string) => db.all<{ id: number }>(sql, [id]).map((r) => r.id);
@@ -520,7 +534,118 @@ export class RemoteApplier {
         );
         return id;
       }
+      case 'device_agent':
+      case 'power_job':
+      case 'power_order':
+      case 'power_report':
+        return this.upsertPower(entity, e, p, existing);
     }
+  }
+
+  /** v1.3 power entities (ADR-048): plain rows referencing a device (and a job / a user). */
+  private upsertPower(
+    entity: 'device_agent' | 'power_job' | 'power_order' | 'power_report',
+    e: ChangeEntry,
+    p: Record<string, unknown>,
+    existing: number | null,
+  ): number | null {
+    const db = this.db;
+    const insertOrUpdate = (table: string, cols: Record<string, unknown>): number => {
+      const names = Object.keys(cols);
+      const values = Object.values(cols) as (string | number | null)[];
+      if (existing !== null) {
+        db.run(`UPDATE ${table} SET ${names.map((n) => `${n} = ?`).join(', ')} WHERE id = ?`, [
+          ...values,
+          existing,
+        ]);
+        return existing;
+      }
+      return db.run(
+        `INSERT INTO ${table} (${names.join(', ')}) VALUES (${names.map(() => '?').join(', ')})`,
+        values,
+      ).lastInsertRowid;
+    };
+    if (entity === 'power_job') {
+      return insertOrUpdate('power_jobs', {
+        action: str(p.action),
+        target: jsonText(p.target) ?? '{}',
+        warning_minutes: num(p.warningMinutes) ?? 0,
+        allow_postpone: bool(p.allowPostpone),
+        postpone_max: num(p.postponeMax) ?? 0,
+        postpone_minutes: num(p.postponeMinutes) ?? 15,
+        created_by: localId(db, 'user', str(p.createdBy)),
+        created_at: num(p.createdAt) ?? e.at,
+      });
+    }
+    const deviceId = localId(db, 'device', str(p.device));
+    if (deviceId === null) return this.dropOrphan(e);
+    if (entity === 'device_agent') {
+      // A row this PC has not logged yet for the same device is the same agent (one per device).
+      if (existing === null) {
+        existing =
+          db.get<{ id: number }>('SELECT id FROM device_agents WHERE device_id = ?', [deviceId])
+            ?.id ?? null;
+      }
+      return insertOrUpdate('device_agents', {
+        device_id: deviceId,
+        token_hash: str(p.tokenHash),
+        pending_token_hash: str(p.pendingTokenHash),
+        issued_at: num(p.issuedAt),
+        rotated_at: num(p.rotatedAt),
+        revoked_at: num(p.revokedAt),
+        agent_version: str(p.agentVersion),
+        protocol: num(p.protocol),
+        freeze_product: str(p.freezeProduct),
+        freeze_state: str(p.freezeState),
+        persistent: bool(p.persistent),
+        sleep_after_minutes: num(p.sleepAfterMinutes),
+        wake_timers: str(p.wakeTimers),
+        seen_coarse_at: num(p.seenCoarseAt),
+      });
+    }
+    if (entity === 'power_order') {
+      const jobUuid = str(p.job);
+      const jobId = localId(db, 'power_job', jobUuid);
+      if (jobUuid !== null && jobId === null) return this.dropOrphan(e);
+      return insertOrUpdate('power_orders', {
+        job_id: jobId,
+        device_id: deviceId,
+        action: str(p.action),
+        warning_minutes: num(p.warningMinutes) ?? 0,
+        allow_postpone: bool(p.allowPostpone),
+        postpone_max: num(p.postponeMax) ?? 0,
+        postpone_minutes: num(p.postponeMinutes) ?? 15,
+        state: str(p.state) ?? 'pending',
+        created_at: num(p.createdAt) ?? e.at,
+        expires_at: num(p.expiresAt) ?? e.at,
+        delivered_at: num(p.deliveredAt),
+        delivered_by_instance: str(p.deliveredBy),
+        executed_at: num(p.executedAt),
+        detail: str(p.detail),
+      });
+    }
+    // power_report: insert-only, the same UUID from every hub (ADR-048).
+    return insertOrUpdate('power_reports', {
+      uuid: e.entityId,
+      device_id: deviceId,
+      occurrence_uuid: str(p.occurrence),
+      order_uuid: str(p.order),
+      action: str(p.action),
+      outcome: str(p.outcome),
+      reason: str(p.reason),
+      planned_at: num(p.plannedAt),
+      executed_at: num(p.executedAt),
+      postpones: num(p.postpones) ?? 0,
+      user_logged_on:
+        p.userLoggedOn === null || p.userLoggedOn === undefined ? null : bool(p.userLoggedOn),
+      session_count: num(p.sessions),
+      was_asleep: bool(p.wasAsleep),
+      late_minutes: num(p.lateMinutes),
+      native_warning: bool(p.nativeWarning),
+      freeze_state: str(p.freezeState),
+      detail: str(p.detail),
+      received_at: num(p.receivedAt) ?? e.at,
+    });
   }
 
   private upsertDevice(

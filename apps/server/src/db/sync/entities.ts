@@ -14,6 +14,11 @@ export const ROW_ENTITIES = [
   'schedule',
   'schedule_exception',
   'schedule_run',
+  // v1.3 (ADR-048), after what they reference.
+  'device_agent',
+  'power_job',
+  'power_order',
+  'power_report',
 ] as const;
 export type RowEntity = (typeof ROW_ENTITIES)[number];
 export type EntityName = RowEntity | 'setting' | 'scheduler_pause';
@@ -30,6 +35,10 @@ export const TABLE: Record<RowEntity, string> = {
   schedule: 'schedules',
   schedule_exception: 'schedule_exceptions',
   schedule_run: 'schedule_runs',
+  device_agent: 'device_agents',
+  power_job: 'power_jobs',
+  power_order: 'power_orders',
+  power_report: 'power_reports',
 };
 
 /** Tables that gained `updated_at` in migration 004: `touch` maintains it there (F6-03). */
@@ -39,6 +48,10 @@ export const TOUCH_SETS_UPDATED_AT: ReadonlySet<RowEntity> = new Set([
   'tag',
   'schedule_exception',
   'schedule_run',
+  'device_agent',
+  'power_job',
+  'power_order',
+  'power_report',
 ]);
 
 export const PAUSE_KEY = 'scheduler.pause';
@@ -67,6 +80,10 @@ const uuidOf = (db: Db, table: string, id: number | null): string | null =>
 type Snap = Record<string, unknown>;
 
 const SNAPSHOT: Record<RowEntity, (db: Db, id: number) => Snap | undefined> = {
+  device_agent: (db, id) => POWER_SNAPSHOT.device_agent(db, id),
+  power_job: (db, id) => POWER_SNAPSHOT.power_job(db, id),
+  power_order: (db, id) => POWER_SNAPSHOT.power_order(db, id),
+  power_report: (db, id) => POWER_SNAPSHOT.power_report(db, id),
   user(db, id) {
     const r = db.get<{
       username: string;
@@ -279,6 +296,162 @@ const SNAPSHOT: Record<RowEntity, (db: Db, id: number) => Snap | undefined> = {
         status: r.status,
         detail: r.detail,
         claimedBy: r.claimed_by_instance,
+      }
+    );
+  },
+};
+
+const bit = (v: number | null) => (v === null ? null : v === 1);
+
+/** v1.3 replicated power entities (ADR-048). */
+const POWER_SNAPSHOT = {
+  device_agent(db: Db, id: number): Snap | undefined {
+    const r = db.get<{
+      device_uuid: string | null;
+      token_hash: string | null;
+      pending_token_hash: string | null;
+      issued_at: number | null;
+      rotated_at: number | null;
+      revoked_at: number | null;
+      agent_version: string | null;
+      protocol: number | null;
+      freeze_product: string | null;
+      freeze_state: string | null;
+      persistent: number;
+      sleep_after_minutes: number | null;
+      wake_timers: string | null;
+      seen_coarse_at: number | null;
+    }>(
+      `SELECT a.*, d.uuid AS device_uuid FROM device_agents a JOIN devices d ON d.id = a.device_id
+       WHERE a.id = ?`,
+      [id],
+    );
+    return (
+      r && {
+        device: r.device_uuid,
+        tokenHash: r.token_hash,
+        pendingTokenHash: r.pending_token_hash,
+        issuedAt: r.issued_at,
+        rotatedAt: r.rotated_at,
+        revokedAt: r.revoked_at,
+        agentVersion: r.agent_version,
+        protocol: r.protocol,
+        freezeProduct: r.freeze_product,
+        freezeState: r.freeze_state,
+        persistent: r.persistent === 1,
+        sleepAfterMinutes: r.sleep_after_minutes,
+        wakeTimers: r.wake_timers,
+        seenCoarseAt: r.seen_coarse_at,
+      }
+    );
+  },
+  power_job(db: Db, id: number): Snap | undefined {
+    const r = db.get<{
+      action: string;
+      target: string;
+      warning_minutes: number;
+      allow_postpone: number;
+      postpone_max: number;
+      postpone_minutes: number;
+      created_by: number | null;
+      created_at: number;
+    }>('SELECT * FROM power_jobs WHERE id = ?', [id]);
+    return (
+      r && {
+        action: r.action,
+        target: json(r.target),
+        warningMinutes: r.warning_minutes,
+        allowPostpone: r.allow_postpone === 1,
+        postponeMax: r.postpone_max,
+        postponeMinutes: r.postpone_minutes,
+        createdBy: uuidOf(db, 'users', r.created_by),
+        createdAt: r.created_at,
+      }
+    );
+  },
+  power_order(db: Db, id: number): Snap | undefined {
+    const r = db.get<{
+      job_uuid: string | null;
+      device_uuid: string | null;
+      action: string;
+      warning_minutes: number;
+      allow_postpone: number;
+      postpone_max: number;
+      postpone_minutes: number;
+      state: string;
+      created_at: number;
+      expires_at: number;
+      delivered_at: number | null;
+      delivered_by_instance: string | null;
+      executed_at: number | null;
+      detail: string | null;
+    }>(
+      `SELECT o.*, j.uuid AS job_uuid, d.uuid AS device_uuid FROM power_orders o
+       LEFT JOIN power_jobs j ON j.id = o.job_id JOIN devices d ON d.id = o.device_id WHERE o.id = ?`,
+      [id],
+    );
+    return (
+      r && {
+        job: r.job_uuid,
+        device: r.device_uuid,
+        action: r.action,
+        warningMinutes: r.warning_minutes,
+        allowPostpone: r.allow_postpone === 1,
+        postponeMax: r.postpone_max,
+        postponeMinutes: r.postpone_minutes,
+        state: r.state,
+        createdAt: r.created_at,
+        expiresAt: r.expires_at,
+        deliveredAt: r.delivered_at,
+        deliveredBy: r.delivered_by_instance,
+        executedAt: r.executed_at,
+        detail: r.detail,
+      }
+    );
+  },
+  power_report(db: Db, id: number): Snap | undefined {
+    const r = db.get<{
+      device_uuid: string | null;
+      occurrence_uuid: string | null;
+      order_uuid: string | null;
+      action: string;
+      outcome: string;
+      reason: string | null;
+      planned_at: number | null;
+      executed_at: number | null;
+      postpones: number;
+      user_logged_on: number | null;
+      session_count: number | null;
+      was_asleep: number;
+      late_minutes: number | null;
+      native_warning: number;
+      freeze_state: string | null;
+      detail: string | null;
+      received_at: number;
+    }>(
+      `SELECT r.*, d.uuid AS device_uuid FROM power_reports r JOIN devices d ON d.id = r.device_id
+       WHERE r.id = ?`,
+      [id],
+    );
+    return (
+      r && {
+        device: r.device_uuid,
+        occurrence: r.occurrence_uuid,
+        order: r.order_uuid,
+        action: r.action,
+        outcome: r.outcome,
+        reason: r.reason,
+        plannedAt: r.planned_at,
+        executedAt: r.executed_at,
+        postpones: r.postpones,
+        userLoggedOn: bit(r.user_logged_on),
+        sessions: r.session_count,
+        wasAsleep: r.was_asleep === 1,
+        lateMinutes: r.late_minutes,
+        nativeWarning: r.native_warning === 1,
+        freezeState: r.freeze_state,
+        detail: r.detail,
+        receivedAt: r.received_at,
       }
     );
   },

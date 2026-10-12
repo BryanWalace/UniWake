@@ -7,13 +7,17 @@ import type { PowerJob, PowerPreview } from '@uniwake/shared';
 import { deviceState } from '../src/application/power/power-orders';
 import { changeLog } from '../src/db/sync/change-log';
 import { apiHarness, type ApiHarness } from './helpers/api';
+import { relogPower } from './helpers/db';
 
 const ACTOR = { id: null, label: 'teste' };
 const MIN = 60_000;
 
 const hs: ApiHarness[] = [];
 afterEach(async () => {
-  for (const h of hs.splice(0)) await h.close();
+  for (const h of hs.splice(0)) {
+    relogPower(h.services.db); // rows set up with raw SQL (ADR-048 logging)
+    await h.close();
+  }
 });
 
 async function setup() {

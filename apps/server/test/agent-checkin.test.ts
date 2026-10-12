@@ -19,6 +19,7 @@ import { buildApp } from '../src/http/app';
 import { registerAgentRoutes } from '../src/http/panel';
 import { changeLog } from '../src/db/sync/change-log';
 import { apiHarness, type ApiHarness } from './helpers/api';
+import { relogPower } from './helpers/db';
 
 const ACTOR = { id: null, label: 'teste' };
 const DAY = 86_400_000;
@@ -47,6 +48,7 @@ async function setup() {
   });
   cleanups.push(async () => {
     await agent.close();
+    relogPower(h.services.db); // orders set up with raw SQL (ADR-048 logging)
     await h.close();
   });
   const cookie = await h.as('operator');

@@ -96,6 +96,11 @@ const entity = z.enum([
   'schedule',
   'schedule_exception',
   'schedule_run',
+  // v1.3 (ADR-048); protocol 2 only.
+  'device_agent',
+  'power_job',
+  'power_order',
+  'power_report',
   'setting',
   'scheduler_pause',
 ]);

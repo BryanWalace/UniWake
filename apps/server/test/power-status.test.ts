@@ -8,6 +8,7 @@ import { agentReadiness } from '../src/domain/readiness';
 import { changeLog } from '../src/db/sync/change-log';
 import { scheduleRunUuid } from '../src/db/sync/uuid';
 import { apiHarness, type ApiHarness } from './helpers/api';
+import { relogPower } from './helpers/db';
 
 const ACTOR = { id: null, label: 'teste' };
 const MIN = 60_000;
@@ -15,7 +16,10 @@ const sp = (day: number, h: number, m = 0) => Date.UTC(2026, 9, day, h + 3, m);
 
 const hs: ApiHarness[] = [];
 afterEach(async () => {
-  for (const h of hs.splice(0)) await h.close();
+  for (const h of hs.splice(0)) {
+    relogPower(h.services.db); // rows set up with raw SQL (ADR-048 logging)
+    await h.close();
+  }
 });
 
 async function setup() {

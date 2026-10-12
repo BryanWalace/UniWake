@@ -14,6 +14,7 @@ import type {
 import type { ReportRow } from '../../application/power/power-status';
 import type { AgendaDevice } from '../../domain/agenda';
 import type { Db } from '../connection';
+import { changeLog } from '../sync/change-log';
 
 const OPEN = "('pending', 'delivered')";
 
@@ -107,14 +108,21 @@ export function agentRows(db: Db, deviceIds?: readonly number[]): AgentDbRow[] {
 }
 
 /**
- * Power orders, reports and agent sightings (migration 006). Orders and reports are replicated in
- * team mode from M17-T06 on; until then they are written at rev 0 and baselined when registered.
+ * Power orders, reports and agent sightings (migration 006). Orders, reports and the agent row are
+ * replicated (ADR-048): every write is logged; `agent_seen` is machine-local.
  */
 export class SqlitePowerRepo implements AgentStore {
   constructor(private readonly db: Db) {}
 
+  private touchOrders(ids: readonly { id: number }[]): void {
+    changeLog(this.db).touchAll(
+      'power_order',
+      ids.map((r) => r.id),
+    );
+  }
+
   insertReport(deviceId: number, r: AgentReport, receivedAt: number): boolean {
-    return (
+    const inserted =
       this.db.run(
         `INSERT INTO power_reports (uuid, device_id, occurrence_uuid, order_uuid, action, outcome, reason,
            planned_at, executed_at, postpones, user_logged_on, session_count, was_asleep, late_minutes,
@@ -141,8 +149,14 @@ export class SqlitePowerRepo implements AgentStore {
           r.detail,
           receivedAt,
         ],
-      ).changes > 0
-    );
+      ).changes > 0;
+    if (inserted) {
+      const id = this.db.get<{ id: number }>('SELECT id FROM power_reports WHERE uuid = ?', [
+        r.uuid,
+      ])!.id;
+      changeLog(this.db).touch('power_report', id);
+    }
+    return inserted;
   }
 
   settleOrder(
@@ -152,26 +166,33 @@ export class SqlitePowerRepo implements AgentStore {
     at: number,
     detail: string | null,
   ): void {
-    this.db.run(
-      `UPDATE power_orders SET state = ?, executed_at = ?, detail = ?
-       WHERE uuid = ? AND device_id = ? AND state IN ${OPEN}`,
-      [state, at, detail, orderUuid, deviceId],
+    this.touchOrders(
+      this.db.all<{ id: number }>(
+        `UPDATE power_orders SET state = ?, executed_at = ?, detail = ?
+         WHERE uuid = ? AND device_id = ? AND state IN ${OPEN} RETURNING id`,
+        [state, at, detail, orderUuid, deviceId],
+      ),
     );
   }
 
   ackOrders(deviceId: number, uuids: readonly string[], at: number, instance: string): void {
     if (uuids.length === 0) return;
-    this.db.run(
-      `UPDATE power_orders SET state = 'delivered', delivered_at = ?, delivered_by_instance = ?
-       WHERE device_id = ? AND state = 'pending' AND uuid IN (SELECT value FROM json_each(?))`,
-      [at, instance, deviceId, JSON.stringify(uuids)],
+    this.touchOrders(
+      this.db.all<{ id: number }>(
+        `UPDATE power_orders SET state = 'delivered', delivered_at = ?, delivered_by_instance = ?
+         WHERE device_id = ? AND state = 'pending' AND uuid IN (SELECT value FROM json_each(?))
+         RETURNING id`,
+        [at, instance, deviceId, JSON.stringify(uuids)],
+      ),
     );
   }
 
   expireOrders(now: number): void {
-    this.db.run(
-      `UPDATE power_orders SET state = 'expired' WHERE state IN ${OPEN} AND expires_at <= ?`,
-      [now],
+    this.touchOrders(
+      this.db.all<{ id: number }>(
+        `UPDATE power_orders SET state = 'expired' WHERE state IN ${OPEN} AND expires_at <= ? RETURNING id`,
+        [now],
+      ),
     );
   }
 
@@ -233,13 +254,14 @@ export class SqlitePowerRepo implements AgentStore {
   }
 
   saveStatus(deviceId: number, s: AgentStatus): void {
-    // Only a real change writes (and, once replicated, logs) the row.
-    this.db.run(
+    // Only a real change writes (and logs) the row: little change-log churn (ADR-048).
+    const changed = this.db.all<{ id: number }>(
       `UPDATE device_agents SET agent_version = ?, protocol = ?, freeze_product = ?, freeze_state = ?,
          persistent = ?, sleep_after_minutes = ?, wake_timers = ?, seen_coarse_at = ?
        WHERE device_id = ? AND NOT (
          agent_version IS ? AND protocol IS ? AND freeze_product IS ? AND freeze_state IS ?
-         AND persistent = ? AND sleep_after_minutes IS ? AND wake_timers IS ? AND seen_coarse_at IS ?)`,
+         AND persistent = ? AND sleep_after_minutes IS ? AND wake_timers IS ? AND seen_coarse_at IS ?)
+       RETURNING id`,
       [
         s.agentVersion,
         s.protocol,
@@ -259,6 +281,10 @@ export class SqlitePowerRepo implements AgentStore {
         s.wakeTimers,
         s.seenCoarseAt,
       ],
+    );
+    changeLog(this.db).touchAll(
+      'device_agent',
+      changed.map((r) => r.id),
     );
   }
 
@@ -335,8 +361,9 @@ export class SqlitePowerJobsRepo implements PowerJobsStore {
         job.createdAt,
       ],
     ).lastInsertRowid;
+    changeLog(this.db).touch('power_job', id);
     for (const o of orders) {
-      this.db.run(
+      const orderId = this.db.run(
         `INSERT INTO power_orders (uuid, job_id, device_id, action, warning_minutes, allow_postpone,
            postpone_max, postpone_minutes, state, created_at, expires_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
@@ -352,7 +379,8 @@ export class SqlitePowerJobsRepo implements PowerJobsStore {
           job.createdAt,
           o.expiresAt,
         ],
-      );
+      ).lastInsertRowid;
+      changeLog(this.db).touch('power_order', orderId);
     }
     return id;
   }
@@ -428,11 +456,16 @@ export class SqlitePowerJobsRepo implements PowerJobsStore {
   }
 
   cancelJob(id: number, at: number): number {
-    return this.db.run(
+    const ids = this.db.all<{ id: number }>(
       `UPDATE power_orders SET state = 'cancelled', detail = 'cancelado no painel', executed_at = NULL
-       WHERE job_id = ? AND state IN ('pending', 'delivered') AND expires_at > ?`,
+       WHERE job_id = ? AND state IN ('pending', 'delivered') AND expires_at > ? RETURNING id`,
       [id, at],
-    ).changes;
+    );
+    changeLog(this.db).touchAll(
+      'power_order',
+      ids.map((r) => r.id),
+    );
+    return ids.length;
   }
 }
 

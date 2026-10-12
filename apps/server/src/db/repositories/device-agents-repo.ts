@@ -1,6 +1,7 @@
 import type { FreezeState } from '@uniwake/shared';
 import type { DeviceAgentRow, DeviceAgentsRepo } from '../../application/power/agent-tokens';
 import type { Db } from '../connection';
+import { changeLog } from '../sync/change-log';
 
 interface Row {
   device_id: number;
@@ -36,12 +37,16 @@ const toRow = (r: Row): DeviceAgentRow => ({
   seenCoarseAt: r.seen_coarse_at,
 });
 
-/**
- * `device_agents` (migration 006). Replicated in team mode from M17-T06 on; until then rows are
- * written at rev 0 and the start-up baseline logs them once the entity is registered.
- */
+/** `device_agents` (migration 006), replicated as `device_agent` (ADR-048): every write is logged. */
 export class SqliteDeviceAgentsRepo implements DeviceAgentsRepo {
   constructor(private readonly db: Db) {}
+
+  private log(deviceId: number): void {
+    const id = this.db.get<{ id: number }>('SELECT id FROM device_agents WHERE device_id = ?', [
+      deviceId,
+    ])?.id;
+    if (id !== undefined) changeLog(this.db).touch('device_agent', id);
+  }
 
   byDevice(deviceId: number): DeviceAgentRow | undefined {
     const r = this.db.get<Row>('SELECT * FROM device_agents WHERE device_id = ?', [deviceId]);
@@ -64,6 +69,7 @@ export class SqliteDeviceAgentsRepo implements DeviceAgentsRepo {
          issued_at = excluded.issued_at, rotated_at = excluded.rotated_at, revoked_at = NULL`,
       [deviceId, hash, now, now],
     );
+    this.log(deviceId);
   }
 
   setPending(deviceId: number, hash: string): void {
@@ -71,6 +77,7 @@ export class SqliteDeviceAgentsRepo implements DeviceAgentsRepo {
       hash,
       deviceId,
     ]);
+    this.log(deviceId);
   }
 
   promotePending(deviceId: number, now: number): void {
@@ -79,6 +86,7 @@ export class SqliteDeviceAgentsRepo implements DeviceAgentsRepo {
        WHERE device_id = ? AND pending_token_hash IS NOT NULL`,
       [now, deviceId],
     );
+    this.log(deviceId);
   }
 
   revoke(deviceId: number, now: number): void {
@@ -86,5 +94,6 @@ export class SqliteDeviceAgentsRepo implements DeviceAgentsRepo {
       'UPDATE device_agents SET revoked_at = ?, pending_token_hash = NULL WHERE device_id = ?',
       [now, deviceId],
     );
+    this.log(deviceId);
   }
 }

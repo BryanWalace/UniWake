@@ -26,13 +26,20 @@ const toMember = (r: {
   verifier: string;
   joined_at: number;
   revoked_at: number | null;
+  signing_key_id: string | null;
+  signing_public_jwk: string | null;
 }): MemberRow => ({
   instanceId: r.uuid,
   name: r.name,
   verifier: r.verifier,
   joinedAt: r.joined_at,
   revokedAt: r.revoked_at,
+  signingKeyId: r.signing_key_id,
+  signingPublicJwk: r.signing_public_jwk,
 });
+
+const MEMBER_COLS =
+  'uuid, name, verifier, joined_at, revoked_at, signing_key_id, signing_public_jwk';
 
 interface PeerDbRow {
   instance_id: string;
@@ -111,14 +118,14 @@ export class SqliteTeamRepo implements TeamRepo {
   members(): MemberRow[] {
     return this.db
       .all<Parameters<typeof toMember>[0]>(
-        'SELECT uuid, name, verifier, joined_at, revoked_at FROM team_members ORDER BY name COLLATE NOCASE, uuid',
+        `SELECT ${MEMBER_COLS} FROM team_members ORDER BY name COLLATE NOCASE, uuid`,
       )
       .map(toMember);
   }
 
   member(instanceId: string): MemberRow | undefined {
     const r = this.db.get<Parameters<typeof toMember>[0]>(
-      'SELECT uuid, name, verifier, joined_at, revoked_at FROM team_members WHERE uuid = ?',
+      `SELECT ${MEMBER_COLS} FROM team_members WHERE uuid = ?`,
       [instanceId],
     );
     return r && toMember(r);
@@ -141,6 +148,20 @@ export class SqliteTeamRepo implements TeamRepo {
           [m.name, m.verifier, m.joinedAt, m.revokedAt, id],
         );
       }
+      changeLog(this.db).touch('team_member', id);
+    });
+  }
+
+  setSigningKey(instanceId: string, keyId: string, publicJwk: string): void {
+    this.db.transaction(() => {
+      const id = this.db.get<{ id: number }>('SELECT id FROM team_members WHERE uuid = ?', [
+        instanceId,
+      ])?.id;
+      if (id === undefined) return;
+      this.db.run(
+        'UPDATE team_members SET signing_key_id = ?, signing_public_jwk = ? WHERE id = ?',
+        [keyId, publicJwk, id],
+      );
       changeLog(this.db).touch('team_member', id);
     });
   }

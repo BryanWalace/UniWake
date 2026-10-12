@@ -88,6 +88,8 @@ export interface HubEntrySource {
   epoch: number;
   /** `http://ip:port` this machine can use for the hub that answers, if known. */
   selfUrl: string | null;
+  /** The other team hubs a machine may check in with (ADR-048), with their signing keys. */
+  peers: { instanceId: string; url: string; keyId: string; publicKey: { n: string; e: string } }[];
 }
 
 export interface AgentServiceDeps {
@@ -184,6 +186,8 @@ export class AgentService {
     const hub = this.d.hub(ctx.host);
     const scripts = this.scriptRefs();
     const { ackReports, orders, newToken } = this.d.transaction(() => {
+      // Receipts first: a 1-min order is often acknowledged and reported in the same check-in.
+      this.d.store.ackOrders(deviceId, req.ackedOrders, now, hub.instanceId);
       const acked: string[] = [];
       for (const r of req.reports) {
         this.d.store.insertReport(deviceId, r, now);
@@ -193,7 +197,6 @@ export class AgentService {
           this.d.store.settleOrder(deviceId, r.order, state, r.executedAt ?? now, r.detail);
         }
       }
-      this.d.store.ackOrders(deviceId, req.ackedOrders, now, hub.instanceId);
       this.d.store.expireOrders(now);
       this.d.store.saveSighting(deviceId, {
         seenAt: now,
@@ -247,8 +250,8 @@ export class AgentService {
       },
       hubs: {
         epoch: hub.epoch,
-        list:
-          hub.selfUrl === null
+        list: [
+          ...(hub.selfUrl === null
             ? []
             : [
                 {
@@ -257,7 +260,14 @@ export class AgentService {
                   keyId: selfKey.keyId(),
                   publicKey: selfKey.publicKey(),
                 },
-              ],
+              ]),
+          ...hub.peers.map((p) => ({
+            instanceId: p.instanceId,
+            urls: [p.url],
+            keyId: p.keyId,
+            publicKey: p.publicKey,
+          })),
+        ].slice(0, 16),
       },
       scripts,
       ackReports,

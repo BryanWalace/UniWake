@@ -475,6 +475,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       await services.team.init();
       // ADR-044: the key that signs answers to lab PCs (made on the first start of v1.3).
       await services.hubKey.init();
+      services.team.publishSigningKey(services.hubKey.keyId(), services.hubKey.publicKey());
       services.scheduler.start();
       await services.sync.start();
       services.monitor.start();

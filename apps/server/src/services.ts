@@ -636,10 +636,31 @@ export function createServices(
       const fromHost =
         host && /^\d{1,3}(\.\d{1,3}){3}:\d{1,5}$/.test(host) ? `http://${host}` : null;
       const chosen = settings.get('enrollment.hubAddress');
+      const self = changeLog(db).instanceId();
+      // ADR-048: the team's hubs (their agent listener on the default port) with their keys.
+      team.publishSigningKey(hubKey.keyId(), hubKey.publicKey());
+      const peers = team.inTeam()
+        ? team.members().flatMap((m) => {
+            if (m.instanceId === self || m.revokedAt !== null) return [];
+            if (!m.signingKeyId || !m.signingPublicJwk) return [];
+            const p = team.peer(m.instanceId);
+            const address = p?.manualAddress ?? p?.address ?? null;
+            if (!address || !/^\d{1,3}(\.\d{1,3}){3}$/.test(address)) return [];
+            return [
+              {
+                instanceId: m.instanceId,
+                url: `http://${address}:47101`,
+                keyId: m.signingKeyId,
+                publicKey: JSON.parse(m.signingPublicJwk) as { n: string; e: string },
+              },
+            ];
+          })
+        : [];
       return {
-        instanceId: changeLog(db).instanceId(),
+        instanceId: self,
         epoch: team.epoch() ?? 0,
         selfUrl: fromHost ?? (chosen ? `http://${chosen}:${agentPort}` : null),
+        peers,
       };
     },
     cancelId: (orderUuid) => uuidV5(`power-cancel:${orderUuid}`),

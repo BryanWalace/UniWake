@@ -274,7 +274,24 @@ export class SqliteDevicesRepo implements DevicesRepo {
   /** ADR-031 §5/§8: tombstones; schedule targets lose the local id but keep the UUID. */
   bulkDelete(ids: readonly number[]): void {
     this.db.transaction(() => {
-      changeLog(this.db).tombstone('device', ids);
+      const log = changeLog(this.db);
+      // ADR-048: the device's agent, orders and reports cascade with it; tombstone them first.
+      this.chunked(ids, (chunk, ph) => {
+        for (const [entity, table] of [
+          ['device_agent', 'device_agents'],
+          ['power_order', 'power_orders'],
+          ['power_report', 'power_reports'],
+        ] as const) {
+          log.tombstone(
+            entity,
+            this.db
+              .all<{ id: number }>(`SELECT id FROM ${table} WHERE device_id IN (${ph})`, chunk)
+              .map((r) => r.id),
+          );
+        }
+        return [];
+      });
+      log.tombstone('device', ids);
       this.chunked(ids, (chunk, ph) => {
         this.db.run(
           `UPDATE schedule_targets SET ref_id = NULL WHERE type = 'device' AND ref_id IN (${ph})`,

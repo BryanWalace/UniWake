@@ -44,7 +44,12 @@ export class ChangeLog {
     ]);
     if (!row) return null;
     if (row.uuid !== null) return row.uuid;
-    const uuid = entity === 'schedule_run' ? this.runUuid(id) : randomUUID();
+    const uuid =
+      entity === 'schedule_run'
+        ? this.runUuid(id)
+        : entity === 'device_agent'
+          ? this.agentUuid(id)
+          : randomUUID();
     this.db.run(`UPDATE ${table} SET uuid = ? WHERE id = ?`, [uuid, id]);
     return uuid;
   }
@@ -55,6 +60,15 @@ export class ChangeLog {
       [runId],
     )!;
     return scheduleRunUuid(this.uuidOf('schedule', r.schedule_id)!, r.planned_at);
+  }
+
+  /** ADR-048: a device's agent has the device's identity, the same on every team PC. */
+  private agentUuid(agentId: number): string {
+    const r = this.db.get<{ device_id: number }>(
+      'SELECT device_id FROM device_agents WHERE id = ?',
+      [agentId],
+    )!;
+    return this.uuidOf('device', r.device_id)!;
   }
 
   /** Records the current state of a replicated row (call after every write to it). */

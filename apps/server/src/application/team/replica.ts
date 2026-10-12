@@ -11,6 +11,10 @@ export type ReplicatedEntity =
   | 'schedule'
   | 'schedule_exception'
   | 'schedule_run'
+  | 'device_agent'
+  | 'power_job'
+  | 'power_order'
+  | 'power_report'
   | 'setting'
   | 'scheduler_pause';
 
