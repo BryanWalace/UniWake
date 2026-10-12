@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { expect, expectAccessible, test, uniq } from './fixtures';
 
 /** The E2E hub's agent listener (scripts/e2e-server.ts). */
-const AGENT = 'http://127.0.0.1:47191';
+const AGENT = 'http://127.0.0.1:27191';
 
 test('AC-007-13: the command pins the SHA-256 of the script the agent listener serves', async ({
   page,

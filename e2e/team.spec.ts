@@ -1,6 +1,6 @@
 /**
  * M14-T05: Modo equipe through the UI with two hubs on loopback. The Playwright web server is PC A
- * (panel 47190, team port 47192); this spec starts PC B in-process (panel 47194, team port 47196).
+ * (panel 27190, team port 27192); this spec starts PC B in-process (panel 27194, team port 27196).
  * Both are demo hubs: no magic packet leaves the machine and nothing is broadcast on the LAN.
  */
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -12,7 +12,7 @@ import { CONFIG_DEFAULTS } from '../apps/server/src/config';
 import { createHub, type Hub } from '../apps/server/src/hub';
 import { ADMIN, expect, guardConsole, test } from './fixtures';
 
-const B_URL = 'http://127.0.0.1:47194';
+const B_URL = 'http://127.0.0.1:27194';
 
 let hubB: Hub | null = null;
 let dirB = '';
@@ -25,10 +25,10 @@ test.beforeAll(async () => {
       dataDir: dirB,
       demo: true,
       demoSeed: false,
-      panelPort: 47194,
-      agentPort: 47195,
+      panelPort: 27194,
+      agentPort: 27195,
       agentBind: '127.0.0.1',
-      syncPort: 47196,
+      syncPort: 27196,
       logLevel: 'warn',
     },
     logger: pino({ level: 'silent' }),
@@ -36,9 +36,9 @@ test.beforeAll(async () => {
     syncBind: '127.0.0.1',
     secrets: new DevSecretProtector(),
     machineName: 'PC-B',
-    // PC A listens on 47192: typing "127.0.0.1" on B reaches it, and announcements stay local.
-    teamDefaultPort: 47192,
-    teamAnnounceTargets: () => [{ host: '127.0.0.1', port: 47192 }],
+    // PC A listens on 27192: typing "127.0.0.1" on B reaches it, and announcements stay local.
+    teamDefaultPort: 27192,
+    teamAnnounceTargets: () => [{ host: '127.0.0.1', port: 27192 }],
   });
   await hubB.start();
 });

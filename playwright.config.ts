@@ -1,6 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const PORT = 47190;
+// Below the ephemeral ranges of Linux (32768+) and Windows (49152+): with 47190.. an outgoing
+// connection on the Ubuntu runner could take the team port first (CI of 7583ef3, pairing 500).
+const PORT = 27190;
 
 export default defineConfig({
   testDir: 'e2e',
