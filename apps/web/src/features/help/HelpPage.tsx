@@ -352,6 +352,76 @@ export const HELP: Record<HelpTopic, { title: string; summary: string; body: Rea
       </>
     ),
   },
+  'backup-migration': {
+    title: 'Backup e migração',
+    summary:
+      'Leve o cadastro para um PC novo, guarde uma cópia fora deste computador e restaure depois de reinstalar.',
+    body: (
+      <>
+        <p>
+          Em <strong>Backup e migração</strong> (administradores) o UniWake gera um arquivo{' '}
+          <code>.uniwake</code> com as partes que você escolher: Cadastro (salas, etiquetas e
+          máquinas), Agendamentos, Configurações gerais, Usuários, Desligamento remoto e, se quiser,
+          o Histórico. As configurações deste PC (placas de rede, endereços, portas, atualização e
+          backup) nunca vão no arquivo.
+        </p>
+        <h2 className="text-lg font-bold">Senha</h2>
+        <p>
+          Usuários (com as senhas deles) e Desligamento remoto (a chave deste UniWake) só saem no
+          arquivo com uma senha de pelo menos 10 caracteres. Sem a senha ninguém abre essas partes:
+          guarde-a junto com a documentação da TI. Um arquivo sem senha pode ficar numa pasta da
+          rede sem risco para as senhas dos usuários.
+        </p>
+        <h2 className="text-lg font-bold">Passar para um PC novo</h2>
+        <Steps>
+          <li>
+            No PC antigo: Exportar com todas as partes e uma senha. Copie o arquivo para o PC novo.
+          </li>
+          <li>Instale o UniWake no PC novo e crie o primeiro usuário.</li>
+          <li>
+            Importar → escolha o arquivo → digite a senha → <strong>Substituir</strong> → Ver prévia
+            → digite IMPORTAR. Antes de importar o UniWake faz um backup, e dá para desfazer.
+          </li>
+          <li>
+            Entre de novo com um usuário do arquivo. O PC novo fica <strong>em espera</strong>: os
+            agendamentos não rodam e as máquinas dos laboratórios não recebem ordens dele.
+          </li>
+          <li>
+            Confira tudo, desligue o UniWake do PC antigo e clique em{' '}
+            <strong>Ativar este UniWake</strong>.
+          </li>
+        </Steps>
+        <p>
+          Se o PC novo tiver outro endereço na rede, rode de novo o comando de <PrepareLink /> nas
+          máquinas dos laboratórios para que elas passem a consultar o PC novo.
+        </p>
+        <h2 className="text-lg font-bold">Mesclar ou substituir</h2>
+        <Bullets>
+          <li>
+            <strong>Mesclar</strong> junta o arquivo ao que já existe; nada é apagado e vale a
+            versão mais recente de cada item. Nomes ou MACs repetidos aparecem na prévia como
+            conflitos.
+          </li>
+          <li>
+            <strong>Substituir</strong> deixa o cadastro e os agendamentos iguais aos do arquivo; o
+            histórico local das máquinas que continuam é mantido.
+          </li>
+          <li>
+            Um PC que está num Modo equipe não importa: importe num PC fora da equipe e depois
+            pareie.
+          </li>
+        </Bullets>
+        <h2 className="text-lg font-bold">Exportação automática</h2>
+        <p>
+          Em Configurações você pode ligar uma exportação diária para uma pasta, inclusive numa
+          pasta compartilhada da rede (<code>\\servidor\pasta</code>). Ela não leva Usuários nem
+          Desligamento remoto. O serviço do UniWake roda como Sistema Local: na pasta da rede, quem
+          precisa de permissão de escrita é a conta do computador (por exemplo,{' '}
+          <code>DOMINIO\PC-TI$</code>). Falhas aparecem em Saúde do sistema.
+        </p>
+      </>
+    ),
+  },
   'frozen-labs': {
     title: 'Laboratórios com Deep Freeze ou similar',
     summary:

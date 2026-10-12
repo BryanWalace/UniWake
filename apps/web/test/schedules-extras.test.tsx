@@ -16,6 +16,7 @@ const DASH: Dashboard = {
   dryRun: false,
   lastSweepAt: null,
   pause: null,
+  standby: null,
 };
 const at = (h: number, m = 0) => new Date(2026, 9, 5, h, m).getTime();
 

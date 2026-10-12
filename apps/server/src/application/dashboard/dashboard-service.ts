@@ -94,6 +94,7 @@ export interface DashboardDeps {
   demo: boolean;
   lastSweepAt: () => number | null;
   pause: () => Dashboard['pause'];
+  standby?: () => Dashboard['standby'];
   /** Open notices as the notices service presents them (e.g. moves of the last 24 h only). */
   notices: () => DashboardNotice[];
 }
@@ -193,6 +194,7 @@ export class DashboardService {
       dryRun: this.d.settings.get('wake.dryRun'),
       lastSweepAt: this.d.lastSweepAt(),
       pause: this.d.pause(),
+      standby: this.d.standby?.() ?? null,
     };
   }
 

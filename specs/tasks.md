@@ -427,8 +427,8 @@ milestone after milestone autonomously; assumptions A-1..A-5 are recorded as ADR
 ## M23 — Panel, automatic exports, CLI
 | ID | Task | Refs | Tests | Done when |
 |---|---|---|---|---|
-| [ ] M23-T01 | Page "Backup e migração" (admin): export form (sections, password twice, explanation of what is left out), download. | FR-401.1 | UI test | loading/empty/error |
-| [ ] M23-T02 | Import wizard: file → manifest → password → preview → mode → `IMPORTAR`; result + "Desfazer importação"; standby banner with "Ativar este UniWake". | FR-403, FR-404 | UI test + AC-403-06 (E2E) | — |
+| [x] M23-T01 | Page "Backup e migração" (admin): export form (sections, password twice, explanation of what is left out), download. | FR-401.1 | UI test | loading/empty/error |
+| [x] M23-T02 | Import wizard: file → manifest → password → preview → mode → `IMPORTAR`; result + "Desfazer importação"; standby banner with "Ativar este UniWake". | FR-403, FR-404 | UI test + AC-403-06 (E2E) | — |
 | [ ] M23-T03 | Automatic exports: machine settings, timer, folder write + rotation, health warning. | FR-405; ADR-052 | AC-405-01 | — |
 | [ ] M23-T04 | CLI `--export` / `--import` with health probe and exit codes. | FR-406; ADR-052 | AC-406-01 | — |
 | [ ] M23-R | Code review → `specs/reviews/M23-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |

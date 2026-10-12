@@ -77,6 +77,8 @@ export interface Dashboard {
   lastSweepAt: number | null;
   /** Global scheduler pause (FR-005.6): a red banner on every page while set. */
   pause: SchedulerPause | null;
+  /** v1.4 standby after an import (FR-404): banner on every page until activated. */
+  standby: { since: number; from: string } | null;
 }
 
 export const UPTIME_MAX_DAYS = 366;

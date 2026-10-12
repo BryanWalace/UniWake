@@ -249,6 +249,10 @@ export function createServices(
     demo: opts.demo === true,
     lastSweepAt: () => monitor.lastSweep?.startedAt ?? null,
     pause: () => scheduler.pauseState(),
+    standby: () => {
+      const s = migrationState.standby();
+      return s ? { since: s.since, from: s.from } : null;
+    },
     notices: () => notices.list(),
   });
 

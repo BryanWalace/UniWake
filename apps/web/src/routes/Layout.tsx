@@ -16,6 +16,7 @@ const NAV: { to: string; label: string; end?: boolean; admin?: boolean }[] = [
   { to: '/configuracoes', label: t.nav.settings, admin: true },
   { to: '/logs', label: t.nav.logs, admin: true },
   { to: '/equipe', label: t.nav.team, admin: true },
+  { to: '/backup', label: t.nav.migration, admin: true },
   { to: '/saude', label: t.nav.health },
 ];
 

@@ -13,6 +13,7 @@ export const HELP_TOPICS = [
   'team-mode',
   'remote-shutdown',
   'frozen-labs',
+  'backup-migration',
 ] as const;
 export type HelpTopic = (typeof HELP_TOPICS)[number];
 

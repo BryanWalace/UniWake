@@ -95,6 +95,7 @@ const DASH: Dashboard = {
   dryRun: false,
   lastSweepAt: null,
   pause: null,
+  standby: null,
 };
 
 describe('applyCounters', () => {
