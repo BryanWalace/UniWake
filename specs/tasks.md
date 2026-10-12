@@ -412,7 +412,7 @@ milestone after milestone autonomously; assumptions A-1..A-5 are recorded as ADR
 | [x] M21-T01 | `application/migration/document.ts`: sections ↔ entities, manifest, canonical JSON + SHA-256, format version + converter chain, limits; shared schemas (`ExportManifest`, sections, labels pt-BR). | FR-401.2/3; ADR-049 | unit | — |
 | [x] M21-T02 | `SecretBox`: argon2id + AES-256-GCM with AAD; wrong password/tamper → one error. | FR-402; ADR-050 | AC-402-01, AC-402-02 | — |
 | [x] M21-T03 | Export service + gzip adapter with inflate guard; hub key unwrap for export; `POST /api/migration/export` (admin, audited without password). | FR-401; ADR-049/050 | AC-401-01, AC-401-02 | route-table authz updated |
-| [ ] M21-D | Break-it: huge/garbage/zip-bomb files, missing sections, password edge cases, concurrent exports. | tasks §Break-it | regressions | — |
+| [x] M21-D | Break-it: huge/garbage/zip-bomb files, missing sections, password edge cases, concurrent exports. | tasks §Break-it | regressions | — |
 | [ ] M21-R | Code review → `specs/reviews/M21-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
 
 ## M22 — Import and standby
