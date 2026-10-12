@@ -97,7 +97,13 @@ describe('automatic export (FR-405)', () => {
   });
 
   it('the folder setting takes local folders and shares, nothing else', () => {
-    for (const ok of ['', 'D:\\UniWake-exportacoes', '\\\\servidor\\pasta', '\\\\srv\\c$\\a b'])
+    for (const ok of [
+      '',
+      'D:\\UniWake-exportacoes',
+      '\\\\servidor\\pasta',
+      '\\\\srv\\c$\\a b',
+      '/srv/exportacoes',
+    ])
       expect(exportFolderSchema.safeParse(ok).success, ok).toBe(true);
     for (const bad of ['pasta', 'D:', '\\\\servidor', 'D:\\a|b', 'C:\\a\u0001b', 'http://x'])
       expect(exportFolderSchema.safeParse(bad).success, bad).toBe(false);

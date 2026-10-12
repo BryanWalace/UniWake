@@ -80,7 +80,8 @@ export const exportFolderSchema = z.union([
     .trim()
     .max(240)
     .regex(
-      /^([A-Za-z]:\\|\\\\[^\\/:*?"<>|\s]+\\[^\\/:*?"<>|]+)[^:*?"<>|]*$/,
+      // Windows folder or share; an absolute POSIX path only matters for development and CI.
+      /^(([A-Za-z]:\\|\\\\[^\\/:*?"<>|\s]+\\[^\\/:*?"<>|]+)[^:*?"<>|]*|\/[^:*?"<>|]*)$/,
       'Use uma pasta como D:\\Exportacoes ou \\\\servidor\\pasta.',
     )
     .refine((p) => [...p].every((c) => c.charCodeAt(0) >= 32), 'Caractere inválido na pasta.'),
