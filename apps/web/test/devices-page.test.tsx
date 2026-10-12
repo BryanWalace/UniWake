@@ -17,6 +17,7 @@ function device(id: number, patch: Partial<Device> = {}): Device {
     tagIds: [],
     notes: null,
     enabled: true,
+    neverScheduledShutdown: false,
     manufacturer: null,
     model: null,
     serial: null,
@@ -202,6 +203,47 @@ describe('devices page (FR-002)', () => {
         action: 'delete',
         deviceIds: [1],
         confirm: true,
+      }),
+    );
+  });
+});
+
+describe('remote shutdown in the inventory (M19-T03, FR-309, FR-306.2)', () => {
+  it('shows each machine readiness under its status', async () => {
+    inventoryApi().on('GET', '/api/power/agents', {
+      body: [
+        { deviceId: 1, readiness: 'ready' },
+        { deviceId: 2, readiness: 'lost' },
+      ],
+    });
+    renderApp('/dispositivos');
+    expect(await screen.findByText('Pronta para desligar')).toBeInTheDocument();
+    expect(screen.getByText('Desligamento remoto perdido')).toBeInTheDocument();
+  });
+
+  it('the table still works when the readiness list fails', async () => {
+    inventoryApi().on('GET', '/api/power/agents', { status: 500, body: { message: 'x' } });
+    renderApp('/dispositivos');
+    expect(await screen.findByText('PC-01')).toBeInTheDocument();
+    expect(screen.queryByText('Pronta para desligar')).not.toBeInTheDocument();
+  });
+
+  it('"Nunca desligar por agendamento" is sent with the device', async () => {
+    const api = inventoryApi().on('POST', '/api/devices', (body) => ({
+      status: 201,
+      body: { device: device(9, body as Partial<Device>), warnings: [] },
+    }));
+    const user = userEvent.setup();
+    renderApp('/dispositivos');
+    await user.click(await screen.findByRole('button', { name: 'Novo dispositivo' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Novo dispositivo' });
+    await user.type(within(dialog).getByLabelText('Nome'), 'PROF');
+    await user.type(within(dialog).getByLabelText(/^MAC/), '00-aa-00-00-00-09');
+    await user.click(within(dialog).getByLabelText(/Nunca desligar por agendamento/));
+    await user.click(within(dialog).getByRole('button', { name: 'Salvar' }));
+    await waitFor(() =>
+      expect(api.calls.find((c) => c.method === 'POST')?.body).toMatchObject({
+        neverScheduledShutdown: true,
       }),
     );
   });

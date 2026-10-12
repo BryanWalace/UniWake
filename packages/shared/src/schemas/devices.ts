@@ -21,6 +21,8 @@ export const deviceCreateSchema = z.object({
   tagIds: z.array(idSchema).max(50).optional(),
   notes: notesSchema,
   enabled: z.boolean().optional(),
+  /** FR-306.2 (owner Q-1): never shut down by a schedule; manual shutdown asks to confirm. */
+  neverScheduledShutdown: z.boolean().optional(),
 });
 export type DeviceCreate = z.input<typeof deviceCreateSchema>;
 
@@ -94,6 +96,8 @@ export interface Device extends DeviceState {
   tagIds: number[];
   notes: string | null;
   enabled: boolean;
+  /** "Nunca desligar por agendamento" (FR-306.2). */
+  neverScheduledShutdown: boolean;
   manufacturer: string | null;
   model: string | null;
   serial: string | null;

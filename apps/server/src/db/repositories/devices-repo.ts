@@ -21,6 +21,7 @@ interface Row {
   room_id: number | null;
   notes: string | null;
   enabled: number;
+  never_scheduled_shutdown: number;
   manufacturer: string | null;
   model: string | null;
   serial: string | null;
@@ -56,6 +57,7 @@ const toDevice = (r: Row): Device => ({
   tagIds: tagIds(r.tag_ids),
   notes: r.notes,
   enabled: r.enabled === 1,
+  neverScheduledShutdown: r.never_scheduled_shutdown === 1,
   manufacturer: r.manufacturer,
   model: r.model,
   serial: r.serial,
@@ -170,9 +172,20 @@ export class SqliteDevicesRepo implements DevicesRepo {
 
   insert(d: DeviceWrite, now: number): number {
     const id = this.db.run(
-      `INSERT INTO devices (name, mac, ip, hostname, room_id, notes, enabled, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [d.name, d.mac, d.ip, d.hostname, d.roomId, d.notes, d.enabled ? 1 : 0, now, now],
+      `INSERT INTO devices (name, mac, ip, hostname, room_id, notes, enabled, never_scheduled_shutdown,
+         created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        d.name,
+        d.mac,
+        d.ip,
+        d.hostname,
+        d.roomId,
+        d.notes,
+        d.enabled ? 1 : 0,
+        d.neverScheduledShutdown ? 1 : 0,
+        now,
+        now,
+      ],
     ).lastInsertRowid;
     this.db.run('INSERT INTO device_state (device_id) VALUES (?)', [id]);
     changeLog(this.db).touch('device', id);
@@ -182,8 +195,19 @@ export class SqliteDevicesRepo implements DevicesRepo {
   update(id: number, d: DeviceWrite, now: number): void {
     this.db.run(
       `UPDATE devices SET name = ?, mac = ?, ip = ?, hostname = ?, room_id = ?, notes = ?, enabled = ?,
-         updated_at = ? WHERE id = ?`,
-      [d.name, d.mac, d.ip, d.hostname, d.roomId, d.notes, d.enabled ? 1 : 0, now, id],
+         never_scheduled_shutdown = COALESCE(?, never_scheduled_shutdown), updated_at = ? WHERE id = ?`,
+      [
+        d.name,
+        d.mac,
+        d.ip,
+        d.hostname,
+        d.roomId,
+        d.notes,
+        d.enabled ? 1 : 0,
+        d.neverScheduledShutdown === undefined ? null : d.neverScheduledShutdown ? 1 : 0,
+        now,
+        id,
+      ],
     );
     changeLog(this.db).touch('device', id);
   }

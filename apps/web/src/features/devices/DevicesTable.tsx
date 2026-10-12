@@ -2,6 +2,7 @@ import { Link } from 'react-router';
 import type { Device } from '@uniwake/shared';
 import type { RoomWithCount, TagWithCount } from '../../api/hooks';
 import { Button, StatusBadge, TagChip } from '../../components/ui';
+import { READINESS_SHORT, READINESS_TONE, useAgents } from '../power/api';
 
 interface Props {
   devices: Device[];
@@ -27,6 +28,9 @@ export function DevicesTable({
   const roomName = new Map(rooms.map((r) => [r.id, r.name]));
   const tagById = new Map(tags.map((t) => [t.id, t]));
   const ids = devices.map((d) => d.id);
+  const agentList = useAgents();
+  /** FR-309: readiness per machine (badges under the status). */
+  const agents = new Map((agentList.data ?? []).map((a) => [a.deviceId, a.readiness]));
   const allSelected = ids.length > 0 && ids.every((id) => selected.has(id));
   return (
     <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
@@ -94,6 +98,13 @@ export function DevicesTable({
               </td>
               <td className="px-3 py-2">
                 <StatusBadge status={d.status} />
+                {agents.get(d.id) && (
+                  <span
+                    className={`mt-1 block w-fit rounded px-1.5 text-xs font-medium ${READINESS_TONE[agents.get(d.id)!]}`}
+                  >
+                    {READINESS_SHORT[agents.get(d.id)!]}
+                  </span>
+                )}
               </td>
               <td className="px-3 py-2 font-mono">{d.ip ?? '—'}</td>
               <td className="px-3 py-2 font-mono">{d.mac}</td>

@@ -155,10 +155,17 @@ export function buildCommand(p: {
   token: string;
   /** v1.3: the hub key the script checks the signed answer against (ADR-044). */
   hubKeyId?: string | null;
+  /** FR-308.4: a folder that survives freezing, e.g. T:\UniWake (checked by its own pattern). */
+  persistentPath?: string | null;
+  uwfExclude?: boolean;
 }): string {
-  for (const v of Object.values(p)) {
+  const { persistentPath, uwfExclude, ...plain } = p;
+  for (const v of Object.values(plain)) {
     if (v === null || v === undefined) continue;
     if (!/^[A-Za-z0-9:/._-]+$/.test(v)) throw new Error(`unsafe value in command: ${v}`);
+  }
+  if (persistentPath && !/^[A-Za-z]:\\[A-Za-z0-9._\\-]{1,120}$/.test(persistentPath)) {
+    throw new Error(`unsafe value in command: ${persistentPath}`);
   }
   const hash = p.sha256.toUpperCase();
   return (
@@ -170,6 +177,8 @@ export function buildCommand(p: {
     `else { powershell.exe -NoProfile -ExecutionPolicy Bypass -File $f ` +
     `-HubUrl '${p.hubUrl}' -RoomCode '${p.roomCode}' -Token '${p.token}'` +
     (p.hubKeyId ? ` -HubKeyId '${p.hubKeyId}'` : '') +
+    (persistentPath ? ` -PersistentPath '${persistentPath}'` : '') +
+    (uwfExclude ? ' -UwfExclude' : '') +
     ' } }'
   );
 }
@@ -283,7 +292,10 @@ export class EnrollmentService {
   }
 
   /** Builds the one-liner for a token shown moments ago; remembers the chosen address. */
-  command(input: { token: string; address: string }, actor: Actor): EnrollmentCommand {
+  command(
+    input: { token: string; address: string; persistentPath?: string; uwfExclude?: boolean },
+    actor: Actor,
+  ): EnrollmentCommand {
     const now = this.d.clock.now();
     const t = this.d.repo.findByHash(sha256Hex(input.token));
     if (!t) throw new AppError('ENROLL_TOKEN_INVALID');
@@ -299,6 +311,8 @@ export class EnrollmentService {
       roomCode: t.roomCode,
       token: input.token,
       hubKeyId: this.d.hubKeyId?.() ?? null,
+      persistentPath: input.persistentPath ?? null,
+      uwfExclude: input.uwfExclude ?? false,
     });
     this.d.transaction(() => {
       if (this.d.settings.get('enrollment.hubAddress') !== input.address) {

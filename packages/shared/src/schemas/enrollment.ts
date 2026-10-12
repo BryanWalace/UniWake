@@ -56,9 +56,21 @@ export const enrollmentTokenValueSchema = z
   .string()
   .regex(/^[A-Za-z0-9_-]{16,64}$/, 'Código de cadastro inválido.');
 
+/**
+ * A folder that survives freezing (FR-308.4), e.g. `T:\UniWake`: a drive, then a safe path (no
+ * spaces or quotes, so it can go inside the one-line command).
+ */
+export const persistentPathSchema = z
+  .string()
+  .trim()
+  .regex(/^[A-Za-z]:\\[A-Za-z0-9._\\-]{1,120}$/, 'Use uma pasta como T:\\UniWake (sem espaços).');
+
 export const enrollmentCommandSchema = z.object({
   token: enrollmentTokenValueSchema,
   address: ipv4Schema,
+  persistentPath: persistentPathSchema.optional(),
+  /** Exclude the agent's data folder from the Unified Write Filter (FR-308.4). */
+  uwfExclude: z.boolean().optional(),
 });
 export type EnrollmentCommandInput = z.input<typeof enrollmentCommandSchema>;
 

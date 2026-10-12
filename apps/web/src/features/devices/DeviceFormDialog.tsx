@@ -44,6 +44,9 @@ function DeviceFormDialogBody({ open, device, defaultRoomId = null, onClose, onS
   const [tagIds, setTagIds] = useState<number[]>(device?.tagIds ?? []);
   const [notes, setNotes] = useState(device?.notes ?? '');
   const [enabled, setEnabled] = useState(device?.enabled ?? true);
+  const [neverScheduledShutdown, setNeverScheduledShutdown] = useState(
+    device?.neverScheduledShutdown ?? false,
+  );
   const [errors, setErrors] = useState<Errors>({});
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -63,6 +66,7 @@ function DeviceFormDialogBody({ open, device, defaultRoomId = null, onClose, onS
           tagIds,
           notes,
           enabled,
+          neverScheduledShutdown,
         },
       });
       onSaved(result);
@@ -176,6 +180,14 @@ function DeviceFormDialogBody({ open, device, defaultRoomId = null, onClose, onS
         <label className="inline-flex items-center gap-2 text-sm">
           <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
           Ativo (incluído nas ligações e no monitoramento)
+        </label>
+        <label className="inline-flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={neverScheduledShutdown}
+            onChange={(e) => setNeverScheduledShutdown(e.target.checked)}
+          />
+          Nunca desligar por agendamento (o "Desligar" manual pede confirmação)
         </label>
       </form>
     </Dialog>

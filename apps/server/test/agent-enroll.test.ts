@@ -145,6 +145,75 @@ describe('the copied command pins the hub key (FR-301.1, ADR-044)', () => {
   });
 });
 
+describe('command options for frozen labs (FR-308.4) and the device flag (FR-306.2)', () => {
+  it('adds -PersistentPath and -UwfExclude; refuses a path that would need quoting', async () => {
+    const h = await apiHarness(undefined, {
+      prepareScript: { bytes: () => Buffer.from('script') },
+    });
+    cleanups.push(() => h.close());
+    const cookie = await h.as('operator');
+    const room = h.services.rooms.create({ name: 'Lab 3' }, ACTOR);
+    const tok = (
+      await h.inject({
+        method: 'POST',
+        url: '/api/enrollment/tokens',
+        cookie,
+        payload: { roomId: room.id },
+      })
+    ).json<CreatedEnrollmentToken>().token;
+    const command = (payload: object) =>
+      h.inject({
+        method: 'POST',
+        url: '/api/enrollment/command',
+        cookie,
+        payload: { token: tok, address: '10.0.3.15', ...payload },
+      });
+    const ok = await command({ persistentPath: 'T:\\UniWake', uwfExclude: true });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json<{ command: string }>().command).toMatch(
+      /-PersistentPath 'T:\\UniWake' -UwfExclude } }$/,
+    );
+    for (const bad of ['T:\\Uni Wake', "T:\\a';rm", 'UniWake', 'T:\\a"b']) {
+      expect((await command({ persistentPath: bad })).statusCode, bad).toBe(422);
+    }
+  });
+
+  it('"Nunca desligar por agendamento" is set and cleared through the device API', async () => {
+    const h = await apiHarness();
+    cleanups.push(() => h.close());
+    const cookie = await h.as('operator');
+    const created = await h.inject({
+      method: 'POST',
+      url: '/api/devices',
+      cookie,
+      payload: { name: 'PROF', mac: '00:AA:00:00:00:09', neverScheduledShutdown: true },
+    });
+    const id = created.json<{ device: { id: number; neverScheduledShutdown: boolean } }>().device
+      .id;
+    expect(
+      created.json<{ device: { neverScheduledShutdown: boolean } }>().device.neverScheduledShutdown,
+    ).toBe(true);
+    const cleared = await h.inject({
+      method: 'PATCH',
+      url: `/api/devices/${id}`,
+      cookie,
+      payload: { name: 'PROF' },
+    });
+    expect(
+      cleared.json<{ device: { neverScheduledShutdown: boolean } }>().device.neverScheduledShutdown,
+    ).toBe(true); // untouched when not sent
+    const off = await h.inject({
+      method: 'PATCH',
+      url: `/api/devices/${id}`,
+      cookie,
+      payload: { neverScheduledShutdown: false },
+    });
+    expect(
+      off.json<{ device: { neverScheduledShutdown: boolean } }>().device.neverScheduledShutdown,
+    ).toBe(false);
+  });
+});
+
 describe('agent tokens (FR-302.2, ADR-043)', () => {
   async function enrolled() {
     const s = await setup();

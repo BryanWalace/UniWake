@@ -17,6 +17,7 @@ import { formatDateTime } from '../../lib/format';
 import { useUptime } from '../dashboard/api';
 import { useWakeUi } from '../wake/WakeProvider';
 import { usePowerUi } from '../power/PowerProvider';
+import { RemoteShutdownCard } from '../power/RemoteShutdownCard';
 import { DeviceFormDialog } from './DeviceFormDialog';
 import { HelpLink } from '../help/HelpPage';
 import { TestWolDialog } from './TestWolDialog';
@@ -128,6 +129,7 @@ export function DevicePage() {
       />
       <SaveNotice notice={notice} onDismiss={() => setNotice(null)} />
       <Details device={d} />
+      <RemoteShutdownCard deviceId={d.id} deviceName={d.name} />
       <Uptime deviceId={d.id} />
       <History deviceId={d.id} />
       <Diagnostics device={d} />
