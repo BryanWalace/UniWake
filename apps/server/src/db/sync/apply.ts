@@ -879,6 +879,8 @@ export function replaceWithTeamState(
 ): ApplyResult {
   return db.transaction(() => {
     db.exec(`
+      DELETE FROM power_reports; DELETE FROM power_orders; DELETE FROM power_jobs;
+      DELETE FROM agent_seen; DELETE FROM device_agents;
       DELETE FROM schedule_runs; DELETE FROM schedule_exceptions; DELETE FROM schedules;
       DELETE FROM device_tags; DELETE FROM devices; DELETE FROM tags; DELETE FROM rooms;
       DELETE FROM sessions; DELETE FROM users; DELETE FROM team_members; DELETE FROM settings;

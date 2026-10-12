@@ -299,10 +299,16 @@ describe('joining a team (D7-01)', () => {
     joiner.db.run(
       "INSERT INTO machine_settings (key, value, updated_at) VALUES ('wake.interfaces', '[\"10.9.9.9\"]', 0)",
     );
+    // v1.3: a manual shutdown job of the joiner (no machine, so no cascade) goes too.
+    joiner.db.run(
+      "INSERT INTO power_jobs (uuid, action, target, warning_minutes, allow_postpone, postpone_max, postpone_minutes, created_at) VALUES ('job-joiner', 'shutdown', '{}', 1, 0, 0, 5, 0)",
+    );
+    changeLog(joiner.db).touch('power_job', 1);
     replaceWithTeamState(joiner.db, changesSince(team.db, 0).entries, T0);
     expect(joiner.s.rooms.list().map((r) => r.name)).toEqual(['Lab 01']);
     expect(state(joiner)).toEqual(state(team));
     expect(joiner.db.get('SELECT value FROM machine_settings')).toEqual({ value: '["10.9.9.9"]' });
+    expect(joiner.db.all('SELECT id FROM power_jobs')).toEqual([]);
   });
 });
 
