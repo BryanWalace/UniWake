@@ -1,11 +1,12 @@
 # UniWake — Specification
 
-Version: **1.4** · Date: 2026-10-11 · Owner: Architect
+Version: **1.5** · Date: 2026-10-12 · Owner: Architect
 History: v0.1 draft → reviewed in `specs/reviews/phase-1-*.md` → consolidated as v1.0 → v1.1
 (Phase 2: AC-001-13/14, FR-004.7) → v1.2 (Phase 6, `specs/reviews/phase-6-*.md`: FR-017 sync-ready
 data from `.agents/07-roadmap-features.md` §A, AC-005-12, FR-012/FR-014 additions) → v1.3 (Phase 7,
 `specs/reviews/phase-7-*.md`: §6a v1.2 Modo equipe, FR-201..207) → v1.4 (Phase 9,
-`specs/reviews/phase-9-*.md`: §6b v1.3 Desligar, FR-301..311, replaces RM-2).
+`specs/reviews/phase-9-*.md`: §6b v1.3 Desligar, FR-301..311, replaces RM-2) → v1.5 (Phase 11,
+`specs/reviews/phase-11-*.md`: §6c v1.4 Backup e migração, FR-401..407).
 Sources: `.agents/01-project-brief.md`, `.agents/07-roadmap-features.md`, `specs/constitution.md`, `specs/improvements.md`,
 `specs/decisions.md`.
 
@@ -1066,6 +1067,134 @@ features, preparation step, roadmap, troubleshooting (task missing, wake timers,
 | Q-9 Late wake | Run only if ≤ 60 min late and before the next "Ligar"; else "pulado: acordou {n} min após o horário" | FR-303.5 |
 | Q-10 Restart | Manual only in v1.3; scheduled restart → roadmap RM-8 | FR-306.1, §11 |
 
+## 6c. Functional requirements — v1.4 "Backup e migração" (roadmap §D; ADR-049..052)
+
+Purpose: move or recover the UniWake **data** between PCs or after a reinstall with one portable
+`.uniwake` file, made from the panel, on a schedule or from the command line. The existing
+database backups (FR-014) stay: they restore this PC's whole database; a `.uniwake` file carries
+only what makes sense on another PC.
+
+**Assumptions taken by the Architect** (the owner asked for autonomous work; each is an ADR and can
+be changed): A-1 file format is a gzip-compressed JSON document, not a zip (no new dependency,
+ADR-049); A-2 secrets travel only inside a password-encrypted part (argon2id + AES-256-GCM,
+ADR-050); A-3 import is blocked while the PC is in a team (ADR-051); A-4 an imported copy starts
+"em espera": schedules paused and lab-PC check-ins refused until an administrator activates it
+(ADR-051); A-5 automatic exports never carry secrets (no stored password, ADR-052).
+
+### FR-401 Export
+**FR-401.1** Page **"Backup e migração"** (admins): "Exportar" with section checkboxes, an optional
+password (twice) and a download of `UniWake-<PC>-<AAAA-MM-DD>.uniwake`.
+
+**FR-401.2 Sections** (default all but history):
+
+| Section | Content | Needs password |
+|---|---|---|
+| Cadastro | rooms, tags, devices (with tags, notes, flags) | no |
+| Agendamentos | schedules (wake and shutdown), exceptions, pause state | no |
+| Configurações gerais | settings with scope `shared` | no |
+| Usuários | users with their password hashes and roles | **yes** |
+| Desligamento remoto | the machines' agent records (token hashes, readiness data) and this hub's signing key | **yes** |
+| Histórico | schedule runs, shutdown jobs, orders and reports | no (off by default) |
+
+Never exported: machine settings (scope `machine`: interfaces, addresses, ports, update, backup),
+the instance id, team keys and members' secrets, sessions, enrollment tokens, wake jobs, packet
+logs, audit, logs, backups. Without a password the sections that need one are left out and the
+page says what must be redone on the other PC (create users; prepare the lab PCs again for
+"Desligar").
+
+**FR-401.3 File** (ADR-049): manifest (format version, app version, schema version, created at,
+source PC name, sections, counts, whether secrets are included) + sections; SHA-256 of the
+content in the manifest; the encrypted part has its own authentication tag. Maximum 50 MB.
+
+### FR-402 Password and secrets (ADR-050)
+**FR-402.1** Password of at least 10 characters, typed twice; never stored, logged or sent back.
+**FR-402.2** Key from argon2id (salt per file, parameters in the file); secrets encrypted with
+AES-256-GCM; the hub signing key is decrypted from DPAPI only to be re-encrypted.
+**FR-402.3** A wrong password or a tampered file → "Senha incorreta ou arquivo alterado", nothing
+imported.
+
+### FR-403 Import (ADR-051)
+**FR-403.1** "Importar": choose a file → the panel shows the manifest (origin PC, date, app version,
+sections, secrets yes/no) → password if needed → **preview** → choose **Mesclar** or **Substituir**
+→ type `IMPORTAR` to confirm.
+**FR-403.2 Preview**: per section, how many items will be created, updated, kept unchanged, and the
+conflicts with how they resolve (same name or MAC with another identity: renamed or kept, as in
+team sync). Computed by applying the file inside a transaction that is rolled back.
+**FR-403.3 Mesclar**: items are matched by their stable UUID; the newer version wins (same rule as
+team sync); nothing on this PC is deleted. **Substituir**: this PC's exported sections are replaced
+by the file's (machine settings, local history and audit stay); it needs Cadastro and Agendamentos
+in the file (schedules reference rooms, tags and devices). The hub signing key is imported only
+when this PC has no prepared lab machine of its own; otherwise the preview says those machines
+keep this PC's key and the machines of the other PC need the preparation command again.
+**FR-403.4 Safety**: a database backup (kind `pre-import`) is taken first; after the import the
+page offers **"Desfazer importação"** (until the next import or for 7 days), which restores that
+backup (the existing restore flow, FR-014); the confirmation says that changes made after the
+import are undone too. The import, its sections and mode are audited.
+**FR-403.5 Versions**: files of older formats are converted; a file from a **newer** UniWake is
+refused ("Arquivo de uma versão mais nova do UniWake (x.y.z): atualize este PC antes de importar").
+**FR-403.6 Team**: while the PC is in a team, import is refused with the next step ("Importe num PC
+fora da equipe e depois pareie" or "Saia da equipe"). Export works in a team.
+
+### FR-404 Standby after import (ADR-051)
+After an import with Agendamentos or Desligamento remoto the hub is **"em espera"**: schedules are
+paused with reason "Importado de outro PC — revise e ative", lab-PC check-ins are answered with
+"em espera" (no orders, no agenda changes), and a banner on every page offers **"Ativar este
+UniWake"** (admins, typed confirmation). Wake and shutdown by hand keep working. Joining a team clears standby (the PC takes the team's
+live data). This prevents two
+PCs (old and new) from running the same schedules or answering the same machines with the same key.
+
+### FR-405 Automatic exports (ADR-052)
+Machine settings "Exportação automática": off by default; folder (local or network share
+`\\servidor\pasta`), time, how many to keep. Files carry every section that does not need a
+password. A failure (folder missing, no permission) appears in "Saúde do sistema". The service runs
+as LocalSystem: on a share, the **computer account** needs write access (**não verificado** on the
+institution's network; README explains).
+
+### FR-406 Command line
+`node.exe server.mjs` (install folder) `--export <file> [--sections a,b] [--password-env <VAR>]` (works while
+the service runs: read-only snapshot) and `--import <file> --mode merge|replace
+[--password-env <VAR>]` (refused while the service runs: "Pare o serviço UniWake antes"). Exit
+codes: 0 ok, 2 usage, 3 refused (service running, team, newer file), 4 wrong password or damaged
+file.
+
+### FR-407 Help and README
+Help page "Backup e migração": move to a new PC, reinstall, what needs the password, standby,
+automatic exports to a share. README section.
+
+### Acceptance criteria
+- AC-401-01: Given a populated hub, When exported without password, Then the file has Cadastro,
+  Agendamentos and Configurações gerais, no user, no key, no machine setting, and its manifest
+  checksum matches.
+- AC-401-02: Given "Usuários" ticked without a password, or a password shorter than 10
+  characters, Then the export is refused with the reason.
+- AC-402-01: Given an export with password, When imported with the wrong password or one changed
+  byte, Then nothing changes and the error is "Senha incorreta ou arquivo alterado".
+- AC-402-02: Given an export with password, Then no secret (password hash, private key) appears in
+  clear in the file.
+- AC-403-01: Given a file and a PC with overlapping data, Then the preview counts creates, updates,
+  unchanged and conflicts, and the database is unchanged afterwards.
+- AC-403-02: Given Mesclar, Then nothing local is deleted and newer versions win; given Substituir,
+  Then the exported sections equal the file's and machine settings stay.
+- AC-403-03: Given an import, Then a `pre-import` backup exists and "Desfazer importação" requests
+  its restore.
+- AC-403-04: Given a file from a newer format, Then it is refused with the version in the message.
+- AC-403-05: Given a PC in a team, Then import is refused and export works.
+- AC-403-06 [E2E]: Given the panel, When an admin exports with a password and imports the file into
+  another hub with preview and confirmation, Then the rooms appear on the other hub.
+- AC-404-01: Given an imported copy, Then schedules are paused, check-ins get "em espera", and
+  "Ativar este UniWake" ends both.
+- AC-405-01: Given automatic export on, When its time comes, Then a file is written to the folder,
+  only the newest N are kept, and a missing folder shows in "Saúde do sistema".
+- AC-406-01: Given the CLI, Then `--export` writes a valid file and `--import` refuses while the
+  hub runs, with the exit codes of FR-406.
+- AC-407-01: Given the help menu, Then "Backup e migração" opens.
+
+### v1.4 non-functional requirements
+- **NFR-401** Export and preview of 500 devices, 50 schedules and a year of runs in < 3 s; file
+  < 5 MB.
+- **NFR-402** Import is one transaction: a crash leaves the database as before.
+- **NFR-403** No new runtime dependency (gzip from `node:zlib`, crypto from `node:crypto`).
+
 ## 7. Non-functional requirements
 | ID | Requirement | Measure / test |
 |---|---|---|
@@ -1132,7 +1261,7 @@ touch targets ≥ 44 px on primary actions; every list has loading/empty/error s
 ## 11. Roadmap (spec only)
 Versions after v1.1 (`.agents/07-roadmap-features.md`): **v1.2** team mode (LAN sync between
 instances, pairing, schedule lease), **v1.3** remote/scheduled shutdown through scheduled tasks on
-the lab PCs (§6b, replaces RM-2), **v1.4** backup, restore and migration (portable `.uniwake` export/import). Each gets its own
+the lab PCs (§6b, replaces RM-2), **v1.4** backup, restore and migration (portable `.uniwake` export/import, §6c). Each gets its own
 spec section when its SDD cycle starts.
 - **RM-1 Relay agent per VLAN** — authenticated service on one PC per VLAN that broadcasts locally
   on hub request.

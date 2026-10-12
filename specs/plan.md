@@ -1,9 +1,9 @@
 # UniWake — Technical Plan
 
-Version: **1.3** · Date: 2026-10-11 · Owner: Architect
+Version: **1.4** · Date: 2026-10-12 · Owner: Architect
 History: v0.1 draft → reviewed in `specs/reviews/phase-2-*.md` → consolidated as v1.0 → v1.1
 (Phase 6: §5.2 sync-ready data, §7.2 lease, ADR-030..034) → v1.2 (Phase 7: §14 team mode,
-ADR-035..040) → v1.3 (Phase 9: §15 shutdown, ADR-042..048; §6.2 amended).
+ADR-035..040) → v1.3 (Phase 9: §15 shutdown, ADR-042..048; §6.2 amended) → v1.4 (Phase 11: §16 backup e migração, ADR-049..052).
 Inputs: `specs/constitution.md` v1.1, `specs/spec.md` v1.0, ADR-001..026.
 
 ---
@@ -711,3 +711,76 @@ UI request/response files ≤ 4 KB; local report queue ≤ 500 lines.
 | RK-23 | User-writable ProgramData paths → privilege escalation | Medium | Critical | Owner/ACL hardening, SYSTEM never writes/deletes in Users folders, reparse checks (ADR-042/046) |
 | RK-24 | AV/EDR flags a SYSTEM PowerShell task every minute | Medium | Medium | Plain readable scripts, no obfuscation/encoded commands, documented paths; help page |
 | RK-25 | Unsaved work lost (`/t` implies `/f`) | Medium | Medium | Warning text, postpone, Q-2 |
+
+## 16. Backup e migração (v1.4; spec §6c; ADR-049..052)
+
+### 16.1 Overview
+A `.uniwake` file is the team-sync snapshot of the chosen sections, gzip-compressed, with a
+manifest and an optional password-encrypted secret part. Import reuses the sync applier (merge) or
+a scoped wipe + applier (replace) in one transaction, previewed by a rolled-back run. An imported
+copy is "em espera" until activated.
+
+### 16.2 Modules
+| Module | Responsibility |
+|---|---|
+| `domain/export-format.ts` | sections ↔ entities, manifest, canonical JSON + checksum, format converters, limits (pure) |
+| `application/migration/export-service.ts` | build document from snapshots (`ReplicaStore`-like reader), secrets via `SecretBox`, file name |
+| `application/migration/import-service.ts` | parse/verify, decrypt, preview (rollback), apply merge/replace, key import rule, standby, audit, pre-import backup |
+| `application/migration/secret-box.ts` | argon2id + AES-256-GCM with AAD (node:crypto) |
+| `application/migration/standby.ts` | `system_state.standby`; scheduler and agent route consult it |
+| `application/migration/auto-export.ts` | daily timer, folder write + rotation, health status |
+| `adapters/export-files.ts` | gzip/gunzip with size guard, atomic folder writes |
+| `http/routes/migration.ts` | export download, import inspect/preview/apply, standby activate |
+| `main.ts` | `--export` / `--import` CLI |
+| `web/features/migration/*` | page "Backup e migração", import wizard, standby banner |
+
+### 16.3 Data
+No new replicated entity. `system_state` keys `standby` (`{ since, from, by }`) and
+`export.lastAuto` (`{ at, ok, error }`). New machine settings `export.auto*` (ADR-052, group
+"Exportação automática"). Backup kind `pre-import`. Pending imports live in memory (id → parsed
+document, 15 min, one per admin session), never on disk.
+
+### 16.4 Routes (admin only)
+| Route | Purpose |
+|---|---|
+| `POST /api/migration/export` `{ sections, password? }` | returns `application/octet-stream` with `Content-Disposition` |
+| `POST /api/migration/import` (raw body ≤ 50 MB) | parse + checksum → `{ importId, manifest }` |
+| `POST /api/migration/import/:id/preview` `{ mode, password? }` | counts and conflicts (rolled back) |
+| `POST /api/migration/import/:id/apply` `{ mode, password?, confirm: 'IMPORTAR' }` | backup → apply → standby → audit |
+| `GET /api/migration/state` | standby, last automatic export, last import (for "Desfazer") |
+| `POST /api/migration/standby/activate` `{ confirm: 'ATIVAR' }` | leave standby |
+| `POST /api/migration/undo` `{ confirm }` | restore the `pre-import` backup (FR-014 flow) |
+
+### 16.5 Flows
+- **Export:** sections → entities → snapshots of current rows (same functions as sync, so exports
+  equal what a peer would receive) → `data`; secret sections → JSON → SecretBox(AAD = checksum) →
+  gzip.
+- **Import:** gunzip with guard → JSON → `format` check/convert → checksum → (password) decrypt →
+  team check → mode rules → preview or: `pre-import` backup → transaction { replace wipe? →
+  `applyRemote(entries, { now, origin: 'import' })` → key import? → standby } → audit → SSE
+  refresh.
+- **Standby:** scheduler tick skips when `standby`; agent check-in → 503 `AGENT_STANDBY`;
+  banner via `GET /api/migration/state` (polled with the global banners).
+
+### 16.6 Testing
+| Layer | What |
+|---|---|
+| Format | canonical checksum, sections ↔ entities, converters (format 0 fixture), newer refused, limits, zip-bomb guard |
+| Crypto | round trip, wrong password, flipped byte, AAD swap, no plaintext secret in file |
+| Import | two harness hubs: export → preview (DB unchanged) → merge/replace, conflicts, key rule, team refusal, standby, undo request, crash mid-import (transaction) |
+| CLI | `--export`/`--import` with fake health probe, exit codes |
+| Auto export | fake clock + temp folder: write, rotate, failure → health |
+| Panel | page, wizard (main + loading/empty/error), banner; E2E export → import between two demo hubs |
+| Perf | NFR-401 with 500 devices |
+
+### 16.7 Limits
+File ≤ 50 MB compressed, ≤ 200 MB inflated; password 10–256 characters; one pending import per
+session, 15 min; argon2id m = 64 MiB, t = 3, p = 1, one derivation at a time (queue, D11-02).
+
+### 16.8 Risks
+| ID | Risk | Mitigation |
+|---|---|---|
+| RK-26 | Two live copies (old and new PC) run the same schedules | Standby until activation (ADR-051) |
+| RK-27 | Stolen export with secrets | Password-only secrets, strong KDF, AAD; automatic exports never carry secrets |
+| RK-28 | Replace on the wrong PC | Preview, typed confirmation, `pre-import` backup + undo |
+| RK-29 | Network share not writable by LocalSystem | Health warning with the error; README (computer account) |

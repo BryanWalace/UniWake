@@ -1,7 +1,7 @@
 # UniWake — Tasks
 
-Version: **1.1** · Date: 2026-10-11 · Owner: Senior Fullstack
-History: v0.1 draft → reviewed in `specs/reviews/phase-3-*.md` → consolidated as v1.0 → v1.1 (Phase 9: M16–M20, Phase 10 for v1.3).
+Version: **1.2** · Date: 2026-10-12 · Owner: Senior Fullstack
+History: v0.1 draft → reviewed in `specs/reviews/phase-3-*.md` → consolidated as v1.0 → v1.1 (Phase 9: M16–M20, Phase 10 for v1.3) → v1.2 (Phase 11: M21–M24, Phase 12 for v1.4).
 Inputs: `spec.md` v1.1, `plan.md` v1.0, `constitution.md` v1.1.
 
 ## Rules
@@ -400,3 +400,49 @@ decisions", ADR-043/045/047/048 amended).
 | [x] V3-T01 | Walk every v1.3 AC; record evidence in `validation.md` §v1.3. | FR-301..311 | `validation.md` |
 | [x] V3-T02 | Owner checklist for real lab PCs (pt-BR, in `NEXT.md`): prepare, manual shutdown, schedule with hub off, postpone, sleep + wake timer, user-session window, (if available) a frozen PC. | B-002 | checklist |
 | [x] V3-T03 | Final audit (Code Reviewer) and Architect approval → `specs/reviews/v1.3-final.md`. | — | review |
+
+---
+# v1.4 "Backup e migração" (spec §6c, plan §16, ADR-049..052)
+Gate: Phase 11 reviews (`specs/reviews/phase-11-*.md`). Owner instruction of 2026-10-11: continue
+milestone after milestone autonomously; assumptions A-1..A-5 are recorded as ADRs.
+
+## M21 — Format, secrets, export
+| ID | Task | Refs | Tests | Done when |
+|---|---|---|---|---|
+| [ ] M21-T01 | `domain/export-format.ts`: sections ↔ entities, manifest, canonical JSON + SHA-256, format version + converter chain, limits; shared schemas (`ExportManifest`, sections, labels pt-BR). | FR-401.2/3; ADR-049 | unit | — |
+| [ ] M21-T02 | `SecretBox`: argon2id + AES-256-GCM with AAD; wrong password/tamper → one error. | FR-402; ADR-050 | AC-402-01, AC-402-02 | — |
+| [ ] M21-T03 | Export service + gzip adapter with inflate guard; hub key unwrap for export; `POST /api/migration/export` (admin, audited without password). | FR-401; ADR-049/050 | AC-401-01, AC-401-02 | route-table authz updated |
+| [ ] M21-D | Break-it: huge/garbage/zip-bomb files, missing sections, password edge cases, concurrent exports. | tasks §Break-it | regressions | — |
+| [ ] M21-R | Code review → `specs/reviews/M21-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+
+## M22 — Import and standby
+| ID | Task | Refs | Tests | Done when |
+|---|---|---|---|---|
+| [ ] M22-T01 | Import parse/inspect + pending store (15 min) + `POST /api/migration/import`; newer format refused; team refusal. | FR-403.1/5/6 | AC-403-04, AC-403-05 | — |
+| [ ] M22-T02 | Preview (rolled-back transaction) and apply: merge (`applyRemote`), replace (scoped wipe), hub-key rule, `pre-import` backup, audit; undo via restore request. | FR-403.2/3/4; ADR-051 | AC-403-01, AC-403-02, AC-403-03 | — |
+| [ ] M22-T03 | Standby: `system_state`, scheduler skip, agent route 503 `AGENT_STANDBY`, activate route; health/state endpoint. | FR-404 | AC-404-01 | — |
+| [ ] M22-D | Break-it: crash mid-import, import twice, import while a wake job runs, clock jumps, file from a PC with conflicting names/MACs. | tasks §Break-it | regressions | — |
+| [ ] M22-R | Code review → `specs/reviews/M22-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+
+## M23 — Panel, automatic exports, CLI
+| ID | Task | Refs | Tests | Done when |
+|---|---|---|---|---|
+| [ ] M23-T01 | Page "Backup e migração" (admin): export form (sections, password twice, explanation of what is left out), download. | FR-401.1 | UI test | loading/empty/error |
+| [ ] M23-T02 | Import wizard: file → manifest → password → preview → mode → `IMPORTAR`; result + "Desfazer importação"; standby banner with "Ativar este UniWake". | FR-403, FR-404 | UI test + AC-403-06 (E2E) | — |
+| [ ] M23-T03 | Automatic exports: machine settings, timer, folder write + rotation, health warning. | FR-405; ADR-052 | AC-405-01 | — |
+| [ ] M23-T04 | CLI `--export` / `--import` with health probe and exit codes. | FR-406; ADR-052 | AC-406-01 | — |
+| [ ] M23-R | Code review → `specs/reviews/M23-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+
+## M24 — Docs and load
+| ID | Task | Refs | Tests | Done when |
+|---|---|---|---|---|
+| [ ] M24-T01 | Help page "Backup e migração"; README section (move to a new PC, password, standby, share permissions). | FR-407 | AC-407-01 | reviewed against code |
+| [ ] M24-T02 | Perf: export + preview with 500 devices, 50 schedules, a year of runs (NFR-401). | NFR-401 | perf test | — |
+| [ ] M24-T03 | `DEV_VERSION_BASE` → 1.4.0. | ADR-041 | CI | — |
+
+## Phase 12 — Validate v1.4 (lead: Debug)
+| ID | Task | Refs | Evidence |
+|---|---|---|---|
+| [ ] V4-T01 | Walk every v1.4 AC; record evidence in `validation.md` §v1.4. | FR-401..407 | `validation.md` |
+| [ ] V4-T02 | Owner checklist (pt-BR, `NEXT.md`): export with password, import on a second PC, standby, activate, automatic export to a share. | B-002 | checklist |
+| [ ] V4-T03 | Final audit and Architect approval → `specs/reviews/v1.4-final.md`; final report to the owner. | — | review |

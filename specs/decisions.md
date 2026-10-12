@@ -825,3 +825,85 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
 - **Consequences:** Shutdown at 22:40 does not need any hub on. Reports reach every hub through
   sync. A brief agenda flip-flop between two hubs with unsynced data is harmless (newest version
   wins at the machine; both converge).
+
+## ADR-049 — `.uniwake` file: gzip-compressed JSON of sync snapshots
+- **Date:** 2026-10-12 · **Status:** Accepted (Architect assumption A-1, owner may override)
+- **Context:** roadmap §D suggested a zip with versioned JSON and a manifest. A zip needs a library
+  or a hand-written writer/reader; NFR-403 forbids new runtime dependencies.
+- **Decision:**
+  - A `.uniwake` file is `gzip(JSON)` (`node:zlib`). Document:
+    `{ "uniwake": "export", "format": 1, "manifest": {...}, "data": {...}, "secrets": null | {...} }`.
+  - `manifest`: app version, schema version (latest migration), created at, source PC name and
+    instance id, sections, item counts per entity, `secrets: boolean`, `checksum` = SHA-256 of the
+    canonical JSON of `data` (keys sorted).
+  - `data`: per section, the same entity snapshots team sync uses (`ChangeEntry`: entity, UUID,
+    rev, instance, payload) — one serializer for sync and export, references as UUIDs, no local
+    ids, no machine-local columns.
+  - Sections map to entities: Cadastro → room, tag, device; Agendamentos → schedule,
+    schedule_exception, scheduler_pause; Configurações gerais → setting (shared scope only);
+    Usuários → user (secret); Desligamento remoto → device_agent (secret) + hub key (secret);
+    Histórico → schedule_run, power_job, power_order, power_report.
+  - `format` is bumped when the document shape changes; readers convert older formats step by
+    step and refuse newer ones. The schema version is informative (snapshots are versioned by
+    `format`). Size limit 50 MB compressed and 200 MB uncompressed (zip-bomb guard), checked while
+    inflating.
+- **Consequences:** Windows cannot open the file directly (it is not a zip); that is acceptable
+  for a backup format and avoids users editing it. Export cost is the sync snapshot cost.
+
+## ADR-050 — Secrets in exports: argon2id + AES-256-GCM, only with a password
+- **Date:** 2026-10-12 · **Status:** Accepted (assumption A-2)
+- **Decision:**
+  - Secret sections (Usuários: password hashes; Desligamento remoto: agent token hashes and the
+    hub signing private key) are exported only with a password (≥ 10 characters). They go in
+    `secrets = { kdf: { alg: "argon2id", m: 65536, t: 3, p: 1, salt }, iv, tag, ciphertext }`,
+    ciphertext = AES-256-GCM of the JSON of those sections, **AAD = the manifest checksum**, so the
+    secret part cannot be moved to another file. Key = argon2id(password, salt, 32 bytes) with
+    stronger parameters than login (offline attack on a stolen file).
+  - The hub private key is unwrapped from DPAPI only in memory to be encrypted, and re-wrapped
+    with DPAPI on import. Password never stored, logged, audited or returned.
+  - Wrong password and changed bytes give the same error (no oracle).
+- **Consequences:** a file without password is safe to keep on a share (no hashes, no keys); with
+  password it is as safe as the password.
+
+## ADR-051 — Import: preview by rollback, merge or replace, standby, not in a team
+- **Date:** 2026-10-12 · **Status:** Accepted (assumptions A-3, A-4)
+- **Decision:**
+  - **Preview** runs the import inside a transaction that is always rolled back and reports the
+    applier's counts (created/updated/unchanged) and conflicts (duplicate names/MACs renamed or
+    kept, orphans dropped), exactly what the real import will do.
+  - **Mesclar** = the team-sync applier (`applyRemote`): match by UUID, newer `(rev, instance)`
+    wins, no deletes. **Substituir** = delete this PC's rows of the sections present in the file
+    (plus their change-log rows; tombstones are unnecessary outside a team), then apply. Substituir
+    needs Cadastro and Agendamentos in the file (schedules reference rooms/tags/devices).
+  - Always one transaction (NFR-402), after a `pre-import` database backup; "Desfazer importação"
+    restores that backup through the FR-014 restore (restart).
+  - **Hub key:** imported only when this PC has no prepared machine of its own (no agent token);
+    otherwise kept and the preview says the lab PCs prepared with the other PC need the command
+    again.
+  - **Team:** import refused while `team` state is joined (replace would erase the team's data
+    everywhere; merge would inject foreign revisions). Export allowed.
+  - **Standby** (`system_state` key `standby`): set by an import with Agendamentos or Desligamento
+    remoto. The scheduler treats it like a pause (without touching the imported pause state), the
+    agent check-in route answers 503 `AGENT_STANDBY` (the agent keeps its stored agenda and tries
+    its next hub), the panel shows a banner; "Ativar este UniWake" (admin, typed confirmation,
+    audited) clears it. Joining a team also clears it (Phase 11, D11-03).
+- **Consequences:** moving to a new PC is: export with password → import (Substituir) on the new PC
+  → check → turn off the old PC → activate. Two live copies never act at once by accident.
+
+## ADR-052 — Automatic exports and command line
+- **Date:** 2026-10-12 · **Status:** Accepted (assumption A-5)
+- **Decision:**
+  - Machine settings `export.autoEnabled` (false), `export.autoFolder`, `export.autoTime` (02:45,
+    after the 02:30 backup and before the 03:00 update window), `export.autoKeep` (14). Files
+    `UniWake-<PC>-<AAAA-MM-DD>.uniwake`, every non-secret section except Histórico; written to a
+    temporary name then renamed; only files matching that pattern are rotated. Failures are logged
+    and shown as a "Saúde do sistema" warning until the next success.
+  - No stored password: automatic files never contain secrets.
+  - CLI in `main.ts`: `--export <file> [--sections …] [--password-env VAR]` opens the database
+    read-only alongside a running service; `--import <file> --mode merge|replace
+    [--password-env VAR]` first probes `http://127.0.0.1:<panelPort>/api/health` and refuses (exit
+    3) if a hub answers. The password comes from an environment variable so it never appears in
+    the process list or shell history. Exit codes: 0, 2 usage, 3 refused, 4 wrong password or
+    damaged file.
+- **Consequences:** a nightly copy on a file server covers a dead PC (users and lab-PC preparation
+  redone); a full migration still uses a password export.
