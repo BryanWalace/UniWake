@@ -40,6 +40,8 @@ export interface PendingOrder extends PowerPolicy {
   action: 'shutdown' | 'restart';
   /** ADR-053: the run id the agent executes once (agenda item or order, whichever comes first). */
   occurrence?: string;
+  /** v1.6: T of a pushed schedule occurrence (reported back for the schedule's history). */
+  plannedAt?: number;
 }
 
 /** What the last check-in said about the machine (machine-local, plan §15.3). */
@@ -201,7 +203,13 @@ export class AgentService {
         this.d.store.insertReport(deviceId, r, now);
         acked.push(r.uuid);
         if (r.order !== null) {
-          const state = r.reason === 'expired' ? 'expired' : SETTLE[r.outcome];
+          // ADR-053: the occurrence already ran from the agenda: the order is done, not failed.
+          const state =
+            r.reason === 'expired'
+              ? 'expired'
+              : r.reason === 'already_done'
+                ? 'executed'
+                : SETTLE[r.outcome];
           this.d.store.settleOrder(deviceId, r.order, state, r.executedAt ?? now, r.detail);
         }
       }

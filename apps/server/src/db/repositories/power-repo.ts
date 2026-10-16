@@ -209,10 +209,11 @@ export class SqlitePowerRepo implements AgentStore {
         postpone_max: number;
         postpone_minutes: number;
         job_uuid: string | null;
+        planned_at: number | null;
       }>(
         // ADR-053: the job's UUID is the run id (a schedule occurrence, or a manual job).
         `SELECT o.uuid, o.action, o.warning_minutes, o.allow_postpone, o.postpone_max,
-           o.postpone_minutes, j.uuid AS job_uuid
+           o.postpone_minutes, j.uuid AS job_uuid, json_extract(j.target, '$.plannedAt') AS planned_at
          FROM power_orders o LEFT JOIN power_jobs j ON j.id = o.job_id
          WHERE o.device_id = ? AND o.state = 'pending' AND o.action <> 'cancel' AND o.expires_at > ?
          ORDER BY o.created_at, o.id`,
@@ -226,6 +227,7 @@ export class SqlitePowerRepo implements AgentStore {
         postponeMax: o.postpone_max,
         postponeMinutes: o.postpone_minutes,
         ...(o.job_uuid ? { occurrence: o.job_uuid } : {}),
+        ...(typeof o.planned_at === 'number' ? { plannedAt: o.planned_at } : {}),
       }));
   }
 
@@ -361,7 +363,11 @@ export class SqlitePowerJobsRepo implements PowerJobsStore {
   }
 
   createJob(
-    job: Omit<JobRow, 'id' | 'createdBy'> & { target: WakeTarget; createdBy: number | null },
+    job: Omit<JobRow, 'id' | 'createdBy'> & {
+      target: WakeTarget;
+      createdBy: number | null;
+      plannedAt?: number;
+    },
     orders: { uuid: string; deviceId: number; expiresAt: number }[],
   ): number {
     const p = job.policy;
@@ -372,7 +378,12 @@ export class SqlitePowerJobsRepo implements PowerJobsStore {
       [
         job.uuid,
         job.action,
-        JSON.stringify({ target: job.target, label: job.label }),
+        // v1.6: a pushed schedule occurrence also keeps its planned time (T) for the orders.
+        JSON.stringify({
+          target: job.target,
+          label: job.label,
+          ...(job.plannedAt !== undefined ? { plannedAt: job.plannedAt } : {}),
+        }),
         p.warningMinutes,
         p.allowPostpone ? 1 : 0,
         p.postponeMax,
@@ -552,6 +563,8 @@ export function occurrenceReports(db: Db, since: number): ReportRow[] {
          r.executed_at, r.postpones, r.was_asleep, r.late_minutes, r.native_warning, r.user_logged_on
        FROM power_reports r JOIN devices d ON d.id = r.device_id
        WHERE r.occurrence_uuid IS NOT NULL AND COALESCE(r.planned_at, r.received_at) >= ?
+         -- ADR-053: "already ran from the agenda" settles a pushed order; the agenda report counts.
+         AND COALESCE(r.reason, '') <> 'already_done'
        ORDER BY COALESCE(r.planned_at, r.received_at), r.id`,
       [since],
     )

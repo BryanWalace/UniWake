@@ -67,9 +67,10 @@ export type PowerPolicy = z.infer<typeof powerPolicySchema>;
 export const REPORT_OUTCOMES = ['done', 'cancelled', 'skipped', 'failed'] as const;
 /**
  * Why an item did not run as planned: `was_off` (booted after T), `late_wake` (woke more than 60
- * min late or after its next wake), `expired` (order too old), `error` (see detail).
+ * min late or after its next wake), `expired` (order too old), `error` (see detail),
+ * `already_done` (v1.6: an order for a schedule occurrence the PC already ran from its agenda).
  */
-export const REPORT_REASONS = ['was_off', 'late_wake', 'expired', 'error'] as const;
+export const REPORT_REASONS = ['was_off', 'late_wake', 'expired', 'error', 'already_done'] as const;
 
 export const agentReportSchema = z
   .object({
@@ -165,7 +166,12 @@ export type Agenda = z.infer<typeof agendaSchema>;
 export const agentOrderSchema = z.discriminatedUnion('action', [
   // v1.6 (ADR-053): `occurrence` is the run id shared with the agenda item it may duplicate.
   powerPolicySchema
-    .extend({ uuid, action: powerActionSchema.extract(['shutdown']), occurrence: uuid.optional() })
+    .extend({
+      uuid,
+      action: powerActionSchema.extract(['shutdown']),
+      occurrence: uuid.optional(),
+      plannedAt: instant.optional(),
+    })
     .strict(),
   powerPolicySchema
     .extend({ uuid, action: powerActionSchema.extract(['restart']), occurrence: uuid.optional() })

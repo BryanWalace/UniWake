@@ -201,3 +201,60 @@ Describe 'Orders and cancel (FR-304.4, FR-305)' {
     $r.detail | Should -Be 'shutdown.exe saiu com código 1190'
   }
 }
+
+Describe 'One execution per run id: agenda and pushed order (v1.6, ADR-053)' {
+  BeforeEach {
+    Register-UwFakeAgent -Root (Join-Path $TestDrive ([guid]::NewGuid()))
+    Install-UwTestAgent -Hub (New-UwTestHub)
+    $script:Calls = New-Object System.Collections.ArrayList
+    Mock Invoke-UwShutdown { [void]$script:Calls.Add(@{ Args = ($Arguments -join ' '); At = $script:UwFake.Now }); 0 }
+    $script:Order = 'c1b2c3d4-0000-4000-8000-0000000000aa'
+    $script:Pushed = [pscustomobject]@{
+      uuid = $script:Order; action = 'shutdown'; occurrence = $script:Occ; plannedAt = $script:At
+      warningMinutes = 5; allowPostpone = $true; postponeMax = 2; postponeMinutes = 15
+    }
+  }
+
+  It 'AC-501-03: the order arrives first: it runs, reports both ids and T, and the agenda item never runs' {
+    Write-TestAgenda
+    $paths = Get-UwPathSet
+    $state = Read-UwState $paths.State
+    [void]$state.orders.Add($script:Pushed)
+    Save-UwState $paths.State $state (Get-SpTime 12 22 34)
+    Set-TestHeartbeat (Get-SpTime 12 22 33)
+    $script:UwFake.Now = Get-SpTime 12 22 34
+    [void](Invoke-UwRun)
+    $script:Calls.Count | Should -Be 1
+    $report = @(Get-TestQueue)[0]
+    $report.occurrence | Should -Be $script:Occ
+    $report.order | Should -Be $script:Order
+    $report.plannedAt | Should -Be $script:At
+    # The agenda's item for the same occurrence is handled: the next runs do nothing.
+    $script:UwFake.Now = Get-SpTime 12 22 36
+    Set-TestHeartbeat (Get-SpTime 12 22 35)
+    [void](Invoke-UwRun)
+    $script:Calls.Count | Should -Be 1
+  }
+
+  It 'AC-501-03: the agenda ran first: the late order is settled as already_done and never runs' {
+    $paths = Get-UwPathSet
+    $state = Read-UwState $paths.State
+    $state.doneIds[$script:Occ] = Get-SpTime 12 22 35 # the agenda item ran (marked before running)
+    $answer = Get-UwFixture 'checkin-answer.json'
+    $answer.orders = @($script:Pushed)
+    $answer.ackReports = @()
+    $answer.hubs = [pscustomobject]@{ epoch = 0; list = @() }
+    $answer.serverTime = Get-SpTime 12 22 37
+    $hub = New-UwTestHub
+    $result = @{ Answer = $answer; Hub = $hub.Entry; Url = $hub.Url; SentAt = $answer.serverTime; ReceivedAt = $answer.serverTime }
+    $out = @(Invoke-UwAnswer -Result $result -State $state -Paths $paths -Config (Read-UwJson $paths.Config))
+    @($state.orders).Count | Should -Be 0
+    $out.Count | Should -Be 1
+    $out[0].outcome | Should -Be 'skipped'
+    $out[0].reason | Should -Be 'already_done'
+    $out[0].occurrence | Should -Be $script:Occ
+    $out[0].order | Should -Be $script:Order
+    @($state.acked) | Should -Contain $script:Order
+    $script:Calls.Count | Should -Be 0
+  }
+}

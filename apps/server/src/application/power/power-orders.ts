@@ -58,7 +58,12 @@ export interface JobOrderRow {
 export interface PowerJobsStore {
   info(deviceIds: readonly number[]): Map<number, PowerDeviceInfo>;
   createJob(
-    job: Omit<JobRow, 'id' | 'createdBy'> & { target: WakeTarget; createdBy: number | null },
+    job: Omit<JobRow, 'id' | 'createdBy'> & {
+      target: WakeTarget;
+      createdBy: number | null;
+      /** v1.6: T of a pushed schedule occurrence. */
+      plannedAt?: number;
+    },
     orders: { uuid: string; deviceId: number; expiresAt: number }[],
   ): number;
   job(id: number): JobRow | undefined;
@@ -261,6 +266,7 @@ export class PowerOrdersService {
           action: 'shutdown',
           label,
           target: input.target,
+          plannedAt: input.plannedAt,
           policy: input.policy,
           createdAt: now,
           createdBy: null,

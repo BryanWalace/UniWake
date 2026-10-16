@@ -18,7 +18,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$script:UwAgentVersion = '1.3.0'
+$script:UwAgentVersion = '1.6.0'
 $script:UwProtocol = 1
 $script:UwRoot = Join-Path $env:ProgramData 'UniWake'
 $script:UwAgentDir = Join-Path $script:UwRoot 'agent'
@@ -745,6 +745,16 @@ function Invoke-UwAnswer {
       continue
     }
     if ($State.doneIds.ContainsKey([string]$o.uuid)) { continue } # delivered twice (two hubs)
+    # ADR-053: the hub's order for a schedule occurrence this PC already ran from its agenda. Settle it
+    # (reason already_done), never run the same run id twice.
+    $occ = [string](Get-UwProp $o 'occurrence' '')
+    if ($occ -and $State.doneIds.ContainsKey($occ)) {
+      $State.doneIds[[string]$o.uuid] = $serverNow
+      [void]$out.Add((Format-UwReport -Occurrence $occ -Order $o.uuid -Action $o.action -Outcome 'skipped' `
+          -Reason 'already_done' -Detail 'já executado pela agenda'))
+      if ($State.acked -notcontains $o.uuid) { [void]$State.acked.Add([string]$o.uuid) }
+      continue
+    }
     if (-not (@($State.orders) | Where-Object { $_.uuid -eq $o.uuid })) { [void]$State.orders.Add($o) }
     if ($State.acked -notcontains $o.uuid) { [void]$State.acked.Add([string]$o.uuid) }
   }
@@ -1163,9 +1173,18 @@ function Get-UwNextJob {
   $order = @($State.orders | Select-Object -First 1)
   if ($order.Count -gt 0) {
     $o = $order[0]
+    # ADR-053: the order's run id (a schedule occurrence) is handled from now on, so the agenda item
+    # with the same id never runs after it.
+    $occ = [string](Get-UwProp $o 'occurrence' '')
+    if ($occ) {
+      $State.doneIds[$occ] = $Now
+      Save-UwState $Paths.State $State $Now
+    } else { $occ = $null }
+    $planned = Get-UwProp $o 'plannedAt' $null
+    if ($null -ne $planned) { $planned = [long]$planned }
     return @{
-      Kind = 'order'; Order = [string]$o.uuid; Occurrence = $null; Action = [string]$o.action
-      At = $Now + [long]$o.warningMinutes * $script:UwMinute; PlannedAt = $null
+      Kind = 'order'; Order = [string]$o.uuid; Occurrence = $occ; Action = [string]$o.action
+      At = $Now + [long]$o.warningMinutes * $script:UwMinute; PlannedAt = $planned
       Policy = $o; WasAsleep = $false; LateMinutes = $null
     }
   }
