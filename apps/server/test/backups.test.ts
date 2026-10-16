@@ -138,13 +138,16 @@ describe('restore (FR-014)', () => {
   });
 });
 
-/** Undoes the newest migration (007_import_backup) so the next start has one pending. */
+/** Undoes the newest migration (008_field_fixes) so the next start has one pending. */
 const UNDO_LATEST = [
-  'DELETE FROM schema_migrations WHERE version = 7',
-  "CREATE TABLE backups_old (id INTEGER PRIMARY KEY, file TEXT NOT NULL UNIQUE, kind TEXT NOT NULL CHECK (kind IN ('daily', 'pre-migration', 'pre-update', 'pre-restore', 'pre-join', 'manual')), created_at INTEGER NOT NULL, size INTEGER NOT NULL)",
-  'INSERT INTO backups_old SELECT id, file, kind, created_at, size FROM backups',
-  'DROP TABLE backups',
-  'ALTER TABLE backups_old RENAME TO backups',
+  'DELETE FROM schema_migrations WHERE version = 8',
+  'DROP TABLE power_tests',
+  ...['agenda_version', 'agenda_items', 'agenda_served_at'].map(
+    (c) => `ALTER TABLE agent_seen DROP COLUMN ${c}`,
+  ),
+  ...['seen_via', 'ip_source', 'ip_seen_at'].map(
+    (c) => `ALTER TABLE device_state DROP COLUMN ${c}`,
+  ),
 ].join(';\n');
 
 describe('restore and pre-migration backups on a real hub', () => {

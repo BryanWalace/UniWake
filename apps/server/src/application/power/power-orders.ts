@@ -65,6 +65,10 @@ export interface PowerJobsStore {
   jobOrders(id: number): JobOrderRow[];
   /** Cancels the job's open orders; returns how many. */
   cancelJob(id: number, at: number): number;
+  /** v1.6: the job with that UUID (a pushed schedule occurrence), if it exists. */
+  jobIdByUuid(uuid: string): number | null;
+  /** v1.6: adds one order to an existing job; false when that order UUID already exists. */
+  addOrder(jobId: number, order: { uuid: string; deviceId: number; expiresAt: number }): boolean;
 }
 
 export interface PowerOrdersDeps {
@@ -206,6 +210,78 @@ export class PowerOrdersService {
     });
     this.d.events.publish({ type: 'power.job', jobId });
     return { jobId, count: ready.length };
+  }
+
+  /**
+   * ADR-053: a schedule occurrence pushed by the hub, through the same orders as a manual
+   * shutdown. The job's UUID is the occurrence (the agenda item's run id) and order UUIDs derive
+   * from it, so a second hub or a restart creating it again is a no-op. Machines flagged "Nunca
+   * desligar por agendamento" and those with an excluded tag are left out; machines that are not
+   * ready are counted (reconciliation calls them "sem agente").
+   */
+  startScheduled(input: {
+    occurrence: string;
+    scheduleName: string;
+    target: WakeTarget;
+    policy: PowerPolicy;
+    excludeTagIds: readonly number[];
+    plannedAt: number;
+    /** v5 of occurrence + device identity: the same order id on every team hub. */
+    orderUuid: (deviceId: number) => string;
+  }): { jobId: number; count: number; notReady: number; excluded: number; existing: boolean } {
+    const existing = this.d.store.jobIdByUuid(input.occurrence);
+    if (existing !== null) {
+      return { jobId: existing, count: 0, notReady: 0, excluded: 0, existing: true };
+    }
+    const r = this.d.resolve(input.target);
+    const info = this.d.store.info(r.devices.map((d) => d.id));
+    const now = this.d.clock.now();
+    let notReady = 0;
+    let excluded = 0;
+    const ready: DeviceSnap[] = [];
+    for (const dev of r.devices) {
+      const i = info.get(dev.id);
+      if (i?.neverScheduledShutdown || dev.tagIds.some((t) => input.excludeTagIds.includes(t))) {
+        excluded++;
+        continue;
+      }
+      if (!i || agentReadiness(i, now) !== 'ready') {
+        notReady++;
+        continue;
+      }
+      ready.push(dev);
+    }
+    // Late-wake rule (ADR-045): an order not delivered by T + 60 min has no business running.
+    const expiresAt = input.plannedAt + 60 * MINUTE;
+    const label = `agendamento ${input.scheduleName}`;
+    const jobId = this.d.transaction(() => {
+      const id = this.d.store.createJob(
+        {
+          uuid: input.occurrence,
+          action: 'shutdown',
+          label,
+          target: input.target,
+          policy: input.policy,
+          createdAt: now,
+          createdBy: null,
+        },
+        ready.map((dev) => ({ uuid: input.orderUuid(dev.id), deviceId: dev.id, expiresAt })),
+      );
+      this.d.audit.record({
+        actor: { id: null, label },
+        action: 'power.scheduled',
+        target: r.auditTarget,
+        details: { jobId: id, count: ready.length, notReady, excluded, plannedAt: input.plannedAt },
+      });
+      return id;
+    });
+    this.d.events.publish({ type: 'power.job', jobId });
+    return { jobId, count: ready.length, notReady, excluded, existing: false };
+  }
+
+  /** ADR-054: one more order for a machine of a scheduled job that is still on without a reason. */
+  retryScheduled(jobId: number, deviceId: number, orderUuid: string, expiresAt: number): boolean {
+    return this.d.store.addOrder(jobId, { uuid: orderUuid, deviceId, expiresAt });
   }
 
   get(jobId: number): PowerJob {

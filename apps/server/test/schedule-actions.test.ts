@@ -40,7 +40,7 @@ async function setup() {
 }
 
 describe('schedules with "Ação: Desligar" (FR-306)', () => {
-  it("AC-306-01: the hub never runs a shutdown schedule; the machines' agendas carry it", async () => {
+  it('AC-306-01: a shutdown schedule never wakes anything; the agendas carry it and the hub pushes it (ADR-053)', async () => {
     const { h, s, prof, pc, teacher, call, target } = await setup();
     const created = await call<Schedule>('POST', '/api/schedules', {
       name: 'Desligar 22:40',
@@ -64,9 +64,15 @@ describe('schedules with "Ação: Desligar" (FR-306)', () => {
     s.scheduler.tick();
     h.clock.set(sp(12, 22, 40, 5));
     s.scheduler.tick();
-    expect(s.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM schedule_runs')!.n).toBe(0);
+    // D-M16-01 still holds: never a wake. v1.6: the occurrence was pushed at the warning's start and
+    // recorded; these machines have no agent yet, so no order went out and the run says why.
     expect(s.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM wake_jobs')!.n).toBe(0);
     expect(s.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM power_orders')!.n).toBe(0);
+    const runs = s.db.all<{ status: string; detail: string }>(
+      'SELECT status, detail FROM schedule_runs',
+    );
+    expect(runs).toHaveLength(1);
+    expect(runs[0]!.detail).toMatch(/^desligar: ordem para 0 máquina\(s\), \d+ sem agente pronto/);
 
     h.clock.set(sp(12, 12));
     const agenda = s.agenda.forDevice(pc)!;

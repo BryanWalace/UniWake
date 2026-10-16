@@ -31,6 +31,11 @@ export class SqliteSchedulerRepo implements SchedulerRepo {
     return this.schedules.list().filter((s) => s.enabled && !shutdown.has(s.id));
   }
 
+  /** v1.6 (ADR-053): enabled "Desligar" schedules, pushed at the warning's start. */
+  shutdownSchedules(): ScheduleRecord[] {
+    return this.schedules.list().filter((s) => s.enabled && s.action === 'shutdown');
+  }
+
   exceptions() {
     return this.schedules.exceptions();
   }

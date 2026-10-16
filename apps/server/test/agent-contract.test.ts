@@ -42,11 +42,11 @@ describe('agent contract fixtures (protocol 1)', () => {
     expect(checkinRequestSchema.safeParse({ ...request(), extra: 1 }).success).toBe(false);
   });
 
-  it('a report belongs to exactly one agenda item or one order', () => {
+  it('a report belongs to an agenda item, an order, or an order pushed for an occurrence (ADR-053)', () => {
     const both = request();
     const r = (both.reports as Record<string, unknown>[])[0]!;
     r.order = 'b1b2c3d4-0000-4000-8000-000000000001';
-    expect(checkinRequestSchema.safeParse(both).success).toBe(false);
+    expect(checkinRequestSchema.safeParse(both).success).toBe(true);
     r.occurrence = null;
     expect(checkinRequestSchema.safeParse(both).success).toBe(true);
     r.order = null;

@@ -42,6 +42,8 @@ export interface PauseState {
 
 export interface SchedulerRepo {
   enabledSchedules(): ScheduleRecord[];
+  /** v1.6 (ADR-053): enabled "Desligar" schedules, pushed by the hub at the warning's start. */
+  shutdownSchedules?(): ScheduleRecord[];
   exceptions(): {
     scheduleId: number | null;
     startDate: string;
@@ -85,6 +87,9 @@ export interface ExecutionLease {
   }): boolean;
 }
 
+/** ADR-053: a shutdown occurrence is still pushed up to this long after its time (late-wake rule). */
+export const SHUTDOWN_LATE_MS = 60 * 60_000;
+
 /** A single installation always handles its runs (v1.0). */
 export const SOLO_LEASE: ExecutionLease = { shouldHandle: () => true };
 
@@ -105,6 +110,14 @@ export interface SchedulerDeps {
   events: EventsBus;
   logger: Logger;
   transaction: <T>(fn: () => T) => T;
+  /**
+   * v1.6 (ADR-053): sends a shutdown occurrence to its machines through the manual-shutdown
+   * service (absent in tests that only exercise wakes).
+   */
+  pushShutdown?: (
+    s: ScheduleRecord,
+    plannedAt: number,
+  ) => { jobId: number; count: number; notReady: number; excluded: number; existing: boolean };
   /** A run that woke nothing (failed or lost): the morning result shows it (FR-013). */
   onRunProblem?: (r: {
     scheduleId: number;
@@ -230,10 +243,108 @@ export class Scheduler {
         }
       }
     }
+    report.ran += this.tickShutdowns(now, pause, standby);
     report.ran += this.retryDeferred(now, graceMs);
     this.flushMissed(now, graceMs);
     this.d.repo.setLastTick(Math.max(now, last ?? now));
     return report;
+  }
+
+  /**
+   * ADR-053: a "Desligar" occurrence at T is pushed from T − aviso − 1 min (when the agent's own
+   * warning would start, minus one check-in period) until T + 60 min (late-wake rule), once: the
+   * claim on (schedule, T) is the same as for wakes, so a restart or a second hub never pushes it
+   * twice, and agents run the occurrence once whatever path reaches them first.
+   */
+  private tickShutdowns(now: number, pause: PauseState | null, standby: boolean): number {
+    const push = this.d.pushShutdown;
+    const schedules = this.d.repo.shutdownSchedules?.() ?? [];
+    if (!push || schedules.length === 0) return 0;
+    const exceptions = this.d.repo.exceptions();
+    const lease = this.d.lease ?? SOLO_LEASE;
+    let ran = 0;
+    for (const s of schedules) {
+      const warning = s.warningMinutes ?? this.d.settings.get('power.defaultWarningMinutes');
+      const leadMs = (warning + 1) * 60_000;
+      const due = occurrencesBetween(
+        rule(s),
+        Math.max(now - SHUTDOWN_LATE_MS, s.createdAt),
+        now + leadMs,
+      );
+      for (const o of due) {
+        if (now < o.at - leadMs || this.d.repo.runExists(s.id, o.at)) continue;
+        if (
+          !lease.shouldHandle({
+            scheduleId: s.id,
+            scheduleUuid: s.uuid ?? null,
+            plannedAt: o.at,
+            now,
+          })
+        ) {
+          continue; // another hub was elected; asked again next tick (ADR-039 fallback)
+        }
+        const exception = exceptionFor(o.day, exceptions, s.id);
+        const paused =
+          standby ||
+          (pause !== null &&
+            o.at >= pause.since &&
+            (pause.resumeAt === null || o.at < pause.resumeAt));
+        if (exception !== null || paused) {
+          const detail =
+            exception !== null
+              ? `desligar: ${exception.description}`
+              : 'desligar: agendamentos pausados';
+          if (
+            this.d.repo.claim(
+              s.id,
+              o.at,
+              now,
+              exception !== null ? 'pulado_feriado' : 'pulado_pausa',
+              detail,
+            ) !== null
+          ) {
+            this.d.logger.info(
+              { scheduleId: s.id, plannedAt: o.at, detail },
+              'scheduled shutdown skipped',
+            );
+          }
+          continue;
+        }
+        const runId = this.d.repo.claim(s.id, o.at, now, 'executando', null);
+        if (runId === null) continue;
+        try {
+          const r = push(s, o.at);
+          const detail =
+            `desligar: ordem para ${r.count} máquina(s)` +
+            (r.notReady > 0 ? `, ${r.notReady} sem agente pronto` : '') +
+            (r.excluded > 0 ? `, ${r.excluded} excluída(s)` : '') +
+            '; a agenda das máquinas também tem este horário';
+          this.d.repo.finish(
+            runId,
+            now - (o.at - leadMs) <= ON_TIME_MS ? 'executado' : 'atrasado',
+            detail,
+            null,
+          );
+          this.d.logger.info(
+            { scheduleId: s.id, schedule: s.name, plannedAt: o.at, ...r },
+            'scheduled shutdown pushed',
+          );
+          ran++;
+        } catch (e) {
+          this.d.repo.finish(
+            runId,
+            'falhou',
+            `desligar: ${(e as Error).message}`.slice(0, 300),
+            null,
+          );
+          this.d.logger.error(
+            { err: e, scheduleId: s.id, plannedAt: o.at },
+            'scheduled shutdown push failed',
+          );
+        }
+      }
+    }
+    return ran;
   }
 
   /**

@@ -91,8 +91,10 @@ export const agentReportSchema = z
     detail: z.string().max(500).nullable(),
   })
   .strict()
-  .refine((r) => (r.occurrence === null) !== (r.order === null), {
-    message: 'A report belongs to exactly one agenda item or one order',
+  // v1.6 (ADR-053): an order pushed for a schedule occurrence reports both ids (the occurrence for
+  // the schedule's history, the order for the path); an agenda item has no order.
+  .refine((r) => r.occurrence !== null || r.order !== null, {
+    message: 'A report belongs to an agenda item or an order',
   });
 export type AgentReport = z.infer<typeof agentReportSchema>;
 
@@ -161,8 +163,13 @@ export const agendaSchema = z
 export type Agenda = z.infer<typeof agendaSchema>;
 
 export const agentOrderSchema = z.discriminatedUnion('action', [
-  powerPolicySchema.extend({ uuid, action: powerActionSchema.extract(['shutdown']) }).strict(),
-  powerPolicySchema.extend({ uuid, action: powerActionSchema.extract(['restart']) }).strict(),
+  // v1.6 (ADR-053): `occurrence` is the run id shared with the agenda item it may duplicate.
+  powerPolicySchema
+    .extend({ uuid, action: powerActionSchema.extract(['shutdown']), occurrence: uuid.optional() })
+    .strict(),
+  powerPolicySchema
+    .extend({ uuid, action: powerActionSchema.extract(['restart']), occurrence: uuid.optional() })
+    .strict(),
   z.object({ uuid, action: z.literal('cancel'), cancels: uuid }).strict(),
 ]);
 export type AgentOrder = z.infer<typeof agentOrderSchema>;

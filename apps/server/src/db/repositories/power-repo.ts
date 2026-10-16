@@ -208,11 +208,14 @@ export class SqlitePowerRepo implements AgentStore {
         allow_postpone: number;
         postpone_max: number;
         postpone_minutes: number;
+        job_uuid: string | null;
       }>(
-        `SELECT uuid, action, warning_minutes, allow_postpone, postpone_max, postpone_minutes
-         FROM power_orders
-         WHERE device_id = ? AND state = 'pending' AND action <> 'cancel' AND expires_at > ?
-         ORDER BY created_at, id`,
+        // ADR-053: the job's UUID is the run id (a schedule occurrence, or a manual job).
+        `SELECT o.uuid, o.action, o.warning_minutes, o.allow_postpone, o.postpone_max,
+           o.postpone_minutes, j.uuid AS job_uuid
+         FROM power_orders o LEFT JOIN power_jobs j ON j.id = o.job_id
+         WHERE o.device_id = ? AND o.state = 'pending' AND o.action <> 'cancel' AND o.expires_at > ?
+         ORDER BY o.created_at, o.id`,
         [deviceId, now],
       )
       .map((o) => ({
@@ -222,6 +225,7 @@ export class SqlitePowerRepo implements AgentStore {
         allowPostpone: o.allow_postpone === 1,
         postponeMax: o.postpone_max,
         postponeMinutes: o.postpone_minutes,
+        ...(o.job_uuid ? { occurrence: o.job_uuid } : {}),
       }));
   }
 
@@ -254,6 +258,19 @@ export class SqlitePowerRepo implements AgentStore {
         s.sessionCount,
       ],
     );
+  }
+
+  saveAgendaServed(deviceId: number, version: string, items: number, at: number): string | null {
+    const before =
+      this.db.get<{ v: string | null }>(
+        'SELECT agenda_version AS v FROM agent_seen WHERE device_id = ?',
+        [deviceId],
+      )?.v ?? null;
+    this.db.run(
+      'UPDATE agent_seen SET agenda_version = ?, agenda_items = ?, agenda_served_at = ? WHERE device_id = ?',
+      [version, items, at, deviceId],
+    );
+    return before;
   }
 
   saveStatus(deviceId: number, s: AgentStatus): void {
@@ -386,6 +403,47 @@ export class SqlitePowerJobsRepo implements PowerJobsStore {
       changeLog(this.db).touch('power_order', orderId);
     }
     return id;
+  }
+
+  jobIdByUuid(uuid: string): number | null {
+    return (
+      this.db.get<{ id: number }>('SELECT id FROM power_jobs WHERE uuid = ?', [uuid])?.id ?? null
+    );
+  }
+
+  addOrder(jobId: number, o: { uuid: string; deviceId: number; expiresAt: number }): boolean {
+    if (this.db.get('SELECT 1 FROM power_orders WHERE uuid = ?', [o.uuid])) return false;
+    const j = this.db.get<{
+      action: string;
+      warning_minutes: number;
+      allow_postpone: number;
+      postpone_max: number;
+      postpone_minutes: number;
+    }>(
+      'SELECT action, warning_minutes, allow_postpone, postpone_max, postpone_minutes FROM power_jobs WHERE id = ?',
+      [jobId],
+    );
+    if (!j) return false;
+    const now = Date.now();
+    const orderId = this.db.run(
+      `INSERT INTO power_orders (uuid, job_id, device_id, action, warning_minutes, allow_postpone,
+         postpone_max, postpone_minutes, state, created_at, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+      [
+        o.uuid,
+        jobId,
+        o.deviceId,
+        j.action,
+        j.warning_minutes,
+        j.allow_postpone,
+        j.postpone_max,
+        j.postpone_minutes,
+        Math.min(now, o.expiresAt),
+        o.expiresAt,
+      ],
+    ).lastInsertRowid;
+    changeLog(this.db).touch('power_order', orderId);
+    return true;
   }
 
   job(id: number): JobRow | undefined {

@@ -45,7 +45,7 @@ import type {
 import { KeyedLimiter } from './application/rate-limit';
 import { RoomsService } from './application/rooms/rooms-service';
 import { Scheduler } from './application/schedules/scheduler';
-import { SchedulesService } from './application/schedules/schedules-service';
+import { rowsToTarget, SchedulesService } from './application/schedules/schedules-service';
 import {
   type BootstrapValues,
   type ConfigFileStore,
@@ -426,8 +426,40 @@ export function createServices(
   });
   const backupsRef: { current: BackupService | null } = { current: null };
 
+  // v1.6 (ADR-053): the scheduler pushes shutdowns through the manual-shutdown service built below.
+  const latePower: { power?: PowerOrdersService } = {};
+  const tagIdsByUuid = (uuids: readonly string[]) =>
+    uuids.length === 0
+      ? []
+      : db
+          .all<{ id: number }>(
+            `SELECT id FROM tags WHERE uuid IN (${uuids.map(() => '?').join(',')})`,
+            [...uuids],
+          )
+          .map((r) => r.id);
   const scheduler = new Scheduler({
     repo: schedulerRepo,
+    pushShutdown: (sched, plannedAt) => {
+      if (!latePower.power || !sched.uuid) throw new Error('shutdown service not ready');
+      const occurrence = scheduleRunUuid(sched.uuid, plannedAt);
+      return latePower.power.startScheduled({
+        occurrence,
+        scheduleName: sched.name,
+        target: rowsToTarget(sched.targets, refs),
+        policy: {
+          warningMinutes: sched.warningMinutes ?? settings.get('power.defaultWarningMinutes'),
+          allowPostpone: sched.allowPostpone ?? settings.get('power.postponeMax') > 0,
+          postponeMax: sched.postponeMax ?? settings.get('power.postponeMax'),
+          postponeMinutes: sched.postponeMinutes ?? settings.get('power.postponeMinutes'),
+        },
+        excludeTagIds: tagIdsByUuid(sched.excludeTags ?? []),
+        plannedAt,
+        orderUuid: (deviceId) =>
+          uuidV5(
+            `power-order:${occurrence}:${changeLog(db).uuidOf('device', deviceId) ?? deviceId}`,
+          ),
+      });
+    },
     lease,
     teamMode: () => team.inTeam(),
     standby: () => migrationState.standby() !== null,
@@ -622,7 +654,7 @@ export function createServices(
     digest: (t) => createHash('sha256').update(t).digest('hex'),
     clock,
   });
-  const power = new PowerOrdersService({
+  const power = (latePower.power = new PowerOrdersService({
     store: new SqlitePowerJobsRepo(db),
     resolve: (target) => wake.resolveForPower(target),
     settings,
@@ -631,7 +663,7 @@ export function createServices(
     clock,
     transaction: tx,
     newUuid: () => randomUUID(),
-  });
+  }));
   const powerStatus = new PowerStatusService({
     agents: (ids) => agentRows(db, ids),
     occurrenceReports: (since) => occurrenceReports(db, since),
@@ -689,6 +721,7 @@ export function createServices(
     },
     cancelId: (orderUuid) => uuidV5(`power-cancel:${orderUuid}`),
     version: opts.version ?? '0.0.0-dev',
+    logger: ports.logger.child({ module: 'agent' }),
   });
 
   const exporter = new ExportService({
