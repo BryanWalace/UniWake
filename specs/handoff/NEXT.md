@@ -1,10 +1,17 @@
 # NEXT — handoff
 
-Atualizado: 2026-10-16 · Branch de trabalho: **`dev`** (ADR-030) · **`main` = `8e1b794`** (release v1.4.0, publicada).
-**Na `dev`: versão 1.5 "Desligamento agendado e status confiáveis" (correções do seu relatório de campo), validada,
-sem merge e sem tag — aguardando o seu teste num PC do laboratório.** Nada foi para a `main`.
+Atualizado: 2026-10-16 · Branch de trabalho: **`dev`** (ADR-030) · **`main` = `7eb76bc`** · **release v1.5.0
+publicada** a seu pedido (tag `v1.5.0`, `releases/latest` = v1.5.0, instalador baixado e SHA-256 `c1248b3e…862d`
+conferido). Os PCs com o UniWake se atualizam sozinhos na janela 03:00–05:00. **Falta o seu teste num PC do
+laboratório** (passo a passo abaixo).
 
-## v1.5 — correções do desligamento agendado e do status (na `dev`, aguardando seu teste)
+## Release v1.5.0 (2026-10-16)
+- Antes: verify, Pester, E2E e CI verdes na `dev` e na `main`; teste de fumaça no pacote montado
+  (21/21, com check-ins reais do agente PowerShell 5.1 contra o hub no loopback: o "Testar agendamento"
+  chegou pela agenda e por ordem direta com o mesmo código de execução; nenhum "missed its deadline").
+- Notas: `specs/releases/v1.5.0.md`.
+
+## v1.5 — correções do desligamento agendado e do status (publicada na v1.5.0, aguardando seu teste)
 
 > Nos documentos técnicos (specs) isto aparece como "v1.6" — é a revisão da especificação. A versão
 > do programa é **1.5.0** (a de teste é `1.5.0-dev.N`). O agente nos PCs tem numeração própria: **1.6.0**.
@@ -55,17 +62,14 @@ pausa (é um teste explícito), mas recusa máquina sem agente ou marcada "Nunca
 Use **um PC de laboratório de teste** (fora de aula, que pode ser desligado) e o PC onde o UniWake
 roda. Nada disso exige programa extra nas máquinas.
 
-**0. Instalar a versão de teste no PC do UniWake**
-1. GitHub → **Actions** → o último **CI** verde da branch `dev` → em **Artifacts**, baixe
-   **UniWake-Setup-dev** (`UniWake-Setup-1.5.0-dev.N.exe` + `.sha256`). Use uma execução **depois**
-   do commit "docs(V6-T02)" (as anteriores ainda saíam como `1.4.0-dev.N`, que o UniWake trataria como
-   mais antiga que a 1.4.0 — não use essas).
-2. Confira o SHA-256 no PowerShell: `Get-FileHash .\UniWake-Setup-1.5.0-dev.N.exe` e compare com o
-   arquivo `.sha256`.
-3. Instale por cima da 1.4.0 (um backup é feito antes). Essa versão de teste não volta sozinha para a
-   1.4.0: ela só se atualiza quando sair uma release estável mais nova (a 1.5.0).
-4. Painel → **Saúde do sistema**: versão `1.5.0-dev.N`.
-5. **Logs** (administrador): logo depois do início **não** deve aparecer "probe helper missed its
+**0. Ter a 1.5.0 no PC do UniWake**
+1. O PC se atualiza sozinho na janela 03:00–05:00. Para não esperar: baixe o
+   **UniWake-Setup.exe** da release **v1.5.0** no GitHub (botão de download do README) e o
+   `.sha256`; confira com `Get-FileHash .\UniWake-Setup.exe` (SHA-256
+   `c1248b3e7852039b092832c30059a88a6d1d5fd528215322275199bc1559862d`) e instale por cima (um backup
+   é feito antes).
+2. Painel → **Saúde do sistema**: versão `1.5.0`.
+3. **Logs** (administrador): logo depois do início **não** deve aparecer "probe helper missed its
    deadline". Reinicie o serviço uma vez (services.msc → UniWake → Reiniciar) e confira de novo.
 
 **1. Agente atualizado no PC de teste (não precisa preparar de novo)**
@@ -141,7 +145,7 @@ roda. Nada disso exige programa extra nas máquinas.
 - se aparecer "Possível máquina duplicada", os dois nomes/MACs (pode cobrir os MACs no print, só me
   diga se são iguais ou diferentes).
 
-Quando estiver tudo certo, me diga **"pode subir a dev para a main"** (e se quer a tag/release 1.5.0).
+Se algo falhar, eu corrijo na `dev` e só levo para a `main` (e uma nova release) quando você pedir.
 
 ## Release v1.4.0 (2026-10-12)
 - Antes: verify, Pester, E2E, CI verde na `dev` e na `main`, teste de fumaça no pacote montado (16/16, com check-ins reais do
@@ -503,8 +507,8 @@ WoL real por modelo de PC, reinício sem ninguém logado, VLANs, HTTPS na rede) 
   ADR-053/054), M26 (online status from agent/ICMP/TCP/ARP, IP follows MAC, probe-helper fix,
   ADR-055), M27 (diagnostics, duplicate notice, "Testar agendamento", info logs, ADR-056), Phase 14
   (`validation.md` §v1.6), installer WinSW stop race (ADR-057). `DEV_VERSION_BASE` bumped to 1.5.0.
-  Not merged, not tagged. **STOP point:** waiting for the owner's lab-PC checklist above and
-  "pode subir a dev para a main".
+  **Released as v1.5.0 on the owner's request** (merge `7eb76bc` on main, tag `v1.5.0`, installer
+  SHA-256 c1248b3e…862d verified). Waiting for the owner's lab-PC checklist above.
 - Field root cause of the empty agenda **not reproduced**; most likely a duplicate/moved device
   record (não verificado). Code: `domain/agenda.ts` (explainAgenda, one-offs),
   `application/power/{diagnostics,shutdown-test,reconcile,self-device}.ts`, migration 008,
@@ -525,8 +529,8 @@ WoL real por modelo de PC, reinício sem ninguém logado, VLANs, HTTPS na rede) 
 
 ### Next steps
 0. v1.5 field fixes: act on the owner's lab-PC results (tests first). If a schedule still misses a
-   machine, the device page reason and the "possible_duplicate" notice name the record to fix; on
-   "pode subir a dev para a main": verify, merge, and (only if asked) tag `v1.5.0` with release notes.
+   machine, the device page reason and the "possible_duplicate" notice name the record to fix. Fixes
+   go to `dev` again; `main`/tags only on a new explicit request.
 1. Fix whatever the owner's checklists find (tests first). If the warning window does not show in
    the user session, revisit the "UniWake Aviso" task (ADR-046, M18-T01).
 2. On "pode subir a dev para a main": green verify, merge `dev` → `main`; tag only if asked
