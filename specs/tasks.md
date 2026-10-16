@@ -480,4 +480,4 @@ Owner field report 2026-10-15; Phase 13 debug in `specs/reviews/phase-13-*.md`.
 | ID | Task | Refs | Evidence |
 |---|---|---|---|
 | [x] V6-T01 | Walk the v1.6 ACs; fake-agent end-to-end (pull only, push only, both, hub off, user active, stale IP, ICMP blocked); `validation.md` §v1.6. | FR-501..504 | validation |
-| [ ] V6-T02 | Owner checklist (pt-BR, NEXT.md) for a lab PC: both fixes step by step. | — | checklist |
+| [x] V6-T02 | Owner checklist (pt-BR, NEXT.md) for a lab PC: both fixes step by step. | — | checklist |

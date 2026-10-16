@@ -239,7 +239,7 @@ account permissions), the CLI from the installed folder.
 ## V4-T03 Verdict
 See `specs/reviews/v1.4-final.md`.
 
-# Validation v1.6 — Field fixes: scheduled shutdown and online status (M25–M27)
+# Validation v1.6 (spec revision; product version 1.5.0) — Field fixes: scheduled shutdown and online status (M25–M27)
 
 Date: 2026-10-16 · Lead: Debug & Problem Solver · Branch `dev` (not released).
 
