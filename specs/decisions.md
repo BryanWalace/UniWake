@@ -970,3 +970,18 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
     schedule occurrences. Machine-local on purpose (a test from the hub the PC talks to).
   - Info logs for fires, agenda changes, agenda served with a new version, pushes, reconciliations
     (only on change, so 500 PCs do not flood the log).
+
+## ADR-057 — The installer trusts the service state, not the WinSW stop exit code
+- **Date:** 2026-10-16 · **Status:** Accepted
+- **Context:** CI run 38840416400 (installer smoke, upgrade 0.0.1 → 0.0.2) aborted with
+  "O serviço UniWake não parou". The WinSW log showed the hub stopped cleanly on Ctrl+C in 22 ms,
+  then WinSW 2.12 threw `Win32Exception: The handle is invalid` in `ProcessHelper.GetChildren`
+  (it reads the start time of the process that just exited) and `stopwait` returned -1. The
+  service had stopped; the installer still refused to upgrade. This is a race in WinSW, so it can
+  happen on a real hub PC during a manual upgrade.
+- **Decision:** when `stopwait` fails, `PrepareToInstall` waits up to 30 s for the service
+  manager to report the service as `Stopped` (`Get-Service … WaitForStatus`) and only fails if it
+  never does. WinSW 2.12 stays (ADR-021); the in-app updater does not run the installer and is
+  not affected.
+- **Consequences:** an upgrade no longer depends on a WinSW timing race. A service that really
+  keeps running still blocks the upgrade with the same message after 30 s.
