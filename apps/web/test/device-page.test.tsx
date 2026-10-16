@@ -475,3 +475,12 @@ describe('"Desligamento remoto" card (M19-T03, FR-309, owner Q-3/Q-6)', () => {
     expect(await within(card).findByText('Erro interno inesperado.')).toBeInTheDocument();
   });
 });
+
+describe('status signal and IP source (v1.6, FR-503.4)', () => {
+  it('shows which signal confirmed "ligada" and where the IP came from', async () => {
+    deviceApi({ status: 'online', seenVia: 'agent', ipSource: 'arp' });
+    renderApp('/dispositivos/5');
+    expect(await screen.findByText('— agente')).toBeInTheDocument();
+    expect(screen.getByText('(pela tabela ARP)')).toBeInTheDocument();
+  });
+});

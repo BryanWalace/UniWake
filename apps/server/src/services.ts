@@ -239,6 +239,7 @@ export function createServices(
   const probes = new ProbeQueue(ports.prober, () => settings.get('monitor.concurrency'));
   const monitor = new MonitorService({
     repo: new SqliteMonitorRepo(db),
+    ...(ports.neighbors ? { neighbors: ports.neighbors } : {}),
     prober: probes.at('low'),
     dns: ports.dns,
     settings,

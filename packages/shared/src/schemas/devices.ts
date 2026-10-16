@@ -84,7 +84,27 @@ export interface DeviceState {
   lastSeenAt: number | null;
   onlineSince: number | null;
   everOnline: boolean;
+  /** v1.6 (ADR-055): what confirmed "online" in the last sweep (null when not online). */
+  seenVia?: 'agent' | 'icmp' | 'tcp' | 'arp' | 'verification' | null;
+  /** v1.6: where the current IP came from (null = typed in, CSV or enrollment). */
+  ipSource?: 'agent' | 'arp' | 'dns' | null;
 }
+
+/** pt-BR names of the signal that confirmed a device is on. */
+export const SEEN_VIA_LABEL: Record<NonNullable<DeviceState['seenVia']>, string> = {
+  agent: 'agente',
+  icmp: 'ping',
+  tcp: 'porta',
+  arp: 'ARP',
+  verification: 'verificação da ligação',
+};
+
+/** pt-BR names of where a device's IP came from. */
+export const IP_SOURCE_LABEL: Record<NonNullable<DeviceState['ipSource']>, string> = {
+  agent: 'consulta do agente',
+  arp: 'tabela ARP',
+  dns: 'DNS',
+};
 
 export interface Device extends DeviceState {
   id: number;

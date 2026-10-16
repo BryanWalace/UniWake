@@ -110,7 +110,7 @@ describe('MonitorService sweeps', () => {
     await w.s.monitor.sweep();
     expect(w.s.devices.get(id)).toMatchObject({ ip: '10.0.3.31', status: 'online' });
     const drift = eventsOf(w, id).find((e) => e.type === 'ip_changed');
-    expect(JSON.parse(drift!.data)).toEqual({ from: '10.0.3.20', to: '10.0.3.31' });
+    expect(JSON.parse(drift!.data)).toEqual({ from: '10.0.3.20', to: '10.0.3.31', source: 'dns' });
     expect(w.ports.prober.calls.flatMap((c) => c.addresses)).toEqual(['10.0.3.31']);
   });
 
@@ -513,5 +513,96 @@ describe('ProbeQueue.cancelPending (M4-F2)', () => {
     const r = await low;
     expect([...r.values()].map((x) => x.alive)).toEqual([true, false, false]);
     expect((await high).get('h')?.alive).toBe(true);
+  });
+});
+
+describe('several signals and the IP following the MAC (v1.6, ADR-055)', () => {
+  const seen = (w: World, id: number, at: number, ip: string) =>
+    w.s.db.run(
+      `INSERT INTO agent_seen (device_id, seen_at, ip) VALUES (?, ?, ?)
+       ON CONFLICT(device_id) DO UPDATE SET seen_at = excluded.seen_at, ip = excluded.ip`,
+      [id, at, ip],
+    );
+  const macOf = (w: World, id: number) => w.s.devices.get(id).mac;
+
+  it('AC-503-01: ICMP blocked but an agent check-in 1 minute ago → online "via agente"', async () => {
+    const w = world();
+    const id = w.add(1, { ip: '10.0.3.20' });
+    seen(w, id, T0 - 60_000, '10.0.3.20'); // no prober answer at all
+    await w.s.monitor.sweep();
+    expect(w.s.devices.get(id)).toMatchObject({ status: 'online', seenVia: 'agent' });
+  });
+
+  it('AC-503-01: a Reachable neighbor entry for the MAC counts; a Stale one does not', async () => {
+    const w = world();
+    const on = w.add(1, { ip: '10.0.3.20' });
+    const stale = w.add(2, { ip: '10.0.3.21' });
+    w.ports.neighbors.entries = [
+      { ip: '10.0.3.20', mac: macOf(w, on), interfaceIp: null, reachable: true },
+      { ip: '10.0.3.21', mac: macOf(w, stale), interfaceIp: null, reachable: false },
+    ];
+    await w.s.monitor.sweep();
+    expect(w.s.devices.get(on)).toMatchObject({ status: 'online', seenVia: 'arp' });
+    expect(w.s.devices.get(stale).status).not.toBe('online');
+  });
+
+  it('AC-503-02: after a DHCP change the next sweep probes the new IP (agent source, then ARP)', async () => {
+    const w = world();
+    const id = w.add(1, { ip: '10.0.3.20' });
+    seen(w, id, T0 - 3 * 60_000, '10.0.3.77'); // checked in from its new address 3 min ago
+    w.ports.prober.setAlive('10.0.3.77');
+    await w.s.monitor.sweep();
+    expect(w.s.devices.get(id)).toMatchObject({
+      ip: '10.0.3.77',
+      ipSource: 'agent',
+      status: 'online',
+    });
+    expect(w.ports.prober.calls.flatMap((c) => c.addresses)).toEqual(['10.0.3.77']);
+    const drift = eventsOf(w, id).find((e) => e.type === 'ip_changed');
+    expect(JSON.parse(drift!.data)).toMatchObject({
+      from: '10.0.3.20',
+      to: '10.0.3.77',
+      source: 'agent',
+    });
+
+    // A device without an agent: the neighbor table seen in one sweep moves it in the next one.
+    const other = w.add(2, { ip: '10.0.3.30' });
+    w.ports.neighbors.entries = [{ ip: '10.0.3.88', mac: macOf(w, other), interfaceIp: null }];
+    await w.s.monitor.sweep();
+    expect(w.s.devices.get(other).ip).toBe('10.0.3.30'); // read after the probes: used next time
+    w.ports.prober.setAlive('10.0.3.88');
+    await w.s.monitor.sweep();
+    expect(w.s.devices.get(other)).toMatchObject({
+      ip: '10.0.3.88',
+      ipSource: 'arp',
+      status: 'online',
+    });
+  });
+
+  it('AC-503-03: one all-negative sweep keeps it online; the second one marks it offline', async () => {
+    const w = world();
+    const id = w.add(1, { ip: '10.0.3.20' });
+    seen(w, id, T0, '10.0.3.20');
+    await w.s.monitor.sweep();
+    expect(w.s.devices.get(id).status).toBe('online');
+    w.clock.set(T0 + 5 * 60_000); // the agent stopped checking in, nothing answers
+    await w.s.monitor.sweep();
+    expect(w.s.devices.get(id).status).toBe('online');
+    await w.s.monitor.sweep();
+    expect(w.s.devices.get(id).status).toBe('offline');
+  });
+
+  it('a failing neighbor table is one warning; the other signals still count', async () => {
+    const w = world();
+    const id = w.add(1, { ip: '10.0.3.20' });
+    w.ports.neighbors.read = () => Promise.reject(new Error('Get-NetNeighbor falhou'));
+    w.ports.prober.setAlive('10.0.3.20');
+    await w.s.monitor.sweep();
+    await w.s.monitor.sweep();
+    expect(w.s.devices.get(id)).toMatchObject({ status: 'online', seenVia: 'icmp' });
+    const warnings = w.ports.logger.entries.filter((e) =>
+      /neighbor table unavailable/.test(e.msg ?? ''),
+    );
+    expect(warnings).toHaveLength(1);
   });
 });
