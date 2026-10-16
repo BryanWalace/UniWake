@@ -466,7 +466,7 @@ Owner field report 2026-10-15; Phase 13 debug in `specs/reviews/phase-13-*.md`.
 |---|---|---|---|---|
 | [x] M26-T01 | ICMP helper protocol fix (per-address errors, id always) + hub side. | FR-503.5 | AC-503-04 | — |
 | [x] M26-T02 | Agent and neighbor signals, IP by MAC with source, `seen_via`/`ip_source`. | FR-503.1..4; ADR-055 | AC-503-01, AC-503-02, AC-503-03 | — |
-| [ ] M26-R | Review → `specs/reviews/M26-review.md`. | §9 DoD | — | — |
+| [x] M26-R | Review → `specs/reviews/M26-review.md`. | §9 DoD | — | — |
 
 ## M27 — Diagnostics
 | ID | Task | Refs | Tests | Done when |
