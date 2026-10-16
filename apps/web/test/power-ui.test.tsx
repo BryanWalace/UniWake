@@ -30,6 +30,7 @@ const PREVIEW: PowerPreview = {
   withUser: 3,
   offline: 0,
   protected: [],
+  self: [],
   policy: { warningMinutes: 1, allowPostpone: false, postponeMax: 0, postponeMinutes: 5 },
 };
 

@@ -144,9 +144,11 @@ export class PowerOrdersService {
     return { r, info, ready, needsPreparation, revoked, lost, protectedDevs };
   }
 
-  preview(req: PowerRequestParams): PowerPreview {
+  preview(req: PowerRequestParams, selfIds: ReadonlySet<number> = new Set()): PowerPreview {
     const { r, info, ready, needsPreparation, revoked, lost, protectedDevs } = this.plan(req);
     return {
+      // FR-501.5: the PC running this hub is among the targets: say so, never skip it silently.
+      self: r.devices.filter((dev) => selfIds.has(dev.id)).map(ref),
       lost,
       action: req.action,
       count: ready.length,

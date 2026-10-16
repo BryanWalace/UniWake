@@ -44,6 +44,8 @@ export interface PowerPreview {
   offline: number;
   /** Flagged "Nunca desligar por agendamento": included only with an extra confirmation. */
   protected: PowerDeviceRef[];
+  /** v1.6 (FR-501.5): targeted machines that are the PC running this UniWake. */
+  self: PowerDeviceRef[];
   policy: PowerPolicy;
 }
 

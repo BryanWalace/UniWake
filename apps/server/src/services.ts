@@ -10,6 +10,7 @@ import { ExportService } from './application/migration/export-service';
 import { ImportService } from './application/migration/import-service';
 import { AutoExportService } from './application/migration/auto-export';
 import { ShutdownReconciler } from './application/power/reconcile';
+import { SelfDeviceService } from './application/power/self-device';
 import { nodeExportFolder } from './adapters/export-folder';
 import { SqliteMigrationStateRepo } from './db/repositories/migration-repo';
 import { applyImport, hasPreparedMachines, previewImport } from './db/sync/import';
@@ -792,6 +793,16 @@ export function createServices(
     exporter,
     importer,
     autoExport,
+    selfDevice: new SelfDeviceService({
+      interfaces: ports.interfaces,
+      devicesMatching: (macs, ips) =>
+        db
+          .all<{ id: number }>(
+            'SELECT id FROM devices WHERE upper(mac) IN (SELECT value FROM json_each(?)) OR ip IN (SELECT value FROM json_each(?))',
+            [JSON.stringify(macs), JSON.stringify(ips)],
+          )
+          .map((r) => r.id),
+    }),
     agentTokens,
     agent,
     agenda,

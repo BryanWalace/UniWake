@@ -366,3 +366,26 @@ describe('reconciliation at T + 10 min (FR-501.4, ADR-054)', () => {
     expect(s.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM power_reconciled')!.n).toBe(1);
   });
 });
+
+describe('the PC running the hub (FR-501.5)', () => {
+  it('AC-501-06: the shutdown preview names the hub PC among the targets', async () => {
+    const { w, s, room } = await lab();
+    // The fake hub NIC is 00:11:22:33:44:55 / 10.0.3.15: an inventory device with that MAC is this PC.
+    s.devices.create({ name: 'PC-TI', mac: '00:11:22:33:44:55', roomId: room.id }, ACTOR);
+    const cookie = await w.h.as('operator');
+    const r = await w.h.inject({
+      method: 'POST',
+      url: '/api/power/preview',
+      cookie,
+      payload: { action: 'shutdown', target: { type: 'rooms', roomIds: [room.id] } },
+    });
+    expect(r.json<{ self: { name: string }[] }>().self.map((d) => d.name)).toEqual(['PC-TI']);
+    const other = await w.h.inject({
+      method: 'POST',
+      url: '/api/power/preview',
+      cookie,
+      payload: { action: 'shutdown', target: { type: 'rooms', roomIds: [s.rooms.list()[1]!.id] } },
+    });
+    expect(other.json<{ self: unknown[] }>().self).toEqual([]);
+  });
+});

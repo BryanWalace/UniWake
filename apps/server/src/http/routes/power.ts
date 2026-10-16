@@ -12,7 +12,7 @@ export function powerRoutes(app: FastifyInstance, s: HttpServices): void {
   r.post(
     '/api/power/preview',
     { config: auth, schema: { body: powerRequestSchema } },
-    async (req) => s.power.preview(req.body),
+    async (req) => s.power.preview(req.body, await s.selfDevice.ids()),
   );
 
   r.post(

@@ -12,6 +12,7 @@ import { Button, Dialog, SelectField } from '../../components/ui';
 import { useSaveSchedule } from './api';
 import { TIMEZONES } from './format';
 import { TargetPicker } from './TargetPicker';
+import { ShutdownReach } from '../power/ShutdownReach';
 
 type Field = 'name' | 'weekdays' | 'timeLocal' | 'timezone' | 'target' | 'stagger' | 'power';
 
@@ -245,6 +246,7 @@ function ScheduleFormBody({ schedule, onClose, onSaved }: Props) {
             </SelectField>
           </div>
           <TargetPicker value={target} onChange={setTarget} error={errors.target} />
+          {action === 'shutdown' && <ShutdownReach target={target} />}
           {action === 'shutdown' ? (
             <fieldset className="space-y-3 rounded-md border border-slate-200 p-3">
               <legend className="px-1 text-sm font-medium text-slate-800">Aviso e adiamento</legend>
