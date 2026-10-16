@@ -910,3 +910,63 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
     damaged file.
 - **Consequences:** a nightly copy on a file server covers a dead PC (users and lab-PC preparation
   redone); a full migration still uses a password export.
+
+## ADR-053 — Scheduled shutdown also pushed by the hub; one run id, one execution
+- **Date:** 2026-10-15 · **Status:** Accepted · **Amends:** ADR-048 ("no lease", agenda only)
+- **Context:** field v1.4.0: scheduled shutdowns never ran; the agent agenda was empty and, by
+  design, nothing else delivered them and nothing was logged. Manual shutdown (orders) works.
+- **Decision:**
+  - The scheduler also handles `action = 'shutdown'`, through the same lease as wakes: at
+    `T − warningMinutes − 1 min` (the start of the warning, minus one check-in period) the winning
+    hub calls the **manual-shutdown service** with the schedule's policy, its target, its excluded
+    tags and without machines flagged "Nunca desligar por agendamento". No second implementation.
+  - The job's UUID is the occurrence UUID (v5 of schedule UUID + T, as the agenda item); orders
+    are v5 of occurrence + device UUID, carry `occurrence`, and expire at T + 60 min (late-wake
+    rule). A second hub or a restart inserting the same job is a no-op.
+  - The agent treats the occurrence UUID as the run id: executing an order with `occurrence` marks
+    it handled, and an agenda item already handled (or an order for a handled occurrence) is
+    ignored. Reports carry both ids; `order` non-null means the push path ran it.
+  - The occurrence is due for pushing from `T − warning − 1 min` until `T + 60 min` (a hub that
+    starts late still pushes; agents that already ran it ignore it).
+  - Every fire is a `schedule_runs` row (status `executado`, detail with counts), so it shows in
+    the schedule history like a wake.
+- **Consequences:** a scheduled shutdown needs either path to work; double execution is impossible
+  by construction; old 1.3 agents get the new script by self-update at their next check-in.
+
+## ADR-054 — Reconciliation of scheduled shutdowns
+- **Date:** 2026-10-15 · **Status:** Accepted
+- **Decision:** at `T + 10 min` the hub that pushed classifies each targeted machine from replicated
+  reports/orders and its local sightings: desligou (report done, or order executed and monitor
+  offline) + path; adiado — usuário ativo (report or order with postpones and still in the
+  window); sem agente (not ready: needs preparation/revoked/lost); agenda desatualizada (the
+  agenda version last served to it is not the current one and no order reached it); sem resposta
+  (no check-in since before the warning); ainda ligado (online, none of the above). One retry
+  order (v5 of occurrence + device + "retry") for "ainda ligado". The counts are written to the
+  run's detail and logged; the per-machine view is computed on demand.
+
+## ADR-055 — Online status from agent, ICMP, TCP and the neighbor table; IP follows the MAC
+- **Date:** 2026-10-15 · **Status:** Accepted
+- **Decision:**
+  - Sweep signals: agent check-in ≤ 2 min (from `agent_seen`), ICMP, TCP ports, neighbor entry for
+    the MAC in state Reachable (Stale entries outlive a shutdown, so they never count). Any positive
+    → alive with `via` = agent|icmp|tcp|arp. `monitor.offlineAfter` consecutive all-negative sweeps
+    → offline (unchanged rule).
+  - Address per sweep: last check-in source IP (≤ 10 min) → neighbor IP for the MAC → DNS → stored
+    IP; a different IP is stored with an `ip_changed` event naming its source.
+  - ICMP helper: per-address try/catch, always echoes the request id; the hub drops empty
+    addresses and resolves a batch at once when the helper reports an error (no deadline wait).
+  - `device_state` gains `seen_via` and `ip_source` (migration 008, machine-local).
+
+## ADR-056 — Diagnostics, duplicate notice and "Testar agendamento"
+- **Date:** 2026-10-15 · **Status:** Accepted
+- **Decision:**
+  - `agent_seen` records the agenda version and item count last served (migration 008).
+  - A per-device explanation endpoint evaluates each shutdown schedule with the agenda's own
+    resolver and returns included/reason.
+  - Enrollment creating a device whose hostname another device already has records a
+    `possible_duplicate` notice.
+  - "Testar agendamento": machine-local one-off items (`power_tests`: device, T, policy, uuid);
+    the agenda builder adds them for that device and the scheduler pushes and reconciles them like
+    schedule occurrences. Machine-local on purpose (a test from the hub the PC talks to).
+  - Info logs for fires, agenda changes, agenda served with a new version, pushes, reconciliations
+    (only on change, so 500 PCs do not flood the log).
