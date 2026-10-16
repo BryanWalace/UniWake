@@ -13,7 +13,7 @@ import {
   type AgendaSchedule,
 } from '../../domain/agenda';
 import type { ExceptionRange } from '../../domain/schedule';
-import type { Clock } from '../ports';
+import type { Clock, Logger } from '../ports';
 import { rowsToTarget, type ScheduleRecord, type TargetRefs } from '../schedules/schedules-service';
 
 export interface AgendaDeps {
@@ -28,6 +28,8 @@ export interface AgendaDeps {
   digest: (text: string) => string;
   /** v1.6 (FR-504.3): this machine's "Testar agendamento" one-offs. */
   oneOffs?: (deviceId: number) => AgendaItem[];
+  /** FR-504.2: "agenda changed" when a machine's agenda gets a new version. */
+  logger?: Logger;
   clock: Clock;
 }
 
@@ -36,6 +38,8 @@ const BUCKET_MS = 10 * 60_000;
 export class AgendaService {
   private cache = new Map<number, { key: string; agenda: Agenda }>();
   private cachedVersion = -1;
+  /** Last version built per machine in this process (FR-504.2 "agenda changed"). */
+  private readonly lastVersion = new Map<number, string>();
 
   constructor(private readonly d: AgendaDeps) {}
 
@@ -62,6 +66,22 @@ export class AgendaService {
       oneOffs: this.d.oneOffs?.(deviceId) ?? [],
     });
     this.cache.set(deviceId, { key, agenda });
+    const previous = this.lastVersion.get(deviceId);
+    if (previous !== agenda.version) {
+      this.lastVersion.set(deviceId, agenda.version);
+      if (previous !== undefined) {
+        this.d.logger?.info(
+          {
+            deviceId,
+            version: agenda.version,
+            previous,
+            items: agenda.items.length,
+            next: agenda.items.find((i) => i.at > now)?.at ?? null,
+          },
+          'agenda changed',
+        );
+      }
+    }
     return agenda;
   }
 

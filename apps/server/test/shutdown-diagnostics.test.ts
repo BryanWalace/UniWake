@@ -228,3 +228,88 @@ describe('"Testar agendamento" (FR-504.3)', () => {
     expect(s.db.all('SELECT id FROM power_tests')).toEqual([]);
   });
 });
+
+describe('info logs (FR-504.2)', () => {
+  it('logs fires, agenda changes, agendas served, pushes and reconciliations — once each', async () => {
+    const { w, s } = await world();
+    const room = s.rooms.create({ name: 'Lab 1' }, ACTOR);
+    const pc = s.devices.create(
+      { name: 'LAB1-PC01', mac: '00:AA:00:00:00:01', roomId: room.id },
+      ACTOR,
+    ).device.id;
+    const log = w.h.ports.logger.entries;
+    const lines = (msg: string) => log.filter((e) => e.level === 'info' && e.msg === msg);
+    const a = w.agent(pc);
+    await a.checkin();
+    const sched = s.schedules.create(
+      {
+        name: 'Desligar Lab 1',
+        weekdays: 127,
+        timeLocal: '06:30',
+        target: { type: 'rooms', roomIds: [room.id] },
+        action: 'shutdown',
+      },
+      ACTOR,
+    );
+    await a.checkin();
+    await a.checkin(); // nothing new: nothing logged
+    expect(lines('agenda changed')).toEqual([
+      expect.objectContaining({
+        obj: expect.objectContaining({ deviceId: pc, items: 14, version: a.agenda!.version }),
+      }),
+    ]);
+    expect(lines('agenda served with a new version')).toHaveLength(2); // empty, then 14 daily items
+    expect(lines('agenda served with a new version')[1]!.obj).toMatchObject({
+      deviceId: pc,
+      version: a.agenda!.version,
+      items: 14,
+    });
+
+    const occurrence = a.agenda!.items[0]!.occurrence;
+    w.h.clock.set(T0 + 24 * MIN);
+    s.scheduler.tick();
+    s.scheduler.tick();
+    expect(lines('schedule fired')).toEqual([
+      expect.objectContaining({
+        obj: expect.objectContaining({
+          action: 'shutdown',
+          scheduleId: sched.id,
+          schedule: 'Desligar Lab 1',
+          targets: expect.objectContaining({ type: 'rooms', roomIds: [room.id] }),
+        }),
+      }),
+    ]);
+    expect(lines('scheduled shutdown pushed')).toEqual([
+      expect.objectContaining({ obj: expect.objectContaining({ occurrence, count: 1 }) }),
+    ]);
+
+    await a.checkin();
+    a.step(T0 + 24 * MIN);
+    await a.checkin();
+    w.h.clock.set(T0 + 40 * MIN);
+    s.scheduler.tick();
+    s.scheduler.tick();
+    expect(lines('scheduled shutdown reconciled')).toEqual([
+      expect.objectContaining({
+        obj: expect.objectContaining({ occurrence, counts: { done: 1 } }),
+      }),
+    ]);
+
+    // A wake schedule's fire carries the same fields.
+    s.schedules.create(
+      {
+        name: 'Ligar Lab 1',
+        weekdays: 127,
+        timeLocal: '06:45',
+        target: { type: 'rooms', roomIds: [room.id] },
+      },
+      ACTOR,
+    );
+    w.h.clock.set(T0 + 45 * MIN);
+    s.scheduler.tick();
+    expect(lines('schedule fired').map((e) => (e.obj as { action: string }).action)).toEqual([
+      'shutdown',
+      'wake',
+    ]);
+  });
+});

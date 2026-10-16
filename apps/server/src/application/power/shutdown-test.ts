@@ -169,7 +169,7 @@ export class ShutdownTestService {
       });
       this.d.store.markPushed(t.id, now);
       this.d.logger.info(
-        { deviceId: t.deviceId, device: t.deviceName, plannedAt: t.at, ...r },
+        { occurrence: t.uuid, deviceId: t.deviceId, device: t.deviceName, plannedAt: t.at, ...r },
         'scheduled shutdown test pushed',
       );
     } catch (e) {
@@ -190,7 +190,14 @@ export class ShutdownTestService {
     }
     this.d.store.markReconciled(t.id, t.uuid, now, { ...counts, retried });
     this.d.logger.info(
-      { deviceId: t.deviceId, device: t.deviceName, plannedAt: t.at, counts, retried },
+      {
+        occurrence: t.uuid,
+        deviceId: t.deviceId,
+        device: t.deviceName,
+        plannedAt: t.at,
+        counts,
+        retried,
+      },
       'scheduled shutdown test reconciled',
     );
   }

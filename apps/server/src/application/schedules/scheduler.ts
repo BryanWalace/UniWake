@@ -117,7 +117,15 @@ export interface SchedulerDeps {
   pushShutdown?: (
     s: ScheduleRecord,
     plannedAt: number,
-  ) => { jobId: number; count: number; notReady: number; excluded: number; existing: boolean };
+  ) => {
+    jobId: number;
+    count: number;
+    notReady: number;
+    excluded: number;
+    existing: boolean;
+    /** The run id the orders carry (logged, FR-504.2). */
+    occurrence?: string;
+  };
   /** v1.6 (ADR-054): reconciliation of pushed shutdowns, run after each tick. */
   reconcile?: (now: number) => void;
   /** A run that woke nothing (failed or lost): the morning result shows it (FR-013). */
@@ -319,6 +327,17 @@ export class Scheduler {
         }
         const runId = this.d.repo.claim(s.id, o.at, now, 'executando', null);
         if (runId === null) continue;
+        this.d.logger.info(
+          {
+            action: 'shutdown',
+            scheduleId: s.id,
+            schedule: s.name,
+            targets: rowsToTarget(s.targets, this.d.refs),
+            plannedAt: o.at,
+            runId,
+          },
+          'schedule fired',
+        );
         try {
           const r = push(s, o.at);
           const detail =
@@ -429,7 +448,20 @@ export class Scheduler {
         },
       );
       this.d.repo.finish(runId, status, detail, jobId);
-      this.d.logger.info({ scheduleId: s.id, runId, jobId, status }, 'scheduled wake started');
+      // FR-504.2: one info line per fired occurrence (action, schedule, targets).
+      this.d.logger.info(
+        {
+          action: 'wake',
+          scheduleId: s.id,
+          schedule: s.name,
+          targets: rowsToTarget(s.targets, this.d.refs),
+          plannedAt,
+          runId,
+          jobId,
+          status,
+        },
+        'schedule fired',
+      );
     } catch (e) {
       // M5-F2: someone is already waking these machines (e.g. by hand at 06:49): that job is
       // this run's result, not a failure for the morning card.

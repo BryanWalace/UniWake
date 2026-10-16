@@ -459,7 +459,7 @@ export function createServices(
     pushShutdown: (sched, plannedAt) => {
       if (!latePower.power || !sched.uuid) throw new Error('shutdown service not ready');
       const occurrence = scheduleRunUuid(sched.uuid, plannedAt);
-      return latePower.power.startScheduled({
+      const pushed = latePower.power.startScheduled({
         occurrence,
         scheduleName: sched.name,
         target: rowsToTarget(sched.targets, refs),
@@ -476,6 +476,7 @@ export function createServices(
             `power-order:${occurrence}:${changeLog(db).uuidOf('device', deviceId) ?? deviceId}`,
           ),
       });
+      return { ...pushed, occurrence };
     },
     lease,
     teamMode: () => team.inTeam(),
@@ -671,6 +672,7 @@ export function createServices(
     occurrenceId: scheduleRunUuid,
     digest: (t) => createHash('sha256').update(t).digest('hex'),
     oneOffs: (id) => lateTests.t?.oneOffs(id) ?? [],
+    logger: ports.logger.child({ module: 'agenda' }),
     clock,
   });
   const power = (latePower.power = new PowerOrdersService({

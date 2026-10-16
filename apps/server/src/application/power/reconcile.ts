@@ -90,7 +90,15 @@ export class ShutdownReconciler {
       this.d.store.appendRunDetail(run.runId, text);
       this.d.store.markReconciled(occurrence, now, { ...counts, retried });
       this.d.logger.info(
-        { scheduleId: s.id, schedule: s.name, plannedAt: run.plannedAt, counts, paths, retried },
+        {
+          occurrence,
+          scheduleId: s.id,
+          schedule: s.name,
+          plannedAt: run.plannedAt,
+          counts,
+          paths,
+          retried,
+        },
         'scheduled shutdown reconciled',
       );
       done++;
