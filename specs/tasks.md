@@ -457,7 +457,7 @@ Owner field report 2026-10-15; Phase 13 debug in `specs/reviews/phase-13-*.md`.
 | [x] M25-T01 | Agenda: regression tests per target type and on every schedule change; diagnostics of served version (agent_seen) — migration 008. | FR-501.1 | AC-501-01 | — |
 | [x] M25-T02 | Scheduler pushes shutdown occurrences through PowerOrdersService (lease, policy, exclusions, deterministic job/order ids, occurrence on orders, schedule_runs row). | FR-501.2; ADR-053 | AC-501-02, AC-501-04, AC-501-07 | — |
 | [x] M25-T03 | Agent: run id = occurrence on both paths; reports carry the path. | FR-501.3 | AC-501-03 (Pester) | — |
-| [ ] M25-T04 | Reconciliation at T + 10 min with one retry; schedule history and Histórico. | FR-501.4; ADR-054 | AC-501-05 | — |
+| [x] M25-T04 | Reconciliation at T + 10 min with one retry; schedule history and Histórico. | FR-501.4; ADR-054 | AC-501-05 | — |
 | [ ] M25-T05 | Hub's own PC warning in previews and schedule form. | FR-501.5 | AC-501-06 | — |
 | [ ] M25-R | Review → `specs/reviews/M25-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
 

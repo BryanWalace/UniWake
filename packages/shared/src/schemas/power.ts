@@ -112,8 +112,45 @@ export interface PowerJob {
 }
 
 /** One machine's result for one scheduled shutdown (FR-307; pt-BR labels in the panel). */
+export const SHUTDOWN_RESULTS = [
+  'done',
+  'was_off',
+  'late_wake',
+  'cancelled',
+  'failed',
+  'probably_done',
+  'no_report',
+  // v1.6 reconciliation (ADR-054): machines without a report yet.
+  'off_no_report',
+  'postponed_active',
+  'still_on',
+  'no_agent',
+  'stale_agenda',
+  'no_answer',
+] as const;
+export type ShutdownResult = (typeof SHUTDOWN_RESULTS)[number];
+
+/** pt-BR labels of a machine's result for one scheduled shutdown (history, reconciliation). */
+export const SHUTDOWN_RESULT_LABEL: Record<ShutdownResult, string> = {
+  done: 'Desligou',
+  probably_done: 'Provavelmente desligou (sem relatório)',
+  off_no_report: 'Desligou (relatório ainda não chegou)',
+  was_off: 'Já estava desligada',
+  late_wake: 'Pulado (acordou atrasada)',
+  cancelled: 'Cancelado',
+  failed: 'Falhou',
+  no_report: 'Sem relatório',
+  postponed_active: 'Adiado — usuário ativo',
+  still_on: 'Ainda ligado',
+  no_agent: 'Sem agente (precisa do preparo)',
+  stale_agenda: 'Agenda desatualizada (a última agenda entregue não tinha este horário)',
+  no_answer: 'Sem resposta (não consultou o UniWake desde antes do aviso)',
+};
+
 export interface PowerOccurrenceDevice extends PowerDeviceRef {
-  result: 'done' | 'was_off' | 'late_wake' | 'cancelled' | 'failed' | 'probably_done' | 'no_report';
+  result: ShutdownResult;
+  /** v1.6: which path ran it — the agenda or the hub's order ("ordem direta"); null if unknown. */
+  path: 'agenda' | 'order' | null;
   postpones: number;
   wasAsleep: boolean;
   lateMinutes: number | null;

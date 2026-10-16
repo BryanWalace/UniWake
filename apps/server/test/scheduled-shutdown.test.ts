@@ -278,3 +278,91 @@ describe('push: the hub sends the order (FR-501.2, ADR-053)', () => {
     expect(s.db.all('SELECT id FROM power_jobs')).toEqual([]); // the shutdown is not due yet
   });
 });
+
+describe('reconciliation at T + 10 min (FR-501.4, ADR-054)', () => {
+  it('AC-501-05: each machine gets one result with its path; "ainda ligado" gets exactly one retry', async () => {
+    const w = await agentWorld();
+    worlds.push(w);
+    const s = w.h.services;
+    const room = s.rooms.create({ name: 'Lab 1' }, ACTOR);
+    const ids: Record<string, number> = {};
+    for (const [i, n] of ['A', 'B', 'C', 'D', 'E', 'F', 'G'].entries()) {
+      ids[n] = s.devices.create(
+        { name: `PC-${n}`, mac: `00:AA:00:00:00:${String(i + 10)}`, roomId: room.id },
+        ACTOR,
+      ).device.id;
+    }
+    const agents = Object.fromEntries(
+      ['A', 'B', 'D', 'E', 'F', 'G'].map((n) => [n, w.agent(ids[n]!)]),
+    );
+    const online = (...names: string[]) => {
+      for (const n of names)
+        s.db.run(
+          "UPDATE device_state SET status = 'online', online_since = ? WHERE device_id = ?",
+          [T0 - 3_600_000, ids[n]!],
+        );
+    };
+    s.schedules.create(
+      {
+        name: 'Desligar Lab 1',
+        weekdays: 127,
+        timeLocal: '06:30',
+        target: { type: 'rooms', roomIds: [room.id] },
+        action: 'shutdown',
+        power: { warningMinutes: 5, allowPostpone: true, postponeMax: 2, postponeMinutes: 15 },
+      },
+      ACTOR,
+    );
+    online('A', 'B', 'D', 'E', 'F', 'G');
+    for (const a of Object.values(agents)) await a.checkin(); // 06:00: everyone has the agenda
+    agents.D!.userActive = true;
+
+    w.h.clock.set(AT_0630 - 6 * MIN); // 06:24: the hub pushes
+    s.scheduler.tick();
+    w.h.clock.set(AT_0630 - 5 * MIN); // 06:25: the warning starts
+    agents.A!.step(w.h.clock.now()); // A: from its agenda, before hearing the order
+    for (const n of ['B', 'D', 'G']) await agents[n]!.checkin(); // orders delivered
+    agents.B!.step(w.h.clock.now()); // B: runs the order
+    w.h.clock.set(AT_0630 + 9 * MIN);
+    for (const n of ['A', 'B', 'D', 'G']) await agents[n]!.checkin(); // reports in; D and G still on
+    online('D', 'G');
+    // E: checked in after the warning start with an agenda holding nothing (the v1.4.0 symptom).
+    s.db.run('UPDATE agent_seen SET seen_at = ?, agenda_items = 0 WHERE device_id = ?', [
+      AT_0630 + 9 * MIN,
+      ids.E!,
+    ]);
+    // F: never heard of since 06:00.
+
+    w.h.clock.set(AT_0630 + 10 * MIN);
+    s.scheduler.tick();
+    const occurrence = agents.A!.agenda!.items[0]!.occurrence;
+    const result = s.powerStatus
+      .history()
+      .occurrences.find((o) => o.occurrence === occurrence)!
+      .devices.map((d) => [d.name, d.result, d.path]);
+    expect(result).toEqual([
+      ['PC-A', 'done', 'agenda'],
+      ['PC-B', 'done', 'order'],
+      ['PC-C', 'no_agent', null],
+      ['PC-D', 'postponed_active', null],
+      ['PC-E', 'stale_agenda', null],
+      ['PC-F', 'no_answer', null],
+      ['PC-G', 'still_on', null],
+    ]);
+    const ordersOf = (n: string) =>
+      s.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM power_orders WHERE device_id = ?', [
+        ids[n]!,
+      ])!.n;
+    expect(ordersOf('G')).toBe(2); // the push and one retry
+    expect(ordersOf('D')).toBe(1); // postponing: no retry
+    const run = s.db.get<{ detail: string }>('SELECT detail FROM schedule_runs')!;
+    expect(run.detail).toMatch(/conferência às T\+10: 2 desligou/);
+    expect(run.detail).toMatch(/pela agenda: 1, por ordem direta: 1/);
+    expect(run.detail).toMatch(/nova tentativa para 1/);
+    // Once: later ticks neither reconcile again nor retry again.
+    w.h.clock.set(AT_0630 + 20 * MIN);
+    s.scheduler.tick();
+    expect(ordersOf('G')).toBe(2);
+    expect(s.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM power_reconciled')!.n).toBe(1);
+  });
+});

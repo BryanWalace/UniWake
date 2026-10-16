@@ -11,7 +11,8 @@ import type {
   PowerDeviceInfo,
   PowerJobsStore,
 } from '../../application/power/power-orders';
-import type { ReportRow } from '../../application/power/power-status';
+import type { DeviceExtras, ReportRow } from '../../application/power/power-status';
+import type { ReconcileStore } from '../../application/power/reconcile';
 import type { AgendaDevice } from '../../domain/agenda';
 import type { Db } from '../connection';
 import { changeLog } from '../sync/change-log';
@@ -558,9 +559,11 @@ export function occurrenceReports(db: Db, since: number): ReportRow[] {
       late_minutes: number | null;
       native_warning: number;
       user_logged_on: number | null;
+      order_uuid: string | null;
     }>(
       `SELECT r.occurrence_uuid, r.device_id, d.name, r.action, r.outcome, r.reason, r.planned_at,
-         r.executed_at, r.postpones, r.was_asleep, r.late_minutes, r.native_warning, r.user_logged_on
+         r.executed_at, r.postpones, r.was_asleep, r.late_minutes, r.native_warning, r.user_logged_on,
+         r.order_uuid
        FROM power_reports r JOIN devices d ON d.id = r.device_id
        WHERE r.occurrence_uuid IS NOT NULL AND COALESCE(r.planned_at, r.received_at) >= ?
          -- ADR-053: "already ran from the agenda" settles a pushed order; the agenda report counts.
@@ -582,22 +585,25 @@ export function occurrenceReports(db: Db, since: number): ReportRow[] {
       lateMinutes: r.late_minutes,
       nativeWarning: r.native_warning === 1,
       userLoggedOn: r.user_logged_on === null ? null : r.user_logged_on === 1,
+      order: r.order_uuid,
     }));
 }
 
 /** Boot time from the last check-in and tag UUIDs per device. */
-export function deviceExtras(
-  db: Db,
-  ids: readonly number[],
-): Map<number, { bootTime: number | null; tagUuids: string[] }> {
-  const out = new Map<number, { bootTime: number | null; tagUuids: string[] }>();
-  for (const id of ids) out.set(id, { bootTime: null, tagUuids: [] });
+export function deviceExtras(db: Db, ids: readonly number[]): Map<number, DeviceExtras> {
+  const out = new Map<number, DeviceExtras>();
+  for (const id of ids) out.set(id, { bootTime: null, tagUuids: [], agendaItems: null });
   const json = JSON.stringify(ids);
-  for (const r of db.all<{ device_id: number; boot_time: number | null }>(
-    'SELECT device_id, boot_time FROM agent_seen WHERE device_id IN (SELECT value FROM json_each(?))',
+  for (const r of db.all<{
+    device_id: number;
+    boot_time: number | null;
+    agenda_items: number | null;
+  }>(
+    'SELECT device_id, boot_time, agenda_items FROM agent_seen WHERE device_id IN (SELECT value FROM json_each(?))',
     [json],
   )) {
     out.get(r.device_id)!.bootTime = r.boot_time;
+    out.get(r.device_id)!.agendaItems = r.agenda_items;
   }
   for (const r of db.all<{ device_id: number; uuid: string | null }>(
     `SELECT dt.device_id, t.uuid FROM device_tags dt JOIN tags t ON t.id = dt.tag_id
@@ -607,6 +613,79 @@ export function deviceExtras(
     if (r.uuid) out.get(r.device_id)!.tagUuids.push(r.uuid);
   }
   return out;
+}
+
+/** v1.6 (ADR-053): occurrences the hub pushed since `since` (job UUID = occurrence, with T). */
+export function pushedOccurrences(
+  db: Db,
+  since: number,
+): { occurrence: string; plannedAt: number }[] {
+  return db.all<{ occurrence: string; plannedAt: number }>(
+    "SELECT uuid AS occurrence, json_extract(target, '$.plannedAt') AS plannedAt FROM power_jobs WHERE json_extract(target, '$.plannedAt') >= ?",
+    [since],
+  );
+}
+
+/** v1.6 (ADR-054): per machine, the state and postpones of an occurrence's pushed orders. */
+export function occurrenceOrders(
+  db: Db,
+  occurrence: string,
+): Map<number, { state: string; postpones: number }> {
+  const out = new Map<number, { state: string; postpones: number }>();
+  for (const r of db.all<{ device_id: number; state: string; postpones: number }>(
+    'SELECT o.device_id, o.state, 0 AS postpones FROM power_orders o JOIN power_jobs j ON j.id = o.job_id WHERE j.uuid = ? ORDER BY o.id',
+    [occurrence],
+  )) {
+    const prev = out.get(r.device_id);
+    // A retry order (ADR-054) after the first: the most advanced state wins.
+    if (!prev || prev.state === 'pending')
+      out.set(r.device_id, {
+        state: r.state,
+        postpones: Math.max(r.postpones, prev?.postpones ?? 0),
+      });
+  }
+  return out;
+}
+
+/** ADR-054: what the reconciliation of scheduled shutdowns reads and writes. */
+export class SqliteReconcileStore implements ReconcileStore {
+  constructor(private readonly db: Db) {}
+
+  pushedRuns(from: number, to: number) {
+    // Only the runs this hub claimed: the hub that pushed reconciles and retries (one per run).
+    return this.db.all<{ runId: number; scheduleId: number; plannedAt: number }>(
+      `SELECT r.id AS runId, r.schedule_id AS scheduleId, r.planned_at AS plannedAt
+       FROM schedule_runs r JOIN schedules s ON s.id = r.schedule_id
+       WHERE s.action = 'shutdown' AND r.status IN ('executado', 'atrasado')
+         AND r.planned_at BETWEEN ? AND ?
+         AND (r.claimed_by_instance IS NULL OR r.claimed_by_instance = ?)
+       ORDER BY r.planned_at`,
+      [from, to, changeLog(this.db).instanceId()],
+    );
+  }
+
+  isReconciled(occurrence: string): boolean {
+    return (
+      this.db.get('SELECT 1 FROM power_reconciled WHERE occurrence = ?', [occurrence]) !== undefined
+    );
+  }
+
+  markReconciled(occurrence: string, at: number, counts: Record<string, number>): void {
+    this.db.run(
+      'INSERT OR IGNORE INTO power_reconciled (occurrence, reconciled_at, counts) VALUES (?, ?, ?)',
+      [occurrence, at, JSON.stringify(counts)],
+    );
+  }
+
+  appendRunDetail(runId: number, text: string): void {
+    this.db.transaction(() => {
+      this.db.run(
+        "UPDATE schedule_runs SET detail = substr(COALESCE(detail, '') || ?, 1, 1000) WHERE id = ?",
+        [text, runId],
+      );
+      changeLog(this.db).touch('schedule_run', runId);
+    });
+  }
 }
 
 export function recentPowerJobIds(db: Db, limit: number): number[] {

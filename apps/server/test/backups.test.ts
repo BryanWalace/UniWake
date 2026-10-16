@@ -142,6 +142,7 @@ describe('restore (FR-014)', () => {
 const UNDO_LATEST = [
   'DELETE FROM schema_migrations WHERE version = 8',
   'DROP TABLE power_tests',
+  'DROP TABLE power_reconciled',
   ...['agenda_version', 'agenda_items', 'agenda_served_at'].map(
     (c) => `ALTER TABLE agent_seen DROP COLUMN ${c}`,
   ),

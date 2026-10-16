@@ -9,6 +9,7 @@ import { BackupService } from './application/backups/backup-service';
 import { ExportService } from './application/migration/export-service';
 import { ImportService } from './application/migration/import-service';
 import { AutoExportService } from './application/migration/auto-export';
+import { ShutdownReconciler } from './application/power/reconcile';
 import { nodeExportFolder } from './adapters/export-folder';
 import { SqliteMigrationStateRepo } from './db/repositories/migration-repo';
 import { applyImport, hasPreparedMachines, previewImport } from './db/sync/import';
@@ -100,6 +101,9 @@ import { SqliteDeviceAgentsRepo } from './db/repositories/device-agents-repo';
 import {
   agentRows,
   deviceExtras,
+  occurrenceOrders,
+  pushedOccurrences,
+  SqliteReconcileStore,
   occurrenceReports,
   recentPowerJobIds,
   SqlitePowerJobsRepo,
@@ -437,8 +441,10 @@ export function createServices(
             [...uuids],
           )
           .map((r) => r.id);
+  const lateReconcile: { r?: ShutdownReconciler } = {};
   const scheduler = new Scheduler({
     repo: schedulerRepo,
+    reconcile: (now) => void lateReconcile.r?.tick(now),
     pushShutdown: (sched, plannedAt) => {
       if (!latePower.power || !sched.uuid) throw new Error('shutdown service not ready');
       const occurrence = scheduleRunUuid(sched.uuid, plannedAt);
@@ -668,6 +674,8 @@ export function createServices(
     agents: (ids) => agentRows(db, ids),
     occurrenceReports: (since) => occurrenceReports(db, since),
     deviceExtras: (ids) => deviceExtras(db, ids),
+    pushedOccurrences: (since) => pushedOccurrences(db, since),
+    occurrenceOrders: (occ) => occurrenceOrders(db, occ),
     schedules: () => schedulesRepo.list(),
     refs,
     resolve: (target) => wake.resolveForPower(target),
@@ -677,6 +685,21 @@ export function createServices(
     clock,
   });
   late.powerStatus = powerStatus;
+  lateReconcile.r = new ShutdownReconciler({
+    store: new SqliteReconcileStore(db),
+    schedule: (id) => schedulesRepo.list().find((x) => x.id === id),
+    status: powerStatus,
+    power,
+    jobIdByUuid: (uuid) =>
+      db.get<{ id: number }>('SELECT id FROM power_jobs WHERE uuid = ?', [uuid])?.id ?? null,
+    occurrenceId: scheduleRunUuid,
+    orderUuid: (occurrence, deviceId, suffix) =>
+      uuidV5(
+        `power-order:${occurrence}:${changeLog(db).uuidOf('device', deviceId) ?? deviceId}:${suffix}`,
+      ),
+    clock,
+    logger: ports.logger.child({ module: 'reconcile' }),
+  });
   const agentPort = opts.running?.agentPort ?? 47101;
   const agent = new AgentService({
     tokens: agentTokens,

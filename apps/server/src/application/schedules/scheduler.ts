@@ -118,6 +118,8 @@ export interface SchedulerDeps {
     s: ScheduleRecord,
     plannedAt: number,
   ) => { jobId: number; count: number; notReady: number; excluded: number; existing: boolean };
+  /** v1.6 (ADR-054): reconciliation of pushed shutdowns, run after each tick. */
+  reconcile?: (now: number) => void;
   /** A run that woke nothing (failed or lost): the morning result shows it (FR-013). */
   onRunProblem?: (r: {
     scheduleId: number;
@@ -244,6 +246,11 @@ export class Scheduler {
       }
     }
     report.ran += this.tickShutdowns(now, pause, standby);
+    try {
+      this.d.reconcile?.(now);
+    } catch (e) {
+      this.d.logger.error({ err: e }, 'shutdown reconciliation failed');
+    }
     report.ran += this.retryDeferred(now, graceMs);
     this.flushMissed(now, graceMs);
     this.d.repo.setLastTick(Math.max(now, last ?? now));

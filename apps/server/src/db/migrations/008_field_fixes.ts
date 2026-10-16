@@ -24,4 +24,11 @@ CREATE TABLE power_tests (
   reconciled_at   INTEGER
 );
 CREATE INDEX power_tests_at ON power_tests(at);
+
+-- ADR-054: occurrences this hub already reconciled at T + 10 min (once, with their counts).
+CREATE TABLE power_reconciled (
+  occurrence    TEXT    PRIMARY KEY,
+  reconciled_at INTEGER NOT NULL,
+  counts        TEXT    NOT NULL
+);
 `;

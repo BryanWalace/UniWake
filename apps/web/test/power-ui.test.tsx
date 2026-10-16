@@ -181,6 +181,12 @@ describe('Histórico: shutdowns next to wakes (M19-T04, FR-307)', () => {
       failed: 0,
       probably_done: 1,
       no_report: 0,
+      off_no_report: 0,
+      postponed_active: 0,
+      still_on: 0,
+      no_agent: 0,
+      stale_agenda: 0,
+      no_answer: 0,
       postponed: 1,
     },
     maxPostpones: 2,
@@ -188,6 +194,7 @@ describe('Histórico: shutdowns next to wakes (M19-T04, FR-307)', () => {
       {
         deviceId: 1,
         name: 'PC-01',
+        path: null,
         result: 'done',
         postpones: 2,
         wasAsleep: false,
@@ -198,6 +205,7 @@ describe('Histórico: shutdowns next to wakes (M19-T04, FR-307)', () => {
       {
         deviceId: 2,
         name: 'PC-02',
+        path: null,
         result: 'done',
         postpones: 0,
         wasAsleep: true,
@@ -208,6 +216,7 @@ describe('Histórico: shutdowns next to wakes (M19-T04, FR-307)', () => {
       {
         deviceId: 3,
         name: 'PC-03',
+        path: null,
         result: 'was_off',
         postpones: 0,
         wasAsleep: false,
@@ -218,6 +227,7 @@ describe('Histórico: shutdowns next to wakes (M19-T04, FR-307)', () => {
       {
         deviceId: 4,
         name: 'PC-04',
+        path: null,
         result: 'late_wake',
         postpones: 0,
         wasAsleep: true,
@@ -228,6 +238,7 @@ describe('Histórico: shutdowns next to wakes (M19-T04, FR-307)', () => {
       {
         deviceId: 5,
         name: 'PC-05',
+        path: null,
         result: 'probably_done',
         postpones: 0,
         wasAsleep: false,
