@@ -14,6 +14,7 @@ import { HelpLink } from '../help/HelpPage';
 import { Button, ConfirmDialog } from '../../components/ui';
 import { formatDateTime, plural } from '../../lib/format';
 import { READINESS_SHORT, READINESS_TONE, revokeAgent, useDeviceAgent } from './api';
+import { ShutdownDiagnosticsPanel } from './ShutdownDiagnosticsPanel';
 
 const PRODUCTS: Record<string, string> = {
   deep_freeze: 'Deep Freeze',
@@ -83,7 +84,10 @@ export function RemoteShutdownCard({
       ) : q.isError ? (
         <ErrorState message={q.error.message} onRetry={() => void q.refetch()} />
       ) : (
-        <AgentDetails agent={q.data} />
+        <>
+          <AgentDetails agent={q.data} />
+          <ShutdownDiagnosticsPanel deviceId={deviceId} />
+        </>
       )}
       <FormError message={error} />
       {isAdmin && q.data && (q.data.readiness === 'ready' || q.data.readiness === 'lost') && (

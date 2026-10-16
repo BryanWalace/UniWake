@@ -89,6 +89,18 @@ export class SqliteEnrollmentRepo implements EnrollmentRepo {
     );
   }
 
+  /** v1.6 (FR-502.2): another device with this computer name (hostname or name), if any. */
+  sameComputerName(
+    hostname: string,
+    exceptId: number,
+  ): { id: number; name: string; mac: string } | undefined {
+    return this.db.get<{ id: number; name: string; mac: string }>(
+      `SELECT id, name, mac FROM devices WHERE id <> ? AND (lower(hostname) = lower(?) OR lower(name) = lower(?))
+       ORDER BY id LIMIT 1`,
+      [exceptId, hostname, hostname],
+    );
+  }
+
   deviceByMac(
     mac: string,
   ): { id: number; name: string; roomId: number | null; ip: string | null } | undefined {

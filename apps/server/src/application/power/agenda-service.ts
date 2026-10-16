@@ -6,6 +6,8 @@
 import type { Agenda } from '@uniwake/shared';
 import {
   buildAgenda,
+  explainAgenda,
+  type AgendaExplanation,
   type AgendaDevice,
   type AgendaPause,
   type AgendaSchedule,
@@ -58,6 +60,21 @@ export class AgendaService {
     });
     this.cache.set(deviceId, { key, agenda });
     return agenda;
+  }
+
+  /** FR-502.1: each shutdown schedule with why it does (not) reach this machine. */
+  explain(deviceId: number): AgendaExplanation[] {
+    const device = this.d.device(deviceId);
+    if (!device) return [];
+    return explainAgenda({
+      device,
+      schedules: this.schedules(),
+      exceptions: this.d.exceptions(),
+      pause: this.d.pause(),
+      now: this.d.clock.now(),
+      occurrenceId: this.d.occurrenceId,
+      digest: this.d.digest,
+    });
   }
 
   private schedules(): AgendaSchedule[] {

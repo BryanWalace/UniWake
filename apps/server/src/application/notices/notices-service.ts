@@ -83,6 +83,23 @@ export class NoticesService {
     this.d.events.publish({ type: 'notice', id, noticeType: 'enrollment_moves' });
   }
 
+  /**
+   * v1.6 (FR-502.2): preparation created a device while another one has the same computer name —
+   * often the same PC registered twice, the likely reason schedules miss it.
+   */
+  possibleDuplicate(data: {
+    deviceId: number;
+    deviceName: string;
+    mac: string;
+    otherId: number;
+    otherName: string;
+    otherMac: string;
+    at: number;
+  }): void {
+    const id = this.d.repo.insert('possible_duplicate', data, data.at);
+    this.d.events.publish({ type: 'notice', id, noticeType: 'possible_duplicate' });
+  }
+
   acknowledge(id: number, actor: Actor): void {
     this.d.transaction(() => {
       const n = this.d.repo.get(id);

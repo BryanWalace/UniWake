@@ -13,6 +13,7 @@ import type {
 } from '../../application/power/power-orders';
 import type { DeviceExtras, ReportRow } from '../../application/power/power-status';
 import type { ReconcileStore } from '../../application/power/reconcile';
+import type { DiagnosticsStore } from '../../application/power/diagnostics';
 import type { AgendaDevice } from '../../domain/agenda';
 import type { Db } from '../connection';
 import { changeLog } from '../sync/change-log';
@@ -645,6 +646,46 @@ export function occurrenceOrders(
       });
   }
   return out;
+}
+
+/** FR-504.1 (ADR-056): what the device diagnostics read. */
+export class SqliteDiagnosticsStore implements DiagnosticsStore {
+  constructor(private readonly db: Db) {}
+
+  served(deviceId: number) {
+    const r = this.db.get<{ version: string | null; items: number | null; at: number | null }>(
+      'SELECT agenda_version AS version, agenda_items AS items, agenda_served_at AS at FROM agent_seen WHERE device_id = ?',
+      [deviceId],
+    );
+    return r ?? null;
+  }
+
+  lastReport(deviceId: number) {
+    return (
+      this.db.get<{
+        at: number;
+        outcome: ReportRow['outcome'];
+        reason: string | null;
+        order: string | null;
+        detail: string | null;
+      }>(
+        `SELECT COALESCE(executed_at, received_at) AS at, outcome, reason, order_uuid AS "order", detail
+         FROM power_reports WHERE device_id = ? AND COALESCE(reason, '') <> 'already_done'
+         ORDER BY COALESCE(executed_at, received_at) DESC, id DESC LIMIT 1`,
+        [deviceId],
+      ) ?? null
+    );
+  }
+
+  scheduleName(id: number): string | null {
+    return (
+      this.db.get<{ name: string }>('SELECT name FROM schedules WHERE id = ?', [id])?.name ?? null
+    );
+  }
+
+  deviceExists(id: number): boolean {
+    return this.db.get('SELECT 1 FROM devices WHERE id = ?', [id]) !== undefined;
+  }
 }
 
 /** ADR-054: what the reconciliation of scheduled shutdowns reads and writes. */

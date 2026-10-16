@@ -11,6 +11,7 @@ import { ImportService } from './application/migration/import-service';
 import { AutoExportService } from './application/migration/auto-export';
 import { ShutdownReconciler } from './application/power/reconcile';
 import { SelfDeviceService } from './application/power/self-device';
+import { ShutdownDiagnosticsService } from './application/power/diagnostics';
 import { nodeExportFolder } from './adapters/export-folder';
 import { SqliteMigrationStateRepo } from './db/repositories/migration-repo';
 import { applyImport, hasPreparedMachines, previewImport } from './db/sync/import';
@@ -105,6 +106,7 @@ import {
   occurrenceOrders,
   pushedOccurrences,
   SqliteReconcileStore,
+  SqliteDiagnosticsStore,
   occurrenceReports,
   recentPowerJobIds,
   SqlitePowerJobsRepo,
@@ -559,6 +561,7 @@ export function createServices(
     transaction: tx,
     agentPort: opts.running?.agentPort ?? 47101,
     onMoved: (move) => notices.onDeviceMoved(move),
+    onPossibleDuplicate: (d) => notices.possibleDuplicate(d),
     hubKeyId: () => {
       try {
         return late.hubKey?.keyId() ?? null;
@@ -794,6 +797,11 @@ export function createServices(
     exporter,
     importer,
     autoExport,
+    shutdownDiagnostics: new ShutdownDiagnosticsService({
+      agenda,
+      store: new SqliteDiagnosticsStore(db),
+      clock,
+    }),
     selfDevice: new SelfDeviceService({
       interfaces: ports.interfaces,
       devicesMatching: (macs, ips) =>

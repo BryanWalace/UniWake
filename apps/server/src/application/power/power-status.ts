@@ -312,7 +312,9 @@ function classify(
   return 'still_on';
 }
 
-function resultOf(r: ReportRow): PowerOccurrenceDevice['result'] {
+export function resultOf(
+  r: Pick<ReportRow, 'outcome' | 'reason'>,
+): PowerOccurrenceDevice['result'] {
   if (r.outcome === 'done') return 'done';
   if (r.outcome === 'cancelled') return 'cancelled';
   if (r.outcome === 'skipped') return r.reason === 'late_wake' ? 'late_wake' : 'was_off';

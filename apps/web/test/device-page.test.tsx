@@ -484,3 +484,38 @@ describe('status signal and IP source (v1.6, FR-503.4)', () => {
     expect(screen.getByText('(pela tabela ARP)')).toBeInTheDocument();
   });
 });
+
+describe('scheduled-shutdown diagnostics (v1.6, FR-502.1, FR-504.1)', () => {
+  it('AC-504-02: shows the next shutdown, the served and current agenda, the last result and each schedule with its reason', async () => {
+    deviceApi()
+      .on('GET', '/api/devices/5/agent', {
+        body: { deviceId: 5, readiness: 'ready', agentVersion: '1.6.0', lastCheckin: at(9) },
+      })
+      .on('GET', '/api/devices/5/shutdown-diagnostics', {
+        body: {
+          agenda: {
+            servedVersion: '0123456789abcdef',
+            servedItems: 0,
+            servedAt: at(9),
+            currentVersion: 'fedcba9876543210',
+            currentItems: 3,
+            nextShutdownAt: at(21),
+          },
+          schedules: [
+            { scheduleId: 1, name: 'Desligar Lab 1', reason: 'included', nextAt: at(21) },
+            { scheduleId: 2, name: 'Desligar Lab 2', reason: 'not_in_target', nextAt: null },
+          ],
+          lastShutdown: { at: at(8), result: 'done', path: 'order', detail: null },
+        },
+      });
+    renderApp('/dispositivos/5');
+    const card = await screen.findByRole('region', { name: 'Desligamento remoto' });
+    const list = await within(card).findByRole('list', { name: 'Agendamentos de desligar' });
+    expect(list).toHaveTextContent('Desligar Lab 1: Inclui esta máquina — próximo em');
+    expect(list).toHaveTextContent('Desligar Lab 2: O alvo do agendamento não inclui esta máquina');
+    expect(card).toHaveTextContent('0 horário(s), versão 01234567');
+    expect(card).toHaveTextContent('3 horário(s), versão fedcba98');
+    expect(card).toHaveTextContent('por ordem direta');
+    expect(card).toHaveTextContent('A máquina ainda não recebeu a agenda atual');
+  });
+});

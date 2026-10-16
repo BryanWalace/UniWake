@@ -27,6 +27,13 @@ export function powerRoutes(app: FastifyInstance, s: HttpServices): void {
 
   r.get('/api/power/agents', { config: auth }, async () => s.powerStatus.list());
 
+  // v1.6 (FR-502.1, FR-504.1): why this machine will (not) shut down on a schedule.
+  r.get(
+    '/api/devices/:id/shutdown-diagnostics',
+    { config: auth, schema: { params: idParamSchema } },
+    async (req) => s.shutdownDiagnostics.forDevice(req.params.id),
+  );
+
   r.get('/api/power/history', { config: auth }, async () => s.powerStatus.history());
 
   r.get(

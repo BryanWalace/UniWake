@@ -149,6 +149,40 @@ export const SHUTDOWN_RESULT_LABEL: Record<ShutdownResult, string> = {
   no_answer: 'Sem resposta (não consultou o UniWake desde antes do aviso)',
 };
 
+/** FR-502.1: why a shutdown schedule does (not) reach a machine. */
+export const SHUTDOWN_REASON_LABEL = {
+  included: 'Inclui esta máquina',
+  schedule_disabled: 'Agendamento desativado',
+  device_disabled: 'Máquina desativada no cadastro',
+  not_in_target:
+    'O alvo do agendamento não inclui esta máquina (confira a sala, as etiquetas ou a lista de máquinas)',
+  never_flag: 'Máquina marcada "Nunca desligar por agendamento"',
+  excluded_tag: 'Uma etiqueta desta máquina está excluída no agendamento',
+  no_occurrence: 'Nenhum horário nos próximos 14 dias (feriado, recesso ou pausa)',
+} as const;
+export type ShutdownReason = keyof typeof SHUTDOWN_REASON_LABEL;
+
+/** FR-504.1: the device page's "Desligamento remoto" diagnostics. */
+export interface ShutdownDiagnostics {
+  agenda: {
+    /** What the hub last served this machine (its last check-in). */
+    servedVersion: string | null;
+    servedItems: number | null;
+    servedAt: number | null;
+    /** What it would serve now. */
+    currentVersion: string | null;
+    currentItems: number;
+    nextShutdownAt: number | null;
+  };
+  schedules: { scheduleId: number; name: string; reason: ShutdownReason; nextAt: number | null }[];
+  lastShutdown: {
+    at: number;
+    result: ShutdownResult;
+    path: 'agenda' | 'order' | null;
+    detail: string | null;
+  } | null;
+}
+
 export interface PowerOccurrenceDevice extends PowerDeviceRef {
   result: ShutdownResult;
   /** v1.6: which path ran it — the agenda or the hub's order ("ordem direta"); null if unknown. */
