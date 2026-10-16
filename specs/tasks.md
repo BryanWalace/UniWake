@@ -474,7 +474,7 @@ Owner field report 2026-10-15; Phase 13 debug in `specs/reviews/phase-13-*.md`.
 | [x] M27-T01 | Per-device explanation + duplicate notice + device page diagnostics. | FR-502, FR-504.1 | AC-502-01, AC-502-02, AC-504-02 | — |
 | [x] M27-T02 | "Testar agendamento" (one-off through both paths). | FR-504.3 | AC-504-01 | — |
 | [x] M27-T03 | Info logs. | FR-504.2 | log assertions | — |
-| [ ] M27-R | Review → `specs/reviews/M27-review.md`. | §9 DoD | — | — |
+| [x] M27-R | Review → `specs/reviews/M27-review.md`. | §9 DoD | — | — |
 
 ## Phase 14 — Validate v1.6
 | ID | Task | Refs | Evidence |

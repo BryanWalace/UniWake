@@ -313,3 +313,30 @@ describe('info logs (FR-504.2)', () => {
     ]);
   });
 });
+
+describe('"Testar agendamento" robustness', () => {
+  it('a test whose reconciliation throws does not stop the others', async () => {
+    const { w, s } = await world();
+    const room = s.rooms.create({ name: 'Lab 1' }, ACTOR);
+    const ids = ['00:AA:00:00:00:01', '00:AA:00:00:00:02'].map(
+      (mac, i) =>
+        s.devices.create({ name: `LAB1-PC0${i + 1}`, mac, roomId: room.id }, ACTOR).device.id,
+    );
+    for (const id of ids) await w.agent(id).checkin();
+    for (const id of ids) s.shutdownTests.create(id, 5, ACTOR);
+    const status = s.powerStatus;
+    const original = status.occurrenceReportsOf.bind(status);
+    let calls = 0;
+    status.occurrenceReportsOf = (occ, at) => {
+      if (calls++ === 0) throw new Error('boom');
+      return original(occ, at);
+    };
+    s.shutdownTests.tick(T0 + 20 * MIN);
+    expect(s.db.all('SELECT id FROM power_tests WHERE reconciled_at IS NOT NULL')).toHaveLength(1);
+    expect(
+      w.h.ports.logger.entries.some(
+        (e) => e.msg === 'scheduled shutdown test reconciliation failed',
+      ),
+    ).toBe(true);
+  });
+});

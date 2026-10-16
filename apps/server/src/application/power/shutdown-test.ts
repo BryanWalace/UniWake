@@ -152,7 +152,17 @@ export class ShutdownTestService {
       ) {
         this.push(t, now);
       }
-      if (t.reconciledAt === null && now >= t.at + RECONCILE_AFTER_MS) this.reconcile(t, now);
+      if (t.reconciledAt === null && now >= t.at + RECONCILE_AFTER_MS) {
+        // One broken test must not stop the others, nor the schedules' reconciliation after it.
+        try {
+          this.reconcile(t, now);
+        } catch (e) {
+          this.d.logger.error(
+            { err: e, deviceId: t.deviceId },
+            'scheduled shutdown test reconciliation failed',
+          );
+        }
+      }
     }
   }
 

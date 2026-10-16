@@ -104,7 +104,7 @@ function testText(t: ShutdownTest): string {
   if (t.result) {
     return `${when}: ${SHUTDOWN_RESULT_LABEL[t.result]}${t.path ? ` ${PATH[t.path]}` : ''}`;
   }
-  return `${when}: ${t.pushedAt === null ? 'na agenda da máquina' : 'na agenda e ordem enviada'}`;
+  return `${when}: ${t.pushedAt === null ? 'agendado (a máquina recebe na próxima consulta ao UniWake)' : 'ordem enviada, aguardando o horário'}`;
 }
 
 /** FR-504.3: a one-off scheduled shutdown of this machine, through both paths. */
