@@ -52,7 +52,9 @@ describe('neighbor cache parsing (FR-101)', () => {
       parseNetNeighborJson(
         JSON.stringify({ IPAddress: '10.0.3.9', LinkLayerAddress: '00-1A-2B-3C-4D-09', State: 4 }),
       ),
-    ).toEqual([{ ip: '10.0.3.9', mac: '00:1A:2B:3C:4D:09', interfaceIp: null }]);
+    ).toEqual([{ ip: '10.0.3.9', mac: '00:1A:2B:3C:4D:09', interfaceIp: null, reachable: false }]);
+    // v1.6 (ADR-055): only a Reachable entry is a sign of life; Stale ones outlive a shutdown.
+    expect(parseNetNeighborJson(json).map((n) => n.reachable)).toEqual([true, false]);
     expect(parseNetNeighborJson('  ')).toEqual([]);
   });
 

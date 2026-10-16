@@ -9,6 +9,10 @@ import { BackupService } from './application/backups/backup-service';
 import { ExportService } from './application/migration/export-service';
 import { ImportService } from './application/migration/import-service';
 import { AutoExportService } from './application/migration/auto-export';
+import { ShutdownReconciler } from './application/power/reconcile';
+import { SelfDeviceService } from './application/power/self-device';
+import { ShutdownDiagnosticsService } from './application/power/diagnostics';
+import { ShutdownTestService } from './application/power/shutdown-test';
 import { nodeExportFolder } from './adapters/export-folder';
 import { SqliteMigrationStateRepo } from './db/repositories/migration-repo';
 import { applyImport, hasPreparedMachines, previewImport } from './db/sync/import';
@@ -45,7 +49,7 @@ import type {
 import { KeyedLimiter } from './application/rate-limit';
 import { RoomsService } from './application/rooms/rooms-service';
 import { Scheduler } from './application/schedules/scheduler';
-import { SchedulesService } from './application/schedules/schedules-service';
+import { rowsToTarget, SchedulesService } from './application/schedules/schedules-service';
 import {
   type BootstrapValues,
   type ConfigFileStore,
@@ -100,6 +104,11 @@ import { SqliteDeviceAgentsRepo } from './db/repositories/device-agents-repo';
 import {
   agentRows,
   deviceExtras,
+  occurrenceOrders,
+  pushedOccurrences,
+  SqliteReconcileStore,
+  SqliteDiagnosticsStore,
+  SqliteShutdownTestsStore,
   occurrenceReports,
   recentPowerJobIds,
   SqlitePowerJobsRepo,
@@ -234,6 +243,7 @@ export function createServices(
   const probes = new ProbeQueue(ports.prober, () => settings.get('monitor.concurrency'));
   const monitor = new MonitorService({
     repo: new SqliteMonitorRepo(db),
+    ...(ports.neighbors ? { neighbors: ports.neighbors } : {}),
     prober: probes.at('low'),
     dns: ports.dns,
     settings,
@@ -426,8 +436,48 @@ export function createServices(
   });
   const backupsRef: { current: BackupService | null } = { current: null };
 
+  // v1.6 (ADR-053): the scheduler pushes shutdowns through the manual-shutdown service built below.
+  const latePower: { power?: PowerOrdersService } = {};
+  const tagIdsByUuid = (uuids: readonly string[]) =>
+    uuids.length === 0
+      ? []
+      : db
+          .all<{ id: number }>(
+            `SELECT id FROM tags WHERE uuid IN (${uuids.map(() => '?').join(',')})`,
+            [...uuids],
+          )
+          .map((r) => r.id);
+  const lateReconcile: { r?: ShutdownReconciler } = {};
+  // v1.6 (FR-504.3): "Testar agendamento" one-offs, built with the power services below.
+  const lateTests: { t?: ShutdownTestService } = {};
   const scheduler = new Scheduler({
     repo: schedulerRepo,
+    reconcile: (now) => {
+      lateTests.t?.tick(now);
+      lateReconcile.r?.tick(now);
+    },
+    pushShutdown: (sched, plannedAt) => {
+      if (!latePower.power || !sched.uuid) throw new Error('shutdown service not ready');
+      const occurrence = scheduleRunUuid(sched.uuid, plannedAt);
+      const pushed = latePower.power.startScheduled({
+        occurrence,
+        scheduleName: sched.name,
+        target: rowsToTarget(sched.targets, refs),
+        policy: {
+          warningMinutes: sched.warningMinutes ?? settings.get('power.defaultWarningMinutes'),
+          allowPostpone: sched.allowPostpone ?? settings.get('power.postponeMax') > 0,
+          postponeMax: sched.postponeMax ?? settings.get('power.postponeMax'),
+          postponeMinutes: sched.postponeMinutes ?? settings.get('power.postponeMinutes'),
+        },
+        excludeTagIds: tagIdsByUuid(sched.excludeTags ?? []),
+        plannedAt,
+        orderUuid: (deviceId) =>
+          uuidV5(
+            `power-order:${occurrence}:${changeLog(db).uuidOf('device', deviceId) ?? deviceId}`,
+          ),
+      });
+      return { ...pushed, occurrence };
+    },
     lease,
     teamMode: () => team.inTeam(),
     standby: () => migrationState.standby() !== null,
@@ -519,6 +569,7 @@ export function createServices(
     transaction: tx,
     agentPort: opts.running?.agentPort ?? 47101,
     onMoved: (move) => notices.onDeviceMoved(move),
+    onPossibleDuplicate: (d) => notices.possibleDuplicate(d),
     hubKeyId: () => {
       try {
         return late.hubKey?.keyId() ?? null;
@@ -620,9 +671,11 @@ export function createServices(
     dataVersion: () => powerRepo.dataVersion(),
     occurrenceId: scheduleRunUuid,
     digest: (t) => createHash('sha256').update(t).digest('hex'),
+    oneOffs: (id) => lateTests.t?.oneOffs(id) ?? [],
+    logger: ports.logger.child({ module: 'agenda' }),
     clock,
   });
-  const power = new PowerOrdersService({
+  const power = (latePower.power = new PowerOrdersService({
     store: new SqlitePowerJobsRepo(db),
     resolve: (target) => wake.resolveForPower(target),
     settings,
@@ -631,11 +684,14 @@ export function createServices(
     clock,
     transaction: tx,
     newUuid: () => randomUUID(),
-  });
+  }));
   const powerStatus = new PowerStatusService({
     agents: (ids) => agentRows(db, ids),
     occurrenceReports: (since) => occurrenceReports(db, since),
     deviceExtras: (ids) => deviceExtras(db, ids),
+    pushedOccurrences: (since) => pushedOccurrences(db, since),
+    occurrenceOrders: (occ) => occurrenceOrders(db, occ),
+    tests: (since) => lateTests.t?.forHistory(since) ?? [],
     schedules: () => schedulesRepo.list(),
     refs,
     resolve: (target) => wake.resolveForPower(target),
@@ -645,6 +701,49 @@ export function createServices(
     clock,
   });
   late.powerStatus = powerStatus;
+  lateReconcile.r = new ShutdownReconciler({
+    store: new SqliteReconcileStore(db),
+    schedule: (id) => schedulesRepo.list().find((x) => x.id === id),
+    status: powerStatus,
+    power,
+    jobIdByUuid: (uuid) =>
+      db.get<{ id: number }>('SELECT id FROM power_jobs WHERE uuid = ?', [uuid])?.id ?? null,
+    occurrenceId: scheduleRunUuid,
+    orderUuid: (occurrence, deviceId, suffix) =>
+      uuidV5(
+        `power-order:${occurrence}:${changeLog(db).uuidOf('device', deviceId) ?? deviceId}:${suffix}`,
+      ),
+    clock,
+    logger: ports.logger.child({ module: 'reconcile' }),
+  });
+  const shutdownTests = (lateTests.t = new ShutdownTestService({
+    store: new SqliteShutdownTestsStore(db),
+    device: (id) => {
+      const r = db.get<{ name: string; never: number }>(
+        'SELECT name, never_scheduled_shutdown AS never FROM devices WHERE id = ?',
+        [id],
+      );
+      return r && { name: r.name, neverScheduledShutdown: r.never === 1 };
+    },
+    readiness: (id) => powerStatus.device(id).readiness,
+    agenda,
+    power,
+    status: powerStatus,
+    jobIdByUuid: (uuid) =>
+      db.get<{ id: number }>('SELECT id FROM power_jobs WHERE uuid = ?', [uuid])?.id ?? null,
+    orderUuid: (occurrence, deviceId, suffix) =>
+      uuidV5(
+        `power-order:${occurrence}:${changeLog(db).uuidOf('device', deviceId) ?? deviceId}` +
+          (suffix ? `:${suffix}` : ''),
+      ),
+    newUuid: () => randomUUID(),
+    settings,
+    audit,
+    standby: () => migrationState.standby() !== null,
+    transaction: tx,
+    clock,
+    logger: ports.logger.child({ module: 'power-test' }),
+  }));
   const agentPort = opts.running?.agentPort ?? 47101;
   const agent = new AgentService({
     tokens: agentTokens,
@@ -689,6 +788,7 @@ export function createServices(
     },
     cancelId: (orderUuid) => uuidV5(`power-cancel:${orderUuid}`),
     version: opts.version ?? '0.0.0-dev',
+    logger: ports.logger.child({ module: 'agent' }),
   });
 
   const exporter = new ExportService({
@@ -736,6 +836,23 @@ export function createServices(
     exporter,
     importer,
     autoExport,
+    shutdownDiagnostics: new ShutdownDiagnosticsService({
+      agenda,
+      store: new SqliteDiagnosticsStore(db),
+      tests: shutdownTests,
+      clock,
+    }),
+    shutdownTests,
+    selfDevice: new SelfDeviceService({
+      interfaces: ports.interfaces,
+      devicesMatching: (macs, ips) =>
+        db
+          .all<{ id: number }>(
+            'SELECT id FROM devices WHERE upper(mac) IN (SELECT value FROM json_each(?)) OR ip IN (SELECT value FROM json_each(?))',
+            [JSON.stringify(macs), JSON.stringify(ips)],
+          )
+          .map((r) => r.id),
+    }),
     agentTokens,
     agent,
     agenda,

@@ -1,22 +1,18 @@
-import type { PowerJob, PowerOccurrence, PowerOccurrenceDevice } from '@uniwake/shared';
+import {
+  type PowerJob,
+  type PowerOccurrence,
+  type PowerOccurrenceDevice,
+  SHUTDOWN_RESULT_LABEL,
+} from '@uniwake/shared';
 import { EmptyState, ErrorState, LoadingState } from '../../components/Banner';
 import { formatDateTime, plural } from '../../lib/format';
 import { usePowerHistory } from './api';
 import { usePowerUi } from './PowerProvider';
 
-const RESULT_LABEL: Record<PowerOccurrenceDevice['result'], string> = {
-  done: 'Desligou',
-  probably_done: 'Provavelmente desligou (sem relatório)',
-  was_off: 'Já estava desligada',
-  late_wake: 'Pulado (acordou atrasada)',
-  cancelled: 'Cancelado',
-  failed: 'Falhou',
-  no_report: 'Sem relatório',
-};
-
 const ACTION_LABEL = { shutdown: 'Desligar', restart: 'Reiniciar' } as const;
+const PATH_LABEL = { agenda: 'pela agenda', order: 'por ordem direta' } as const;
 
-/** "28/30 desligaram, 1 adiou 2×, 1 estava desligada" (FR-307). */
+/** "28/30 desligaram, 1 adiou 2×, 1 estava desligada" (FR-307), plus the v1.6 reconciliation. */
 export function occurrenceSummary(o: PowerOccurrence): string {
   const c = o.counts;
   const n = (k: number, one: string, many: string) => (k > 0 ? [plural(k, one, many)] : []);
@@ -30,8 +26,14 @@ export function occurrenceSummary(o: PowerOccurrence): string {
       'provavelmente desligou (sem relatório)',
       'provavelmente desligaram (sem relatório)',
     ),
+    ...n(c.off_no_report, 'desligou (relatório a caminho)', 'desligaram (relatório a caminho)'),
     ...n(c.was_off, 'estava desligada', 'estavam desligadas'),
     ...n(c.late_wake, 'acordou atrasada (pulado)', 'acordaram atrasadas (pulado)'),
+    ...n(c.postponed_active, 'adiado — usuário ativo', 'adiados — usuário ativo'),
+    ...n(c.still_on, 'ainda ligado', 'ainda ligados'),
+    ...n(c.no_agent, 'sem agente', 'sem agente'),
+    ...n(c.stale_agenda, 'agenda desatualizada', 'agendas desatualizadas'),
+    ...n(c.no_answer, 'sem resposta', 'sem resposta'),
     ...n(c.cancelled, 'cancelado', 'cancelados'),
     ...n(c.failed, 'falhou', 'falharam'),
     ...n(c.no_report, 'sem relatório', 'sem relatório'),
@@ -39,10 +41,11 @@ export function occurrenceSummary(o: PowerOccurrence): string {
 }
 
 function deviceDetail(d: PowerOccurrenceDevice): string {
-  const parts = [RESULT_LABEL[d.result]];
+  const parts = [SHUTDOWN_RESULT_LABEL[d.result]];
   if (d.result === 'late_wake' && d.lateMinutes !== null) {
     parts[0] = `Pulado: acordou ${d.lateMinutes} min após o horário`;
   }
+  if (d.result === 'done' && d.path) parts[0] = `${parts[0]} ${PATH_LABEL[d.path]}`;
   if (d.postpones > 0) parts.push(`adiou ${d.postpones}×`);
   if (d.wasAsleep) parts.push('estava em suspensão');
   if (d.nativeWarning) parts.push('aviso do Windows');

@@ -43,4 +43,11 @@ describe('installer (M8-T03, FR-001.1)', () => {
     // WinSW reads the file as UTF-8; ASCII keeps the Inno round trip byte-exact.
     expect([...xml].every((c) => c.charCodeAt(0) < 128)).toBe(true);
   });
+
+  it('an upgrade goes on when WinSW reports a failed stop but the service did stop (ADR-057)', () => {
+    expect(iss).toContain(
+      "(Run(ExpandConstant('{app}\\UniWakeService.exe'), 'stopwait') <> 0) and not ServiceStopped()",
+    );
+    expect(iss).toMatch(/WaitForStatus\(''Stopped'', ''00:00:30''\)/);
+  });
 });

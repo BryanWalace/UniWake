@@ -44,6 +44,8 @@ export interface PowerPreview {
   offline: number;
   /** Flagged "Nunca desligar por agendamento": included only with an extra confirmation. */
   protected: PowerDeviceRef[];
+  /** v1.6 (FR-501.5): targeted machines that are the PC running this UniWake. */
+  self: PowerDeviceRef[];
   policy: PowerPolicy;
 }
 
@@ -112,8 +114,102 @@ export interface PowerJob {
 }
 
 /** One machine's result for one scheduled shutdown (FR-307; pt-BR labels in the panel). */
+export const SHUTDOWN_RESULTS = [
+  'done',
+  'was_off',
+  'late_wake',
+  'cancelled',
+  'failed',
+  'probably_done',
+  'no_report',
+  // v1.6 reconciliation (ADR-054): machines without a report yet.
+  'off_no_report',
+  'postponed_active',
+  'still_on',
+  'no_agent',
+  'stale_agenda',
+  'no_answer',
+] as const;
+export type ShutdownResult = (typeof SHUTDOWN_RESULTS)[number];
+
+/** pt-BR labels of a machine's result for one scheduled shutdown (history, reconciliation). */
+export const SHUTDOWN_RESULT_LABEL: Record<ShutdownResult, string> = {
+  done: 'Desligou',
+  probably_done: 'Provavelmente desligou (sem relatório)',
+  off_no_report: 'Desligou (relatório ainda não chegou)',
+  was_off: 'Já estava desligada',
+  late_wake: 'Pulado (acordou atrasada)',
+  cancelled: 'Cancelado',
+  failed: 'Falhou',
+  no_report: 'Sem relatório',
+  postponed_active: 'Adiado — usuário ativo',
+  still_on: 'Ainda ligado',
+  no_agent: 'Sem agente (precisa do preparo)',
+  stale_agenda: 'Agenda desatualizada (a última agenda entregue não tinha este horário)',
+  no_answer: 'Sem resposta (não consultou o UniWake desde antes do aviso)',
+};
+
+/** FR-502.1: why a shutdown schedule does (not) reach a machine. */
+export const SHUTDOWN_REASON_LABEL = {
+  included: 'Inclui esta máquina',
+  schedule_disabled: 'Agendamento desativado',
+  device_disabled: 'Máquina desativada no cadastro',
+  not_in_target:
+    'O alvo do agendamento não inclui esta máquina (confira a sala, as etiquetas ou a lista de máquinas)',
+  never_flag: 'Máquina marcada "Nunca desligar por agendamento"',
+  excluded_tag: 'Uma etiqueta desta máquina está excluída no agendamento',
+  no_occurrence: 'Nenhum horário nos próximos 14 dias (feriado, recesso ou pausa)',
+} as const;
+export type ShutdownReason = keyof typeof SHUTDOWN_REASON_LABEL;
+
+/** FR-504.3 "Testar agendamento": a one-off scheduled shutdown of one machine in N minutes. */
+export const SHUTDOWN_TEST_MINUTES = { min: 2, max: 60, default: 5 } as const;
+export const shutdownTestRequestSchema = z.object({
+  minutes: z.number().int().min(SHUTDOWN_TEST_MINUTES.min).max(SHUTDOWN_TEST_MINUTES.max),
+});
+export type ShutdownTestRequest = z.infer<typeof shutdownTestRequestSchema>;
+
+export interface ShutdownTest {
+  uuid: string;
+  /** The planned shutdown instant. */
+  at: number;
+  warningMinutes: number;
+  createdAt: number;
+  /** When the hub sent the order (push path), null before T − aviso − 1 min. */
+  pushedAt: number | null;
+  reconciledAt: number | null;
+  /** Null while it is still ahead (or in its warning); then as in the history. */
+  result: ShutdownResult | null;
+  path: 'agenda' | 'order' | null;
+}
+
+/** FR-504.1: the device page's "Desligamento remoto" diagnostics. */
+export interface ShutdownDiagnostics {
+  agenda: {
+    /** What the hub last served this machine (its last check-in). */
+    servedVersion: string | null;
+    servedItems: number | null;
+    servedAt: number | null;
+    /** What it would serve now. */
+    currentVersion: string | null;
+    currentItems: number;
+    nextShutdownAt: number | null;
+  };
+  schedules: { scheduleId: number; name: string; reason: ShutdownReason; nextAt: number | null }[];
+  lastShutdown: {
+    at: number;
+    result: ShutdownResult;
+    path: 'agenda' | 'order' | null;
+    detail: string | null;
+  } | null;
+  /** FR-504.3: the latest "Testar agendamento" of this machine (last 24 h). */
+  test: ShutdownTest | null;
+}
+
 export interface PowerOccurrenceDevice extends PowerDeviceRef {
-  result: 'done' | 'was_off' | 'late_wake' | 'cancelled' | 'failed' | 'probably_done' | 'no_report';
+  result: ShutdownResult;
+  /** v1.6: which path ran it — the agenda or the hub's order ("ordem direta"); null if unknown. */
+  path: 'agenda' | 'order' | null;
   postpones: number;
   wasAsleep: boolean;
   lateMinutes: number | null;

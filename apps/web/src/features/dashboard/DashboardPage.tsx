@@ -38,6 +38,8 @@ const NOTICE_TEXT: Record<string, (data: Record<string, unknown>) => string> = {
     `A restauração do backup pedida não aconteceu: ${typeof data.reason === 'string' ? data.reason : 'erro desconhecido'}. O banco atual foi mantido.`,
   team_revoked: () =>
     'Este PC foi removido do Modo equipe por outro PC e parou de sincronizar. O cadastro continua aqui; para voltar, pareie de novo.',
+  possible_duplicate: (data) =>
+    `Possível máquina duplicada: "${String(data.deviceName)}" (${String(data.mac)}) foi cadastrada pelo preparo, mas "${String(data.otherName)}" (${String(data.otherMac)}) já tem o mesmo nome de computador. Se for o mesmo PC, exclua o cadastro antigo e confira os agendamentos: eles podem estar apontando para o registro errado.`,
   lan_error: (data) =>
     `O acesso ao painel pela rede está ligado, mas não iniciou: ${typeof data.message === 'string' ? data.message : 'erro desconhecido.'} Corrija em Configurações e reinicie o serviço.`,
 };

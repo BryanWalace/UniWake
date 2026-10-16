@@ -1,8 +1,10 @@
 import type { DeviceStatus } from '@uniwake/shared';
 import type {
   DeviceEvent,
+  IpSource,
   MonitorRepo,
   ProbeTarget,
+  SeenVia,
   StatusUpdate,
 } from '../../application/monitor/monitor-service';
 import type { Db } from '../connection';
@@ -11,6 +13,9 @@ import { changeLog } from '../sync/change-log';
 interface Row {
   id: number;
   ip: string | null;
+  mac: string;
+  agent_seen_at: number | null;
+  agent_ip: string | null;
   hostname: string | null;
   enabled: number;
   status: DeviceStatus | null;
@@ -29,9 +34,11 @@ export class SqliteMonitorRepo implements MonitorRepo {
     const ids = deviceIds ? JSON.stringify(deviceIds) : null;
     return this.db
       .all<Row>(
-        `SELECT d.id, d.ip, d.hostname, d.enabled, s.status, s.latency_ms, s.last_seen_at, s.online_since,
-           s.last_probe_at, s.consecutive_failures, s.ever_online
+        `SELECT d.id, d.ip, d.mac, d.hostname, d.enabled, s.status, s.latency_ms, s.last_seen_at,
+           s.online_since, s.last_probe_at, s.consecutive_failures, s.ever_online,
+           a.seen_at AS agent_seen_at, a.ip AS agent_ip
          FROM devices d LEFT JOIN device_state s ON s.device_id = d.id
+           LEFT JOIN agent_seen a ON a.device_id = d.id
          WHERE (? IS NULL OR d.id IN (SELECT value FROM json_each(?)))
          ORDER BY d.id`,
         [ids, ids],
@@ -39,6 +46,9 @@ export class SqliteMonitorRepo implements MonitorRepo {
       .map((r) => ({
         deviceId: r.id,
         ip: r.ip,
+        mac: r.mac,
+        agentSeenAt: r.agent_seen_at,
+        agentIp: r.agent_ip,
         hostname: r.hostname,
         enabled: r.enabled === 1,
         state: {
@@ -88,9 +98,22 @@ export class SqliteMonitorRepo implements MonitorRepo {
     }
   }
 
-  updateIp(deviceId: number, ip: string, now: number): void {
+  updateIp(deviceId: number, ip: string, now: number, source?: IpSource): void {
     this.db.run('UPDATE devices SET ip = ?, updated_at = ? WHERE id = ?', [ip, now, deviceId]);
     changeLog(this.db).touch('device', deviceId);
+    if (source) {
+      this.db.run('UPDATE device_state SET ip_source = ?, ip_seen_at = ? WHERE device_id = ?', [
+        source,
+        now,
+        deviceId,
+      ]);
+    }
+  }
+
+  saveSignals(signals: readonly { deviceId: number; via: SeenVia }[]): void {
+    for (const x of signals) {
+      this.db.run('UPDATE device_state SET seen_via = ? WHERE device_id = ?', [x.via, x.deviceId]);
+    }
   }
 
   resetAllUnknown(): { deviceId: number; from: DeviceStatus; lastProbeAt: number | null }[] {

@@ -28,33 +28,43 @@ while ($true) {
     $line = [Console]::In.ReadLine()
     if ($null -eq $line) { break }
     if ($line.Trim() -eq '') { continue }
+    $reqId = $null
     try {
         $req = $line | ConvertFrom-Json
+        $reqId = $req.id
         $targets = @($req.targets)
         $timeout = [int]$req.timeout
         $pings = New-Object System.Collections.Generic.List[System.Net.NetworkInformation.Ping]
-        $tasks = New-Object System.Collections.Generic.List[System.Threading.Tasks.Task]
+        # One slot per target: $null when that target could not even be sent (empty or invalid
+        # address). v1.6 field fix: one bad address used to fail the whole batch.
+        $tasks = New-Object System.Collections.Generic.List[object]
         foreach ($t in $targets) {
-            $p = New-Object System.Net.NetworkInformation.Ping
-            $pings.Add($p)
-            $tasks.Add($p.SendPingAsync([string]$t, $timeout))
+            try {
+                $p = New-Object System.Net.NetworkInformation.Ping
+                $pings.Add($p)
+                $tasks.Add($p.SendPingAsync([string]$t, $timeout))
+            } catch {
+                $tasks.Add($null)
+            }
         }
-        if ($tasks.Count -gt 0) {
-            try { [void][System.Threading.Tasks.Task]::WaitAll($tasks.ToArray(), $timeout + 2000) } catch { Write-Verbose "some pings failed: $_" }
+        $started = @($tasks | Where-Object { $null -ne $_ })
+        if ($started.Count -gt 0) {
+            try { [void][System.Threading.Tasks.Task]::WaitAll([System.Threading.Tasks.Task[]]$started, $timeout + 2000) } catch { Write-Verbose "some pings failed: $_" }
         }
         $results = New-Object System.Collections.Generic.List[object]
         for ($i = 0; $i -lt $tasks.Count; $i++) {
             $task = $tasks[$i]
-            if ($task.Status -eq 'RanToCompletion') {
+            if ($null -ne $task -and $task.Status -eq 'RanToCompletion') {
                 $results.Add(@{ t = [string]$targets[$i]; s = [string]$task.Result.Status; ms = [int]$task.Result.RoundtripTime })
             } else {
                 $results.Add(@{ t = [string]$targets[$i]; s = 'Error'; ms = -1 })
             }
         }
         foreach ($p in $pings) { $p.Dispose() }
-        $out = ConvertTo-Json -InputObject @{ id = $req.id; results = $results.ToArray() } -Compress -Depth 4
+        $out = ConvertTo-Json -InputObject @{ id = $reqId; results = $results.ToArray() } -Compress -Depth 4
     } catch {
-        $out = ConvertTo-Json -InputObject @{ id = $null; error = $_.Exception.Message } -Compress
+        # Always answer with the request's id when it is known, so the hub never waits for a deadline.
+        $out = ConvertTo-Json -InputObject @{ id = $reqId; error = $_.Exception.Message } -Compress
     }
     [Console]::Out.WriteLine($out)
     [Console]::Out.Flush()

@@ -7,6 +7,8 @@ import {
   type DeviceDiagnostics,
   type DeviceHistoryItem,
   type DeviceHistoryPage,
+  IP_SOURCE_LABEL,
+  SEEN_VIA_LABEL,
   TEST_WOL_STATE_LABEL,
 } from '@uniwake/shared';
 import { api, ApiRequestError } from '../../api/client';
@@ -157,14 +159,24 @@ function Details({ device: d }: { device: Device }) {
   const tags = useTags();
   const room = rooms.data?.find((r) => r.id === d.roomId);
   const rows: [string, React.ReactNode][] = [
-    ['Status', <StatusBadge key="s" status={d.status} />],
+    [
+      'Status',
+      <span key="s" className="inline-flex flex-wrap items-center gap-2">
+        <StatusBadge status={d.status} />
+        {/* v1.6 (FR-503.4): which signal confirmed it is on. */}
+        {d.seenVia && <span className="text-sm text-slate-700">— {SEEN_VIA_LABEL[d.seenVia]}</span>}
+      </span>,
+    ],
     ['Latência', d.latencyMs === null ? '—' : `${d.latencyMs} ms`],
     ['Visto pela última vez', formatDateTime(d.lastSeenAt)],
     ['Ligada desde', formatDateTime(d.onlineSince)],
     [
       'IP',
-      <span key="ip" className="font-mono">
-        {d.ip ?? 'sem IP'}
+      <span key="ip">
+        <span className="font-mono">{d.ip ?? 'sem IP'}</span>
+        {d.ipSource && (
+          <span className="ml-2 text-sm text-slate-700">(pela {IP_SOURCE_LABEL[d.ipSource]})</span>
+        )}
       </span>,
     ],
     ['Hostname', d.hostname ?? '—'],

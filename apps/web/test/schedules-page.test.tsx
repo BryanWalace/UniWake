@@ -154,6 +154,36 @@ describe('schedules page (FR-005.1, FR-005.8)', () => {
     });
   });
 
+  it('AC-501-06: a "Desligar" schedule shows who it reaches today and warns when it includes this PC', async () => {
+    api([]).on('POST', '/api/power/preview', {
+      body: {
+        action: 'shutdown',
+        count: 2,
+        rooms: [],
+        needsConfirmation: false,
+        needsPreparation: [{ deviceId: 5, name: 'LAB3-PC05' }],
+        revoked: [],
+        lost: [],
+        withUser: 0,
+        offline: 0,
+        protected: [],
+        self: [{ deviceId: 9, name: 'PC-TI' }],
+        policy: { warningMinutes: 5, allowPostpone: true, postponeMax: 2, postponeMinutes: 15 },
+      },
+    });
+    const user = userEvent.setup();
+    renderApp('/agendamentos');
+    await user.click(await screen.findByRole('button', { name: 'Novo agendamento' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Novo agendamento' });
+    await user.click(within(dialog).getByRole('radio', { name: 'Desligar' }));
+    await user.click(await within(dialog).findByRole('checkbox', { name: /Lab 3/ }));
+    expect(await within(dialog).findByText(/2 máquinas prontas/)).toBeInTheDocument();
+    expect(dialog).toHaveTextContent('1 máquina não está pronta (LAB3-PC05)');
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(
+      'Inclui este PC, que roda o UniWake (PC-TI)',
+    );
+  });
+
   it('shows field errors from the server next to the fields', async () => {
     api([]).on('POST', '/api/schedules', {
       status: 422,

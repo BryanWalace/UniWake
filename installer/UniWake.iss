@@ -88,6 +88,15 @@ begin
   Result := Run(ExpandConstant('{sys}\sc.exe'), 'query UniWake') = 0;
 end;
 
+{ WinSW 2.12 can report a failed stop although the service did stop: when node exits quickly it
+  reads the start time of a process that is gone ("The handle is invalid" in GetChildren). What
+  counts is the service state, so wait up to 30 s for the service manager to say "Stopped". }
+function ServiceStopped(): Boolean;
+begin
+  Result := Run(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+    '-NoProfile -NonInteractive -Command "try { (Get-Service UniWake).WaitForStatus(''Stopped'', ''00:00:30''); exit 0 } catch { exit 1 }"') = 0;
+end;
+
 { The version the current UniWakeService.xml points at, '' if none. }
 function InstalledVersion(): String;
 var
@@ -111,7 +120,7 @@ begin
   Result := '';
   PreviousVersion := InstalledVersion();
   if ServiceExists() then
-    if Run(ExpandConstant('{app}\UniWakeService.exe'), 'stopwait') <> 0 then
+    if (Run(ExpandConstant('{app}\UniWakeService.exe'), 'stopwait') <> 0) and not ServiceStopped() then
       Result := 'O serviço UniWake não parou. Pare-o em services.msc e tente de novo.';
 end;
 

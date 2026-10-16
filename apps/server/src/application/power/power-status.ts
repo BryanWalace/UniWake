@@ -4,12 +4,14 @@
  * shutdowns aggregated per occurrence from the machines' reports — including the ones run while
  * the hub was off, which arrive later.
  */
-import type {
-  DeviceAgentInfo,
-  PowerHistory,
-  PowerOccurrence,
-  PowerOccurrenceDevice,
-  WakeTarget,
+import {
+  type DeviceAgentInfo,
+  type PowerHistory,
+  type PowerOccurrence,
+  type PowerOccurrenceDevice,
+  SHUTDOWN_RESULTS,
+  type ShutdownResult,
+  type WakeTarget,
 } from '@uniwake/shared';
 import { agentReadiness, type AgentReadiness } from '../../domain/readiness';
 import type { DeviceSnap } from '../../domain/scope';
@@ -55,6 +57,37 @@ export interface ReportRow {
   lateMinutes: number | null;
   nativeWarning: boolean;
   userLoggedOn: boolean | null;
+  /** v1.6: the order a pushed occurrence reached this machine with (null: from the agenda). */
+  order: string | null;
+}
+
+export interface DeviceExtras {
+  bootTime: number | null;
+  tagUuids: string[];
+  /** v1.6 (ADR-056): items of the agenda last served to the machine. */
+  agendaItems?: number | null;
+}
+
+/**
+ * Who an occurrence targets and the policy that bounds its timing (ADR-054): a schedule's, or a
+ * "Testar agendamento" one-off's (FR-504.3).
+ */
+export interface OccurrenceScope {
+  target: WakeTarget;
+  /** Tag UUIDs it skips. */
+  excludeTags: readonly string[];
+  warningMinutes: number | null;
+  allowPostpone: boolean | null;
+  postponeMax: number | null;
+  postponeMinutes: number | null;
+}
+
+/** v1.6 (FR-504.3): a "Testar agendamento" one-off, listed in the history like a schedule. */
+export interface TestOccurrence {
+  uuid: string;
+  at: number;
+  deviceName: string;
+  scope: OccurrenceScope;
 }
 
 export interface PowerStatusDeps {
@@ -62,9 +95,13 @@ export interface PowerStatusDeps {
   /** Reports of scheduled occurrences planned since `since`, oldest first. */
   occurrenceReports: (since: number) => ReportRow[];
   /** Boot time and tags per device (inference and exclusions). */
-  deviceExtras: (
-    ids: readonly number[],
-  ) => Map<number, { bootTime: number | null; tagUuids: string[] }>;
+  deviceExtras: (ids: readonly number[]) => Map<number, DeviceExtras>;
+  /** v1.6: occurrences the hub pushed (job UUID = occurrence) since `since`, with their T. */
+  pushedOccurrences?: (since: number) => { occurrence: string; plannedAt: number }[];
+  /** v1.6: per machine, the state and postpones of the pushed order of an occurrence. */
+  occurrenceOrders?: (occurrence: string) => Map<number, { state: string; postpones: number }>;
+  /** v1.6 (FR-504.3): the "Testar agendamento" one-offs planned since `since`. */
+  tests?: (since: number) => TestOccurrence[];
   schedules: () => ScheduleRecord[];
   refs: TargetRefs;
   resolve: (target: WakeTarget) => { devices: DeviceSnap[] };
@@ -152,38 +189,27 @@ export class PowerStatusService {
       g.push(r);
     }
     const schedules = this.d.schedules().filter((s) => s.uuid && s.action === 'shutdown');
+    // v1.6 (ADR-053/054): occurrences the hub pushed are listed even before any report arrives.
+    const pushed = this.d.pushedOccurrences?.(now - HISTORY_DAYS * DAY) ?? [];
+    for (const p of pushed) if (!groups.has(p.occurrence)) groups.set(p.occurrence, []);
+    const tests = new Map((this.d.tests?.(now - HISTORY_DAYS * DAY) ?? []).map((t) => [t.uuid, t]));
     const occurrences: PowerOccurrence[] = [];
     for (const [occurrence, rows] of groups) {
-      const plannedAt = rows.find((r) => r.plannedAt !== null)?.plannedAt ?? null;
+      const plannedAt =
+        rows.find((r) => r.plannedAt !== null)?.plannedAt ??
+        pushed.find((p) => p.occurrence === occurrence)?.plannedAt ??
+        null;
       const schedule =
         plannedAt === null
           ? undefined
           : schedules.find((s) => this.d.occurrenceId(s.uuid!, plannedAt) === occurrence);
-      const devices: PowerOccurrenceDevice[] = rows.map((r) => ({
-        deviceId: r.deviceId,
-        name: r.deviceName,
-        result: resultOf(r),
-        postpones: r.postpones,
-        wasAsleep: r.wasAsleep,
-        lateMinutes: r.lateMinutes,
-        nativeWarning: r.nativeWarning,
-        userLoggedOn: r.userLoggedOn,
-      }));
-      if (schedule && plannedAt !== null) {
-        devices.push(
-          ...this.missing(schedule, plannedAt, new Set(rows.map((r) => r.deviceId)), now),
-        );
-      }
-      const counts: PowerOccurrence['counts'] = {
-        done: 0,
-        postponed: 0,
-        was_off: 0,
-        late_wake: 0,
-        cancelled: 0,
-        failed: 0,
-        probably_done: 0,
-        no_report: 0,
-      };
+      const test = schedule ? undefined : tests.get(occurrence);
+      const devices = test
+        ? this.occurrenceDevicesFor(occurrence, rows, test.scope, test.at, now)
+        : this.occurrenceDevices(occurrence, rows, schedule, plannedAt, now);
+      const counts = Object.fromEntries(
+        [...SHUTDOWN_RESULTS, 'postponed'].map((k) => [k, 0]),
+      ) as PowerOccurrence['counts'];
       for (const dev of devices) {
         counts[dev.result]++;
         if (dev.result === 'done' && dev.postpones > 0) counts.postponed++;
@@ -191,59 +217,154 @@ export class PowerStatusService {
       occurrences.push({
         occurrence,
         scheduleId: schedule?.id ?? null,
-        scheduleName: schedule?.name ?? null,
+        scheduleName: test ? `Testar agendamento (${test.deviceName})` : (schedule?.name ?? null),
         plannedAt,
         counts,
         maxPostpones: Math.max(0, ...devices.map((x) => x.postpones)),
-        devices: devices.sort((a, b) => a.name.localeCompare(b.name)),
+        devices: devices.sort((x, y) => x.name.localeCompare(y.name)),
       });
     }
-    occurrences.sort((a, b) => (b.plannedAt ?? 0) - (a.plannedAt ?? 0));
+    occurrences.sort((x, y) => (y.plannedAt ?? 0) - (x.plannedAt ?? 0));
     return {
       occurrences: occurrences.slice(0, limit),
       jobs: this.d.recentJobIds(limit).map((id) => this.d.orders.get(id)),
     };
   }
 
-  /** Prepared machines the schedule targets that have not reported this occurrence. */
+  /** The reports of one occurrence (reconciliation at T + 10 min, ADR-054). */
+  occurrenceReportsOf(occurrence: string, plannedAt: number): ReportRow[] {
+    return this.d.occurrenceReports(plannedAt - DAY).filter((r) => r.occurrence === occurrence);
+  }
+
+  /**
+   * One result per targeted machine of an occurrence (ADR-054): its report when there is one
+   * (with the path that ran it), otherwise what the hub can tell now.
+   */
+  occurrenceDevices(
+    occurrence: string,
+    rows: readonly ReportRow[],
+    schedule: ScheduleRecord | undefined,
+    plannedAt: number | null,
+    now: number,
+  ): PowerOccurrenceDevice[] {
+    return this.occurrenceDevicesFor(
+      occurrence,
+      rows,
+      schedule && {
+        target: rowsToTarget(schedule.targets, this.d.refs),
+        excludeTags: schedule.excludeTags ?? [],
+        warningMinutes: schedule.warningMinutes ?? null,
+        allowPostpone: schedule.allowPostpone ?? null,
+        postponeMax: schedule.postponeMax ?? null,
+        postponeMinutes: schedule.postponeMinutes ?? null,
+      },
+      plannedAt,
+      now,
+    );
+  }
+
+  /** The same as `occurrenceDevices` for any scope (a schedule or a one-off test). */
+  occurrenceDevicesFor(
+    occurrence: string,
+    rows: readonly ReportRow[],
+    scope: OccurrenceScope | undefined,
+    plannedAt: number | null,
+    now: number,
+  ): PowerOccurrenceDevice[] {
+    const devices: PowerOccurrenceDevice[] = rows.map((r) => ({
+      deviceId: r.deviceId,
+      name: r.deviceName,
+      result: resultOf(r),
+      path: r.order ? 'order' : 'agenda',
+      postpones: r.postpones,
+      wasAsleep: r.wasAsleep,
+      lateMinutes: r.lateMinutes,
+      nativeWarning: r.nativeWarning,
+      userLoggedOn: r.userLoggedOn,
+    }));
+    if (scope && plannedAt !== null) {
+      devices.push(
+        ...this.missing(occurrence, scope, plannedAt, new Set(rows.map((r) => r.deviceId)), now),
+      );
+    }
+    return devices;
+  }
+
+  /** Machines the schedule targets that have not reported this occurrence (ADR-054). */
   private missing(
-    schedule: ScheduleRecord,
+    occurrence: string,
+    schedule: OccurrenceScope,
     plannedAt: number,
     reported: Set<number>,
     now: number,
   ): PowerOccurrenceDevice[] {
-    const targeted = this.d
-      .resolve(rowsToTarget(schedule.targets, this.d.refs))
-      .devices.filter((d) => !reported.has(d.id));
-    if (targeted.length === 0) return [];
+    const targeted = this.d.resolve(schedule.target).devices.filter((d) => !reported.has(d.id));
+    if (targeted.length === 0 || now < plannedAt) return [];
     const agents = new Map(this.d.agents(targeted.map((d) => d.id)).map((a) => [a.deviceId, a]));
     const extras = this.d.deviceExtras(targeted.map((d) => d.id));
-    const exclude = new Set(schedule.excludeTags ?? []);
+    const orders = this.d.occurrenceOrders?.(occurrence) ?? new Map<number, OrderView>();
+    const exclude = new Set(schedule.excludeTags);
+    const warningStart = plannedAt - (schedule.warningMinutes ?? 5) * 60_000;
+    // While a user may still be postponing, the hub hears nothing until the final report.
+    const postponeEnd =
+      schedule.allowPostpone === false
+        ? plannedAt
+        : plannedAt + (schedule.postponeMax ?? 2) * (schedule.postponeMinutes ?? 15) * 60_000;
     const out: PowerOccurrenceDevice[] = [];
     for (const dev of targeted) {
       const a = agents.get(dev.id);
       const x = extras.get(dev.id);
-      if (!a?.hasToken || a.neverScheduledShutdown) continue;
+      if (a?.neverScheduledShutdown) continue;
       if (x?.tagUuids.some((t) => exclude.has(t))) continue;
-      const booted = typeof x?.bootTime === 'number' && x.bootTime > plannedAt;
-      const result = booted ? 'probably_done' : now - plannedAt > DAY ? 'no_report' : null;
-      if (result === null) continue; // may still report
+      const o = orders.get(dev.id);
       out.push({
         deviceId: dev.id,
         name: dev.name,
-        result,
-        postpones: 0,
+        result: classify(a, x, o, plannedAt, warningStart, postponeEnd, now),
+        path: o && o.state === 'executed' ? 'order' : null,
+        postpones: o?.postpones ?? 0,
         wasAsleep: false,
         lateMinutes: null,
         nativeWarning: false,
-        userLoggedOn: null,
+        userLoggedOn: a?.userLoggedOn ?? null,
       });
     }
     return out;
   }
 }
 
-function resultOf(r: ReportRow): PowerOccurrenceDevice['result'] {
+interface OrderView {
+  state: string;
+  postpones: number;
+}
+
+/** A targeted machine without a report (ADR-054), in the order the field needs the answer. */
+function classify(
+  a: AgentRowView | undefined,
+  x: DeviceExtras | undefined,
+  o: OrderView | undefined,
+  plannedAt: number,
+  warningStart: number,
+  postponeEnd: number,
+  now: number,
+): ShutdownResult {
+  if (!a?.hasToken || a.revokedAt !== null) return 'no_agent';
+  if (typeof x?.bootTime === 'number' && x.bootTime > plannedAt) return 'probably_done';
+  if (o && (o.postpones > 0 || o.state === 'warning')) return 'postponed_active';
+  if (a.status !== 'online') return now - plannedAt > DAY ? 'probably_done' : 'off_no_report';
+  if (a.lastCheckin === null || a.lastCheckin < warningStart) return 'no_answer';
+  if (a.userLoggedOn === true && now <= postponeEnd + 2 * 60_000 && (!o || o.state !== 'pending'))
+    return 'postponed_active';
+  // It talked to the hub after the warning should have started yet held no agenda item and got no
+  // order: the field symptom of v1.4.0 (an agenda matching nothing).
+  if ((x?.agendaItems ?? 0) === 0 && (!o || o.state === 'pending')) return 'stale_agenda';
+  if (now - plannedAt > DAY) return 'no_report';
+  return 'still_on';
+}
+
+export function resultOf(
+  r: Pick<ReportRow, 'outcome' | 'reason'>,
+): PowerOccurrenceDevice['result'] {
   if (r.outcome === 'done') return 'done';
   if (r.outcome === 'cancelled') return 'cancelled';
   if (r.outcome === 'skipped') return r.reason === 'late_wake' ? 'late_wake' : 'was_off';

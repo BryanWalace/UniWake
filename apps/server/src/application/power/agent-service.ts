@@ -18,7 +18,7 @@ import {
   type PowerPolicy,
 } from '@uniwake/shared';
 import { AppError } from '../errors';
-import type { Clock } from '../ports';
+import type { Clock, Logger } from '../ports';
 import { KeyedLimiter } from '../rate-limit';
 import type { SettingsService } from '../settings/settings-service';
 import type { AgendaService } from './agenda-service';
@@ -38,6 +38,10 @@ export interface AgentScripts {
 export interface PendingOrder extends PowerPolicy {
   uuid: string;
   action: 'shutdown' | 'restart';
+  /** ADR-053: the run id the agent executes once (agenda item or order, whichever comes first). */
+  occurrence?: string;
+  /** v1.6: T of a pushed schedule occurrence (reported back for the schedule's history). */
+  plannedAt?: number;
 }
 
 /** What the last check-in said about the machine (machine-local, plan §15.3). */
@@ -81,6 +85,11 @@ export interface AgentStore {
   cancelledDelivered(deviceId: number, now: number): string[];
   saveSighting(deviceId: number, s: AgentSighting): void;
   saveStatus(deviceId: number, s: AgentStatus): void;
+  /**
+   * v1.6 (ADR-056): the agenda version and item count this machine was given; returns the version
+   * served before (null the first time), so a change can be logged.
+   */
+  saveAgendaServed(deviceId: number, version: string, items: number, at: number): string | null;
 }
 
 export interface HubEntrySource {
@@ -107,6 +116,7 @@ export interface AgentServiceDeps {
   cancelId: (orderUuid: string) => string;
   /** The hub version: the scripts ship with it. */
   version: string;
+  logger?: Logger;
 }
 
 const COARSE_MS = 30 * 60_000;
@@ -193,7 +203,13 @@ export class AgentService {
         this.d.store.insertReport(deviceId, r, now);
         acked.push(r.uuid);
         if (r.order !== null) {
-          const state = r.reason === 'expired' ? 'expired' : SETTLE[r.outcome];
+          // ADR-053: the occurrence already ran from the agenda: the order is done, not failed.
+          const state =
+            r.reason === 'expired'
+              ? 'expired'
+              : r.reason === 'already_done'
+                ? 'executed'
+                : SETTLE[r.outcome];
           this.d.store.settleOrder(deviceId, r.order, state, r.executedAt ?? now, r.detail);
         }
       }
@@ -243,6 +259,24 @@ export class AgentService {
     });
     const agenda = this.d.agenda.forDevice(deviceId);
     if (!agenda) throw new AppError('AGENT_TOKEN_INVALID'); // device deleted meanwhile
+    const before = this.d.store.saveAgendaServed(
+      deviceId,
+      agenda.version,
+      agenda.items.length,
+      now,
+    );
+    if (before !== agenda.version) {
+      // FR-504.2: only a new version is logged, so 500 machines do not flood the log.
+      this.d.logger?.info(
+        {
+          deviceId,
+          version: agenda.version,
+          items: agenda.items.length,
+          wakes: agenda.nextWakes.length,
+        },
+        'agenda served with a new version',
+      );
+    }
     const selfKey = this.d.hubKey;
     return {
       protocol: 1,

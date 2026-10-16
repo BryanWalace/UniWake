@@ -13,7 +13,7 @@ import type { TcpProber } from '../src/adapters/tcp-prober';
 import { FakeClock, flushMicrotasks } from './fakes/fake-clock';
 import { FakeProcessRunner, MemoryLogger } from './fakes/system-fakes';
 
-type Mode = 'answer' | 'hang' | 'exit' | 'garbage';
+type Mode = 'answer' | 'hang' | 'exit' | 'garbage' | 'error' | 'error-no-id';
 
 /** Scripted stand-in for the PowerShell helper process. */
 function fakeHelper(
@@ -40,6 +40,16 @@ function fakeHelper(
         const m = mode();
         if (m === 'hang') return;
         if (m === 'exit') return queueMicrotask(() => exitCb());
+        if (m === 'error' || m === 'error-no-id') {
+          return queueMicrotask(() =>
+            lineCb(
+              JSON.stringify({
+                id: m === 'error' ? req.id : null,
+                error: 'Valor não pode ser nulo.',
+              }),
+            ),
+          );
+        }
         queueMicrotask(() => {
           if (m === 'garbage') lineCb('WARNING: something happened');
           lineCb(
@@ -105,6 +115,38 @@ describe('PowerShell ICMP helper adapter (ADR-019)', () => {
     await clock.advanceAsync(5);
     expect((await again).alive).toBe(true);
     expect(spawned).toHaveLength(2);
+  });
+
+  it('AC-503-04: an error answer (with or without its id) resolves the batch at once, without a restart', async () => {
+    for (const mode of ['error', 'error-no-id'] as const) {
+      const clock = new FakeClock(0);
+      let m: Mode = mode;
+      const logger = new MemoryLogger();
+      const { spawner, spawned } = fakeHelper(new Set(['10.0.0.1']), () => m);
+      const icmp = new PsHelperIcmp(spawner, clock, logger);
+      const p = icmp.ping('10.0.0.1', 1000);
+      await clock.advanceAsync(5); // the batch window, nothing more: no deadline involved
+      expect(await p).toEqual({ alive: false, latencyMs: null });
+      expect(spawned[0]?.killed).toBe(false);
+      expect(logger.entries.some((e) => /could not ping a batch/.test(e.msg ?? ''))).toBe(true);
+      expect(logger.entries.some((e) => /missed its deadline/.test(e.msg ?? ''))).toBe(false);
+      m = 'answer'; // the same helper keeps working
+      const again = icmp.ping('10.0.0.1', 1000);
+      await clock.advanceAsync(5);
+      expect((await again).alive).toBe(true);
+      expect(spawned).toHaveLength(1);
+    }
+  });
+
+  it('AC-503-04: an empty address is never sent to the helper', async () => {
+    const clock = new FakeClock(0);
+    const { spawner, spawned } = fakeHelper(new Set(['10.0.0.1']));
+    const icmp = new PsHelperIcmp(spawner, clock, new MemoryLogger());
+    const [empty, ok] = [icmp.ping('', 1000), icmp.ping('10.0.0.1', 1000)];
+    await clock.advanceAsync(5);
+    expect(await empty).toEqual({ alive: false, latencyMs: null });
+    expect((await ok).alive).toBe(true);
+    expect(spawned[0]!.requests.flatMap((r) => r.targets)).toEqual(['10.0.0.1']);
   });
 
   it('three restarts in 5 minutes mark the helper unhealthy for 30 minutes', async () => {
@@ -242,6 +284,49 @@ describe.skipIf(process.platform !== 'win32')(
         expect(a.alive && b.alive).toBe(true);
       } finally {
         icmp.close();
+      }
+    }, 30_000);
+
+    it('AC-503-04: the real helper answers a batch with an empty and an invalid address per address, with its id', async () => {
+      const logger = new MemoryLogger();
+      const icmp = new PsHelperIcmp(powershellSpawner(HELPER), new SystemClock(), logger);
+      try {
+        // Sent straight to the helper (the adapter would drop the empty one): one line, one answer.
+        const [a, b] = await Promise.all([
+          icmp.ping('127.0.0.1', 2000),
+          icmp.ping('999.1.1.1', 2000),
+        ]);
+        expect(a.alive).toBe(true);
+        expect(b.alive).toBe(false);
+        expect(logger.entries.some((e) => /missed its deadline/.test(e.msg ?? ''))).toBe(false);
+      } finally {
+        icmp.close();
+      }
+    }, 30_000);
+
+    it('AC-503-04: the helper process answers an empty address in a batch per address, with the id', async () => {
+      const child = powershellSpawner(HELPER)();
+      const lines: string[] = [];
+      try {
+        await new Promise<void>((resolve) =>
+          child.onLine((l) => {
+            lines.push(l);
+            if (l.includes('"ready"'))
+              child.write('{"id":3,"targets":["127.0.0.1",""],"timeout":1000}');
+            if (l.includes('"id":3')) resolve();
+          }),
+        );
+        const answer = JSON.parse(lines.find((l) => l.includes('"id":3'))!) as {
+          id: number;
+          results: { t: string; s: string }[];
+        };
+        expect(answer.id).toBe(3);
+        expect(answer.results.map((r) => [r.t, r.s])).toEqual([
+          ['127.0.0.1', 'Success'],
+          ['', 'Error'],
+        ]);
+      } finally {
+        child.kill();
       }
     }, 30_000);
 

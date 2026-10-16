@@ -475,3 +475,112 @@ describe('"Desligamento remoto" card (M19-T03, FR-309, owner Q-3/Q-6)', () => {
     expect(await within(card).findByText('Erro interno inesperado.')).toBeInTheDocument();
   });
 });
+
+describe('status signal and IP source (v1.6, FR-503.4)', () => {
+  it('shows which signal confirmed "ligada" and where the IP came from', async () => {
+    deviceApi({ status: 'online', seenVia: 'agent', ipSource: 'arp' });
+    renderApp('/dispositivos/5');
+    expect(await screen.findByText('— agente')).toBeInTheDocument();
+    expect(screen.getByText('(pela tabela ARP)')).toBeInTheDocument();
+  });
+});
+
+describe('scheduled-shutdown diagnostics (v1.6, FR-502.1, FR-504.1)', () => {
+  it('AC-504-02: shows the next shutdown, the served and current agenda, the last result and each schedule with its reason', async () => {
+    deviceApi()
+      .on('GET', '/api/devices/5/agent', {
+        body: { deviceId: 5, readiness: 'ready', agentVersion: '1.6.0', lastCheckin: at(9) },
+      })
+      .on('GET', '/api/devices/5/shutdown-diagnostics', {
+        body: {
+          agenda: {
+            servedVersion: '0123456789abcdef',
+            servedItems: 0,
+            servedAt: at(9),
+            currentVersion: 'fedcba9876543210',
+            currentItems: 3,
+            nextShutdownAt: at(21),
+          },
+          schedules: [
+            { scheduleId: 1, name: 'Desligar Lab 1', reason: 'included', nextAt: at(21) },
+            { scheduleId: 2, name: 'Desligar Lab 2', reason: 'not_in_target', nextAt: null },
+          ],
+          lastShutdown: { at: at(8), result: 'done', path: 'order', detail: null },
+        },
+      });
+    renderApp('/dispositivos/5');
+    const card = await screen.findByRole('region', { name: 'Desligamento remoto' });
+    const list = await within(card).findByRole('list', { name: 'Agendamentos de desligar' });
+    expect(list).toHaveTextContent('Desligar Lab 1: Inclui esta máquina — próximo em');
+    expect(list).toHaveTextContent('Desligar Lab 2: O alvo do agendamento não inclui esta máquina');
+    expect(card).toHaveTextContent('0 horário(s), versão 01234567');
+    expect(card).toHaveTextContent('3 horário(s), versão fedcba98');
+    expect(card).toHaveTextContent('por ordem direta');
+    expect(card).toHaveTextContent('A máquina ainda não recebeu a agenda atual');
+  });
+});
+
+describe('"Testar agendamento" (v1.6, FR-504.3)', () => {
+  const READY = { deviceId: 5, readiness: 'ready', agentVersion: '1.6.0', lastCheckin: at(9) };
+  const diag = (test: unknown) => ({
+    agenda: {
+      servedVersion: 'fedcba9876543210',
+      servedItems: 1,
+      servedAt: at(9),
+      currentVersion: 'fedcba9876543210',
+      currentItems: 1,
+      nextShutdownAt: null,
+    },
+    schedules: [],
+    lastShutdown: null,
+    test,
+  });
+
+  it('AC-504-01: schedules a one-off shutdown in N minutes and shows how it went', async () => {
+    const api = deviceApi()
+      .on('GET', '/api/devices/5/agent', { body: READY })
+      .on('GET', '/api/devices/5/shutdown-diagnostics', { body: diag(null) })
+      .on('POST', '/api/devices/5/shutdown-test', { status: 201, body: {} });
+    const user = userEvent.setup();
+    renderApp('/dispositivos/5');
+    const card = await screen.findByRole('region', { name: 'Desligamento remoto' });
+    await user.click(await within(card).findByRole('button', { name: 'Testar agendamento' }));
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Testar o desligamento agendado de LAB1-PC05?',
+    });
+    const field = within(dialog).getByLabelText('Desligar daqui a (minutos)');
+    await user.clear(field);
+    await user.type(field, '1');
+    await user.click(within(dialog).getByRole('button', { name: 'Agendar teste' }));
+    expect(await within(dialog).findByText('Escolha de 2 a 60 minutos.')).toBeInTheDocument();
+    await user.clear(field);
+    await user.type(field, '3');
+    await user.click(within(dialog).getByRole('button', { name: 'Agendar teste' }));
+    await waitFor(() =>
+      expect(api.calls.find((c) => c.path === '/api/devices/5/shutdown-test')?.body).toEqual({
+        minutes: 3,
+      }),
+    );
+  });
+
+  it('shows the latest test with its result and path, and no button without an agent', async () => {
+    deviceApi()
+      .on('GET', '/api/devices/5/agent', { body: { ...READY, readiness: 'needs_preparation' } })
+      .on('GET', '/api/devices/5/shutdown-diagnostics', {
+        body: diag({
+          uuid: 'b7e1c2d3-0000-4000-8000-000000000001',
+          at: at(10),
+          warningMinutes: 4,
+          createdAt: at(9),
+          pushedAt: at(9),
+          reconciledAt: at(10),
+          result: 'done',
+          path: 'agenda',
+        }),
+      });
+    renderApp('/dispositivos/5');
+    const card = await screen.findByRole('region', { name: 'Desligamento remoto' });
+    expect(await within(card).findByText(/aviso de 4 minutos/)).toHaveTextContent('pela agenda');
+    expect(within(card).queryByRole('button', { name: 'Testar agendamento' })).toBeNull();
+  });
+});

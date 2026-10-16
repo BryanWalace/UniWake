@@ -446,3 +446,38 @@ milestone after milestone autonomously; assumptions A-1..A-5 are recorded as ADR
 | [x] V4-T01 | Walk every v1.4 AC; record evidence in `validation.md` §v1.4. | FR-401..407 | `validation.md` |
 | [x] V4-T02 | Owner checklist (pt-BR, `NEXT.md`): export with password, import on a second PC, standby, activate, automatic export to a share. | B-002 | checklist |
 | [x] V4-T03 | Final audit and Architect approval → `specs/reviews/v1.4-final.md`; final report to the owner. | — | review |
+
+---
+# v1.6 field fixes (spec §6d, ADR-053..056)
+Owner field report 2026-10-15; Phase 13 debug in `specs/reviews/phase-13-*.md`.
+
+## M25 — Scheduled shutdown: push + one execution + reconciliation
+| ID | Task | Refs | Tests | Done when |
+|---|---|---|---|---|
+| [x] M25-T01 | Agenda: regression tests per target type and on every schedule change; diagnostics of served version (agent_seen) — migration 008. | FR-501.1 | AC-501-01 | — |
+| [x] M25-T02 | Scheduler pushes shutdown occurrences through PowerOrdersService (lease, policy, exclusions, deterministic job/order ids, occurrence on orders, schedule_runs row). | FR-501.2; ADR-053 | AC-501-02, AC-501-04, AC-501-07 | — |
+| [x] M25-T03 | Agent: run id = occurrence on both paths; reports carry the path. | FR-501.3 | AC-501-03 (Pester) | — |
+| [x] M25-T04 | Reconciliation at T + 10 min with one retry; schedule history and Histórico. | FR-501.4; ADR-054 | AC-501-05 | — |
+| [x] M25-T05 | Hub's own PC warning in previews and schedule form. | FR-501.5 | AC-501-06 | — |
+| [x] M25-R | Review → `specs/reviews/M25-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+
+## M26 — Online status
+| ID | Task | Refs | Tests | Done when |
+|---|---|---|---|---|
+| [x] M26-T01 | ICMP helper protocol fix (per-address errors, id always) + hub side. | FR-503.5 | AC-503-04 | — |
+| [x] M26-T02 | Agent and neighbor signals, IP by MAC with source, `seen_via`/`ip_source`. | FR-503.1..4; ADR-055 | AC-503-01, AC-503-02, AC-503-03 | — |
+| [x] M26-R | Review → `specs/reviews/M26-review.md`. | §9 DoD | — | — |
+
+## M27 — Diagnostics
+| ID | Task | Refs | Tests | Done when |
+|---|---|---|---|---|
+| [x] M27-T01 | Per-device explanation + duplicate notice + device page diagnostics. | FR-502, FR-504.1 | AC-502-01, AC-502-02, AC-504-02 | — |
+| [x] M27-T02 | "Testar agendamento" (one-off through both paths). | FR-504.3 | AC-504-01 | — |
+| [x] M27-T03 | Info logs. | FR-504.2 | log assertions | — |
+| [x] M27-R | Review → `specs/reviews/M27-review.md`. | §9 DoD | — | — |
+
+## Phase 14 — Validate v1.6
+| ID | Task | Refs | Evidence |
+|---|---|---|---|
+| [x] V6-T01 | Walk the v1.6 ACs; fake-agent end-to-end (pull only, push only, both, hub off, user active, stale IP, ICMP blocked); `validation.md` §v1.6. | FR-501..504 | validation |
+| [x] V6-T02 | Owner checklist (pt-BR, NEXT.md) for a lab PC: both fixes step by step. | — | checklist |

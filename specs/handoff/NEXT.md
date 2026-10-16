@@ -1,8 +1,147 @@
 # NEXT — handoff
 
-Atualizado: 2026-10-12 · Branch de trabalho: **`dev`** (ADR-030) · **`main` = `8e1b794`** · **release v1.4.0 publicada**
-(estável, pedida pelo dono; `releases/latest` = v1.4.0, download e SHA-256 `7336d094…` conferidos). Inclui a v1.3 (Desligar
-computadores) e a v1.4 (Backup e migração); os PCs com o UniWake se atualizam sozinhos na janela 03:00–05:00.
+Atualizado: 2026-10-16 · Branch de trabalho: **`dev`** (ADR-030) · **`main` = `8e1b794`** (release v1.4.0, publicada).
+**Na `dev`: versão 1.5 "Desligamento agendado e status confiáveis" (correções do seu relatório de campo), validada,
+sem merge e sem tag — aguardando o seu teste num PC do laboratório.** Nada foi para a `main`.
+
+## v1.5 — correções do desligamento agendado e do status (na `dev`, aguardando seu teste)
+
+> Nos documentos técnicos (specs) isto aparece como "v1.6" — é a revisão da especificação. A versão
+> do programa é **1.5.0** (a de teste é `1.5.0-dev.N`). O agente nos PCs tem numeração própria: **1.6.0**.
+
+O que mudou, em resumo:
+
+1. **Desligamento agendado por dois caminhos.** Além da agenda que a máquina guarda (como antes), o
+   UniWake agora **manda a ordem direto** para cada máquina pronta, 1 minuto antes do aviso começar
+   (com aviso de 5 min, 6 min antes do horário). As duas coisas levam o **mesmo código de execução**:
+   a máquina desliga **uma vez só**, venha por onde vier. O aviso, o "Adiar" com usuário logado, as
+   etiquetas excluídas e o "Nunca desligar por agendamento" valem nos dois caminhos. Se o UniWake
+   estiver desligado no horário, a agenda da máquina desliga sozinha (como antes).
+2. **Conferência 10 minutos depois.** Em **Agendamentos → Execuções dos agendamentos** e no **Histórico**, cada
+   desligamento agendado ganha "conferência às T+10" com quantas desligaram e **por qual caminho**
+   (pela agenda / por ordem direta), adiadas por usuário ativo, ainda ligadas, sem agente, agenda
+   desatualizada, sem resposta. As "ainda ligadas" sem motivo recebem **uma** nova tentativa.
+3. **Por que a agenda vinha vazia.** Não consegui reproduzir aqui (bancos novos e atualizados da
+   1.2 geram a agenda certa). A versão `8a818e7a…` que você viu é exatamente a de uma **agenda
+   vazia**: o UniWake não achou nenhum agendamento para aquele cadastro. A causa mais provável
+   (não verificado) é a máquina estar cadastrada **duas vezes** (o preparo criou um registro novo e os
+   agendamentos/sala apontam para o antigo). Agora:
+   - a página da máquina mostra **cada agendamento de desligar e o motivo** de incluir ou não a máquina;
+   - o painel inicial avisa **"Possível máquina duplicada"** quando o preparo cria um cadastro com o
+     mesmo nome de computador de outro;
+   - o formulário do agendamento de desligar mostra **quantas máquinas prontas ele alcança** e quais
+     não estão prontas, e avisa se inclui o próprio PC do UniWake.
+   E mesmo que a agenda falhe de novo, a ordem direta desliga a máquina.
+4. **Status "Ligada"/"Desligada".** A máquina está ligada se **qualquer** sinal disser que sim:
+   consulta do agente nos últimos 2 min, ping, portas (135/445/3389) ou a tabela ARP do Windows. Só
+   fica "Desligada" depois de **duas varreduras seguidas** sem nenhum sinal. O IP **segue o MAC**
+   (agente → tabela ARP → DNS). A página da máquina mostra qual sinal confirmou ("Ligada — agente",
+   "— ping"…) e de onde veio o IP ("(pela tabela ARP)").
+5. **"probe helper missed its deadline" em todo início:** causa achada e corrigida — um único
+   endereço vazio fazia o lote inteiro de ping falhar e todas as máquinas do lote apareciam
+   desligadas.
+6. **Botão "Testar agendamento"** na página da máquina (quadro "Desligamento remoto"): um desligamento
+   agendado só daquela máquina daqui a N minutos (2 a 60), pelos dois caminhos, com conferência.
+7. **Instalador:** a atualização por cima não falha mais com "O serviço UniWake não parou" quando o
+   serviço para rápido demais (falha do WinSW que apareceu no CI; ADR-057).
+
+Decisões que tomei sozinho (pode mudar qualquer uma): ordem direta 1 min antes do aviso e até 60 min
+depois do horário (ADR-053); conferência às T+10 com uma nova tentativa (ADR-054); "ligada" com
+qualquer sinal e "desligada" só após 2 varreduras (ADR-055); o "Testar agendamento" ignora feriado e
+pausa (é um teste explícito), mas recusa máquina sem agente ou marcada "Nunca desligar" (ADR-056).
+
+### Como testar as correções da v1.5 num PC do laboratório (passo a passo)
+
+Use **um PC de laboratório de teste** (fora de aula, que pode ser desligado) e o PC onde o UniWake
+roda. Nada disso exige programa extra nas máquinas.
+
+**0. Instalar a versão de teste no PC do UniWake**
+1. GitHub → **Actions** → o último **CI** verde da branch `dev` → em **Artifacts**, baixe
+   **UniWake-Setup-dev** (`UniWake-Setup-1.5.0-dev.N.exe` + `.sha256`). Use uma execução **depois**
+   do commit "docs(V6-T02)" (as anteriores ainda saíam como `1.4.0-dev.N`, que o UniWake trataria como
+   mais antiga que a 1.4.0 — não use essas).
+2. Confira o SHA-256 no PowerShell: `Get-FileHash .\UniWake-Setup-1.5.0-dev.N.exe` e compare com o
+   arquivo `.sha256`.
+3. Instale por cima da 1.4.0 (um backup é feito antes). Essa versão de teste não volta sozinha para a
+   1.4.0: ela só se atualiza quando sair uma release estável mais nova (a 1.5.0).
+4. Painel → **Saúde do sistema**: versão `1.5.0-dev.N`.
+5. **Logs** (administrador): logo depois do início **não** deve aparecer "probe helper missed its
+   deadline". Reinicie o serviço uma vez (services.msc → UniWake → Reiniciar) e confira de novo.
+
+**1. Agente atualizado no PC de teste (não precisa preparar de novo)**
+1. Ligue o PC de teste. Em até 1–2 minutos ele baixa o agente novo sozinho.
+2. Página da máquina → quadro **Desligamento remoto**: "Pronta para desligar" e versão do agente
+   **1.6.0**. Se depois de 5 minutos continuar a versão antiga, rode de novo o comando de **Preparar
+   máquinas** nela.
+
+**2. Conferir o cadastro (a causa provável da agenda vazia)**
+1. **Painel inicial:** apareceu **"Possível máquina duplicada"**? Se sim, ele diz os dois cadastros e
+   os MACs. Se forem o mesmo PC, exclua o cadastro antigo (o que **não** tem o agente) e confira a
+   sala/etiquetas do que ficou.
+2. Na **lista de Dispositivos**, procure o nome do PC de teste: existe mais de uma linha com o mesmo
+   nome ou o mesmo MAC? Anote.
+3. Página da máquina → **Desligamento remoto** → bloco **Desligamento agendado**:
+   - **Agendamentos de desligar:** cada agendamento aparece com o motivo. O do laboratório deve dizer
+     **"Inclui esta máquina — próximo em …"**. Se disser "O alvo do agendamento não inclui esta
+     máquina", "Uma etiqueta desta máquina está excluída" ou "Máquina marcada Nunca desligar…",
+     **esse é o motivo da agenda vazia**: tire um print e me mande antes de mudar.
+   - **Agenda entregue à máquina** e **Agenda atual no UniWake** devem ter o mesmo número de horários
+     e a mesma versão (em até 1 minuto). Versão começando com `8a818e7a` = agenda vazia.
+   - **Próximo desligamento:** o horário local esperado.
+
+**3. "Testar agendamento" sem ninguém logado (os dois caminhos)**
+1. Faça logoff no PC de teste (fica na tela de login).
+2. Página da máquina → **Testar agendamento** → **5** minutos → **Agendar teste**.
+3. A linha **Teste de agendamento** mostra "desligar às HH:MM (aviso de 4 minutos): agendado". Em
+   até 1 minuto passa para **"ordem enviada, aguardando o horário"**.
+4. No horário, o PC desliga **uma vez** (não reinicia nem desliga duas vezes).
+5. **10 minutos depois** do horário, a linha mostra **"Desligou por ordem direta"** (ou "pela
+   agenda"). Em **Histórico**, aparece **"Testar agendamento (NOME-DO-PC)"** com 1 desligou.
+
+**4. Com usuário logado (aviso e "Adiar")**
+1. Ligue o PC de teste e entre com um usuário.
+2. **Testar agendamento** → **10** minutos.
+3. Uns 5 minutos antes, a janela de aviso aparece na sessão do usuário. Clique **Adiar** uma vez.
+4. Esperado: não desliga no horário; o aviso volta 15 minutos depois e, sem novo "Adiar", desliga. Na conferência (T+10) aparece **"adiado — usuário ativo"**, não "ainda ligado".
+
+**5. Só a agenda (UniWake parado na hora da ordem)**
+1. PC de teste ligado, sem usuário. **Testar agendamento** → **15** minutos.
+2. Espere a linha **Agenda entregue à máquina** mudar de versão (até 1 minuto).
+3. **Antes de 8 minutos** desde o agendamento do teste: no PC do UniWake, services.msc → **UniWake** →
+   **Parar**.
+4. No horário, o PC de teste desliga **sozinho pela agenda**.
+5. Inicie o serviço de novo. 10 minutos depois do horário: **"Desligou pela agenda"**.
+
+**6. Um agendamento de verdade**
+1. **Agendamentos** → novo, ação **Desligar**, alvo a **sala** do PC de teste (ou só o PC), horário
+   daqui a **15 minutos**, hoje marcado.
+2. No formulário, confira o aviso de alcance ("Hoje este agendamento alcança N máquinas prontas para
+   desligar", quais não estão prontas e se inclui o PC do UniWake). **Desmarque/retire as outras máquinas da sala se houver aula.**
+3. Esperado: o PC desliga no horário. Em **Agendamentos → Execuções dos agendamentos**: "desligar: ordem para N
+   máquina(s)…; conferência às T+10: N desligou (pela agenda: x, por ordem direta: y)".
+4. Desative ou exclua esse agendamento de teste.
+5. No dia seguinte, confira que o **agendamento de Ligar** continuou funcionando igual (não mexi nele;
+   há testes, mas o real é o que vale).
+
+**7. Status ligada/desligada**
+1. Com o PC de teste ligado, **Dispositivos** mostra **Ligada**. Na página dele: "Ligada — agente" (ou
+   ping/portas/tabela ARP). Antes, as que tinham ping bloqueado apareciam desligadas.
+2. Desligue o PC: em até ~2–3 minutos (duas varreduras de 60 s) passa para **Desligada**, não antes.
+3. Se puder trocar o IP (no PC de teste: `ipconfig /release` e `ipconfig /renew`, ou outra tomada
+   de rede): em poucos minutos a página mostra o IP novo com "(pelo agente)" ou "(pela tabela ARP)".
+4. Confira as outras máquinas ligadas dos laboratórios: as que estavam "Desligada" erradas agora
+   devem aparecer "Ligada".
+
+**Se algo falhar, me mande:**
+- print do bloco **Desligamento agendado** da página da máquina (com a lista de agendamentos e motivos);
+- o detalhe da execução (Agendamentos → Execuções dos agendamentos) ou a linha do **Histórico**;
+- em **Logs**, as linhas perto do horário: "schedule fired", "scheduled shutdown pushed",
+  "agenda changed", "agenda served with a new version", "scheduled shutdown reconciled" (e "scheduled
+  shutdown test …" no teste);
+- se aparecer "Possível máquina duplicada", os dois nomes/MACs (pode cobrir os MACs no print, só me
+  diga se são iguais ou diferentes).
+
+Quando estiver tudo certo, me diga **"pode subir a dev para a main"** (e se quer a tag/release 1.5.0).
 
 ## Release v1.4.0 (2026-10-12)
 - Antes: verify, Pester, E2E, CI verde na `dev` e na `main`, teste de fumaça no pacote montado (16/16, com check-ins reais do
@@ -359,6 +498,18 @@ WoL real por modelo de PC, reinício sem ninguém logado, VLANs, HTTPS na rede) 
 ## Agent notes (English)
 
 ### Current state
+- **2026-10-16: field fixes (spec §6d, product version 1.5.0, spec revision "v1.6") complete and
+  validated on `dev`** — M25 (scheduled shutdown push + one execution + T+10 reconciliation,
+  ADR-053/054), M26 (online status from agent/ICMP/TCP/ARP, IP follows MAC, probe-helper fix,
+  ADR-055), M27 (diagnostics, duplicate notice, "Testar agendamento", info logs, ADR-056), Phase 14
+  (`validation.md` §v1.6), installer WinSW stop race (ADR-057). `DEV_VERSION_BASE` bumped to 1.5.0.
+  Not merged, not tagged. **STOP point:** waiting for the owner's lab-PC checklist above and
+  "pode subir a dev para a main".
+- Field root cause of the empty agenda **not reproduced**; most likely a duplicate/moved device
+  record (não verificado). Code: `domain/agenda.ts` (explainAgenda, one-offs),
+  `application/power/{diagnostics,shutdown-test,reconcile,self-device}.ts`, migration 008,
+  tests `apps/server/test/{scheduled-shutdown,shutdown-diagnostics}.test.ts`, fake agent
+  `apps/server/test/helpers/fake-agent.ts`.
 - **2026-10-12: v1.4.0 released from `main` (`8e1b794`) on the owner's request (includes v1.3). Before that: v1.3 and v1.4 complete on `dev`** (M16–M24, Phases 10–12: `specs/validation.md`
   §v1.3/§v1.4, `specs/reviews/v1.3-final.md`, `v1.4-final.md`, reviews M16–M23). Not merged, not
   tagged. CLAUDE.md stop point reached: final report given; waiting for the owner's real-PC
@@ -370,9 +521,12 @@ WoL real por modelo de PC, reinício sem ninguém logado, VLANs, HTTPS na rede) 
   `perf/migration.perf.test.ts`, web `migration-page.test.tsx`, `e2e/migration.spec.ts`.
 - Architect assumptions A-1..A-5 (ADR-049..052) are open to the owner's change.
 - Remote shutdown (v1.3): `application/power/*`, `scripts/agent/*`, `scripts/prepare-target.ps1` step 8.
-- CI on `dev` uploads `UniWake-Setup-dev` (`DEV_VERSION_BASE` 1.4.0, ADR-041).
+- CI on `dev` uploads `UniWake-Setup-dev` (`DEV_VERSION_BASE` 1.5.0, ADR-041).
 
 ### Next steps
+0. v1.5 field fixes: act on the owner's lab-PC results (tests first). If a schedule still misses a
+   machine, the device page reason and the "possible_duplicate" notice name the record to fix; on
+   "pode subir a dev para a main": verify, merge, and (only if asked) tag `v1.5.0` with release notes.
 1. Fix whatever the owner's checklists find (tests first). If the warning window does not show in
    the user session, revisit the "UniWake Aviso" task (ADR-046, M18-T01).
 2. On "pode subir a dev para a main": green verify, merge `dev` → `main`; tag only if asked

@@ -270,6 +270,16 @@ export const ERROR_DEFS = {
     message:
       'A seleção inclui máquinas marcadas "Nunca desligar por agendamento". Confirme para desligá-las também.',
   },
+  POWER_TEST_NOT_READY: {
+    status: 422,
+    message:
+      'Esta máquina não está pronta para desligar. Execute o novo comando de "Preparar máquinas" nela antes do teste.',
+  },
+  POWER_TEST_PROTECTED: {
+    status: 422,
+    message:
+      'Esta máquina está marcada "Nunca desligar por agendamento". Desmarque para testar o agendamento.',
+  },
   POWER_JOB_NOT_FOUND: {
     status: 404,
     message: 'Esse desligamento não foi encontrado. Atualize a página.',

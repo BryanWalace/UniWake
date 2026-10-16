@@ -206,6 +206,15 @@ function PowerDialogBody({
               </p>
             )}
           </fieldset>
+          {preview.self.length > 0 && (
+            <p
+              role="alert"
+              className="rounded-md border border-amber-400 bg-amber-50 p-2 text-sm text-amber-950"
+            >
+              Inclui este PC, que roda o UniWake ({names(preview.self)}): ele também vai {verb}, e o
+              painel fica fora do ar até ele voltar.
+            </p>
+          )}
           {preview.protected.length > 0 && (
             <label className="flex items-start gap-2 rounded-md border border-red-300 bg-red-50 p-2 text-sm text-red-950">
               <input

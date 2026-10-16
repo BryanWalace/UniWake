@@ -19,6 +19,9 @@ import type { EventsBus } from '../application/events-bus';
 import type { Clock } from '../application/ports';
 import type { BackupService } from '../application/backups/backup-service';
 import type { ExportService } from '../application/migration/export-service';
+import type { SelfDeviceService } from '../application/power/self-device';
+import type { ShutdownDiagnosticsService } from '../application/power/diagnostics';
+import type { ShutdownTestService } from '../application/power/shutdown-test';
 import type { ImportService } from '../application/migration/import-service';
 import type { HealthService } from '../application/health/health-service';
 import type { NetworkPreviewService } from '../application/network/network-preview';
@@ -82,6 +85,12 @@ export interface HttpServices {
   backups: BackupService | null;
   /** v1.4 "Backup e migração" (spec §6c). */
   exporter: ExportService;
+  /** v1.6 (FR-501.5): inventory devices that are this PC. */
+  selfDevice: SelfDeviceService;
+  /** v1.6 (FR-502, FR-504.1): why a machine will (not) shut down on a schedule. */
+  shutdownDiagnostics: ShutdownDiagnosticsService;
+  /** v1.6 (FR-504.3): "Testar agendamento". */
+  shutdownTests: ShutdownTestService;
   importer: ImportService;
   /** Hub only: the log viewer source (FR-016). */
   logs?: LogSource;

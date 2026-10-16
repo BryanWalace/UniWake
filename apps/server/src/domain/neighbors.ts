@@ -12,6 +12,11 @@ export interface Neighbor {
   mac: string;
   /** Address of the local interface the entry belongs to, when the source says it. */
   interfaceIp: string | null;
+  /**
+   * v1.6 (ADR-055): the entry was confirmed recently (Get-NetNeighbor "Reachable"). Stale entries
+   * outlive a shutdown, so only this counts as a sign of life; `arp -a` cannot tell (false).
+   */
+  reachable?: boolean;
 }
 
 const IPV4 = /^(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
@@ -67,7 +72,7 @@ export function parseNetNeighborJson(json: string): Neighbor[] {
     if (DEAD_STATES.has(e.State)) continue;
     if (typeof e.IPAddress !== 'string' || typeof e.LinkLayerAddress !== 'string') continue;
     const n = neighbor(e.IPAddress, e.LinkLayerAddress, null);
-    if (n) out.push(n);
+    if (n) out.push({ ...n, reachable: e.State === 5 || e.State === 'Reachable' });
   }
   return out;
 }

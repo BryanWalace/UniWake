@@ -63,6 +63,11 @@ export interface AgendaInput {
   occurrenceId: (scheduleUuid: string, at: number) => string;
   /** Hex digest of a string (SHA-256 in the application layer): the agenda version. */
   digest: (text: string) => string;
+  /**
+   * v1.6 "Testar agendamento" (FR-504.3, ADR-056): one-off shutdowns of this machine. An explicit
+   * test, so holidays, the pause and the exclusions do not apply; a disabled machine gets none.
+   */
+  oneOffs?: readonly AgendaItem[];
 }
 
 const matchesDevice = (s: AgendaSchedule, d: AgendaDevice) =>
@@ -85,6 +90,50 @@ function instants(s: AgendaSchedule, input: AgendaInput, from: number, to: numbe
   return occurrencesBetween(s, from, to)
     .filter((o) => exceptionFor(o.day, input.exceptions, s.id) === null && !paused(o.at))
     .map((o) => o.at);
+}
+
+/** Why a shutdown schedule does (not) reach a machine (FR-502.1), with the same rules as the agenda. */
+export type AgendaReason =
+  | 'included'
+  | 'schedule_disabled'
+  | 'device_disabled'
+  | 'not_in_target'
+  | 'never_flag'
+  | 'excluded_tag'
+  | 'no_occurrence';
+
+export interface AgendaExplanation {
+  scheduleId: number;
+  reason: AgendaReason;
+  /** Next shutdown of this schedule for the machine inside the window, when included. */
+  nextAt: number | null;
+}
+
+export function explainAgenda(input: AgendaInput): AgendaExplanation[] {
+  const { device, now } = input;
+  const to = now + AGENDA_DAYS * DAY;
+  return input.schedules
+    .filter((s) => s.action === 'shutdown')
+    .map((s): AgendaExplanation => {
+      const reason: AgendaReason = !s.enabled
+        ? 'schedule_disabled'
+        : !device.enabled
+          ? 'device_disabled'
+          : !matchesDevice(s, device)
+            ? 'not_in_target'
+            : device.neverScheduledShutdown
+              ? 'never_flag'
+              : excluded(s, device)
+                ? 'excluded_tag'
+                : 'included';
+      if (reason !== 'included') return { scheduleId: s.id, reason, nextAt: null };
+      const next = instants(s, input, now, to)[0] ?? null;
+      return {
+        scheduleId: s.id,
+        reason: next === null ? 'no_occurrence' : 'included',
+        nextAt: next,
+      };
+    });
 }
 
 export function buildAgenda(input: AgendaInput): Agenda {
@@ -112,6 +161,13 @@ export function buildAgenda(input: AgendaInput): Agenda {
       };
       const other = byInstant.get(at);
       if (!other || item.occurrence < other.occurrence) byInstant.set(at, item);
+    }
+  }
+  if (device.enabled) {
+    for (const item of input.oneOffs ?? []) {
+      if (item.at <= from || item.at > to) continue;
+      const other = byInstant.get(item.at);
+      if (!other || item.occurrence < other.occurrence) byInstant.set(item.at, item);
     }
   }
   let items = [...byInstant.values()].sort((a, b) => a.at - b.at);

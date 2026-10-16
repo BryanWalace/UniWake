@@ -131,6 +131,8 @@ export class PsHelperIcmp implements IcmpPinger {
   }
 
   ping(address: string, timeoutMs: number): Promise<PingResult> {
+    // v1.6 field fix: an empty address can only fail; it never goes to the helper.
+    if (address.trim() === '') return Promise.resolve(DEAD);
     return new Promise((resolve) => {
       const q = this.queues.get(timeoutMs) ?? [];
       q.push({ address, resolve });
@@ -235,9 +237,9 @@ export class PsHelperIcmp implements IcmpPinger {
   }
 
   private onLine(line: string) {
-    let msg: { id?: number; results?: unknown; ready?: boolean };
+    let msg: { id?: number | null; results?: unknown; ready?: boolean; error?: string };
     try {
-      msg = JSON.parse(line) as { id?: number; results?: unknown; ready?: boolean };
+      msg = JSON.parse(line) as typeof msg;
     } catch {
       return; // ignore anything that is not our JSON (warnings, banners)
     }
@@ -245,6 +247,22 @@ export class PsHelperIcmp implements IcmpPinger {
       this.ready = true;
       this.clearStartup();
       this.pump();
+      return;
+    }
+    if (typeof msg.error === 'string') {
+      // The helper could not handle a request: answer it now (one is in flight at a time, so an
+      // answer without id is that one) instead of waiting for its deadline and a restart.
+      const id = typeof msg.id === 'number' ? msg.id : [...this.inFlight.keys()][0];
+      const failed = id === undefined ? undefined : this.inFlight.get(id);
+      if (id !== undefined && failed) {
+        this.inFlight.delete(id);
+        this.logger.warn(
+          { requestId: id, error: msg.error.slice(0, 200) },
+          'probe helper could not ping a batch',
+        );
+        this.fail(failed);
+        queueMicrotask(() => this.pump());
+      }
       return;
     }
     if (typeof msg.id !== 'number') return;

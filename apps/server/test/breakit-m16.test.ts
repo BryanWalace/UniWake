@@ -26,7 +26,7 @@ afterEach(async () => {
 });
 
 describe('M16-D: the hub never wakes machines for a shutdown schedule', () => {
-  it('a "Desligar" schedule at 22:40 creates no run and no wake job; a "Ligar" one still runs', async () => {
+  it('a "Desligar" schedule at 22:40 never creates a wake job; a "Ligar" one still runs', async () => {
     const h = await apiHarness();
     hs.push(h);
     const s = h.services;
@@ -48,11 +48,12 @@ describe('M16-D: the hub never wakes machines for a shutdown schedule', () => {
     s.scheduler.tick();
     h.clock.set(sp(5, 22, 40, 5));
     s.scheduler.tick();
-    const runs = () =>
+    // v1.6 (ADR-053): the shutdown is now pushed and recorded as a run, but never as a wake.
+    const wakeRuns = () =>
       h.services.db.all<{ schedule_id: number }>(
-        'SELECT schedule_id FROM schedule_runs ORDER BY id',
+        'SELECT schedule_id FROM schedule_runs WHERE job_id IS NOT NULL ORDER BY id',
       );
-    expect(runs()).toEqual([]);
+    expect(wakeRuns()).toEqual([]);
     expect(h.services.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM wake_jobs')!.n).toBe(0);
 
     const on = create('Ligar 22:40'); // same minute, wake action
@@ -60,7 +61,7 @@ describe('M16-D: the hub never wakes machines for a shutdown schedule', () => {
     s.scheduler.tick();
     h.clock.set(sp(6, 22, 40, 5));
     s.scheduler.tick();
-    expect(runs().map((r) => r.schedule_id)).toEqual([on]);
+    expect(wakeRuns().map((r) => r.schedule_id)).toEqual([on]);
   });
 });
 

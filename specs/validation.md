@@ -238,3 +238,53 @@ account permissions), the CLI from the installed folder.
 
 ## V4-T03 Verdict
 See `specs/reviews/v1.4-final.md`.
+
+# Validation v1.6 (spec revision; product version 1.5.0) — Field fixes: scheduled shutdown and online status (M25–M27)
+
+Date: 2026-10-16 · Lead: Debug & Problem Solver · Branch `dev` (not released).
+
+## V6-T01 Acceptance criteria
+`validation-acs.md` (regenerated): **213 criteria, 212 automated, 1 manual (V-T05), 0 without
+evidence**. All 15 v1.6 criteria (AC-501-01 … AC-504-02) are automated. The fake agent
+(`test/helpers/fake-agent.ts`) checks in through the real agent listener and follows the agent's
+rules (orders first, agenda items at their warning, one execution per run id). Nothing is shut
+down, no packet is sent, no network is scanned.
+
+| Scenario (field report D) | Evidence |
+|---|---|
+| Pull only | `scheduled-shutdown` AC-501-04 (hub off at fire time → the agenda shuts it down), `shutdown-diagnostics` AC-504-01 "hub off at the push time" (test via the agenda alone) |
+| Push only (the v1.4.0 symptom: empty agenda) | `scheduled-shutdown` "field scenario: push only" (order runs it, T+10 says "desligou por ordem direta") |
+| Both | AC-501-03 (hub) + Pester "One execution per run id" (the real agent script) |
+| Hub off | AC-501-04 (and a late push answered `already_done`, not counted twice) |
+| User active | AC-501-05 (postponing user → "adiado — usuário ativo", never retried as "ainda ligado") |
+| Stale IP | `monitor` AC-503-02 (agent source, then ARP; `ip_changed` with its source) |
+| ICMP blocked | `monitor` AC-503-01 (agent ≤ 2 min, Reachable neighbor), AC-503-03 (two negative sweeps) |
+| Wake unchanged | AC-501-07, all v1.0–v1.4 wake tests unchanged and green |
+| Probe helper | `icmp` AC-503-04 with the real helper process (an empty or bad address no longer kills the batch) |
+| Diagnostics | AC-502-01/02, AC-504-01 ("Testar agendamento", both paths, reconciled), AC-504-02 (device page), log assertions (FR-504.2) |
+
+Runs on the validation commit: `npm run verify` green (Vitest 1004 tests, coverage thresholds,
+perf, deps, trace), Pester 86/86 with no analyzer findings, Playwright 26/26.
+
+## Failure modes found in the v1.6 reviews
+| Finding | Handling | Evidence |
+|---|---|---|
+| Empty address in an ICMP batch failed the whole batch → "missed its deadline" → every device of it offline | Per-target try/catch in the helper; the hub drops empty addresses and resolves on error answers | `icmp` (real helper) |
+| A postponing user looked like "ainda ligado" and would have been retried | Session + postpone window rule | AC-501-05 |
+| The duplicate order of an occurrence already run from the agenda would count as "estava desligada" | `already_done` report reason, ignored by the history | AC-501-04, Pester |
+| One failing test reconciliation would stop the schedules' reconciliation | Each test isolated | `shutdown-diagnostics` robustness |
+| WinSW 2.12 `stopwait` -1 after a clean stop aborted the upgrade (CI) | The installer waits for the SCM state (ADR-057) | CI installer smoke |
+
+## Not reproduced
+The field's empty agenda (version `8a818e7a…` = digest of an empty agenda) was **not reproduced**
+on fresh or v1.2-upgraded databases. Most likely cause (não verificado): the token belongs to a
+different device record than the one the schedules target (duplicate or moved device). v1.6 no
+longer depends on it: the push path shuts the machine down anyway, and the device page names the
+rule that leaves it out of each schedule, plus a dashboard notice for duplicate computer names.
+
+## V6-T02 Owner checklist (lab PC)
+In pt-BR in `specs/handoff/NEXT.md` ("Como testar as correções da v1.6 num PC do laboratório").
+
+## Verdict
+No open CRITICAL/MAJOR. v1.6 is validated on `dev`. Not merged, not tagged: waiting for the owner's
+lab-PC test and an explicit "pode subir a dev para a main".

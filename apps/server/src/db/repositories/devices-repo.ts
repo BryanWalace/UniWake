@@ -37,6 +37,8 @@ interface Row {
   online_since: number | null;
   ever_online: number | null;
   tag_ids: string | null;
+  seen_via: string | null;
+  ip_source: string | null;
 }
 
 const tagIds = (s: string | null): number[] =>
@@ -72,6 +74,10 @@ const toDevice = (r: Row): Device => ({
   lastSeenAt: r.last_seen_at,
   onlineSince: r.enabled === 1 ? r.online_since : null,
   everOnline: r.ever_online === 1,
+  // v1.6 (ADR-055): which signal confirmed "ligada" and where the IP came from.
+  seenVia:
+    r.enabled === 1 && r.status === 'online' ? ((r.seen_via as Device['seenVia']) ?? null) : null,
+  ipSource: (r.ip_source as Device['ipSource']) ?? null,
   flags: {
     macLocallyAdministered: isLocallyAdministered(r.mac),
     neverResponded: r.ever_online !== 1,
@@ -82,7 +88,7 @@ const toDevice = (r: Row): Device => ({
 const STATUS_SQL = `CASE WHEN d.enabled = 0 THEN 'desconhecido' ELSE COALESCE(s.status, 'desconhecido') END`;
 
 const SELECT = `SELECT d.*, ${STATUS_SQL} AS status, s.latency_ms, s.last_seen_at, s.online_since,
-    s.ever_online,
+    s.ever_online, s.seen_via, s.ip_source,
     (SELECT GROUP_CONCAT(dt.tag_id) FROM device_tags dt WHERE dt.device_id = d.id) AS tag_ids
   FROM devices d LEFT JOIN device_state s ON s.device_id = d.id`;
 

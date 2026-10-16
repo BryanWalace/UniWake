@@ -1,12 +1,12 @@
 # UniWake — Specification
 
-Version: **1.5** · Date: 2026-10-12 · Owner: Architect
+Version: **1.6** · Date: 2026-10-15 · Owner: Architect
 History: v0.1 draft → reviewed in `specs/reviews/phase-1-*.md` → consolidated as v1.0 → v1.1
 (Phase 2: AC-001-13/14, FR-004.7) → v1.2 (Phase 6, `specs/reviews/phase-6-*.md`: FR-017 sync-ready
 data from `.agents/07-roadmap-features.md` §A, AC-005-12, FR-012/FR-014 additions) → v1.3 (Phase 7,
 `specs/reviews/phase-7-*.md`: §6a v1.2 Modo equipe, FR-201..207) → v1.4 (Phase 9,
 `specs/reviews/phase-9-*.md`: §6b v1.3 Desligar, FR-301..311, replaces RM-2) → v1.5 (Phase 11,
-`specs/reviews/phase-11-*.md`: §6c v1.4 Backup e migração, FR-401..407).
+`specs/reviews/phase-11-*.md`: §6c v1.4 Backup e migração, FR-401..407) → v1.6 (Phase 13, field fixes: §6d FR-501..504).
 Sources: `.agents/01-project-brief.md`, `.agents/07-roadmap-features.md`, `specs/constitution.md`, `specs/improvements.md`,
 `specs/decisions.md`.
 
@@ -1196,6 +1196,114 @@ automatic exports to a share. README section.
   < 5 MB.
 - **NFR-402** Import is one transaction: a crash leaves the database as before.
 - **NFR-403** No new runtime dependency (gzip from `node:zlib`, crypto from `node:crypto`).
+
+## 6d. Field fixes — v1.5 "Desligamento agendado e status confiáveis" (ADR-053..056)
+
+Field report on v1.4.0 (2026-10-15): scheduled wake works; manual shutdown works; **scheduled
+shutdown never happens on any PC** (agent agenda `{"items":[],"nextWakes":[]}`, version
+`8a818e7a…` constant, i.e. the hub served an agenda that matched no schedule at all — not even the
+wake schedules that do wake those PCs); **online status is wrong for PCs that are on**; the log
+shows "probe helper missed its deadline; restarting it" at every start.
+
+Root causes found (Phase 13 debug, `specs/reviews/phase-13-debug.md`):
+- **Status:** one empty address in a ping batch makes the ICMP helper answer `{"id":null,…}`; the
+  hub ignored that answer, waited for the deadline, restarted the helper and marked **every device
+  of the batch** (up to 256) dead. Reproduced and fixed (FR-503.5).
+- **Scheduled shutdown:** by design (ADR-048) shutdowns ran **only** from the agent's agenda, with no
+  path from the hub at fire time and nothing in the schedule history, so any agenda problem was
+  silent. The served agenda matched no schedule for the agent's device; the matching code is the one
+  the working wake scheduler uses, and fresh or v1.2-upgraded databases produce correct agendas, so
+  the field data (most likely the device record the agent token points to vs the records the
+  schedules target) could not be reproduced here. FR-501..502 add the hub path, per-schedule
+  explanations and duplicate detection so the field shows exactly why.
+
+### FR-501 Scheduled shutdown: two paths, one execution
+**FR-501.1 Pull (agenda).** Unchanged contract; the agenda for a device lists every enabled
+shutdown occurrence whose target includes it (same resolution as the wake scheduler and manual
+shutdown), minus excluded tags and "Nunca desligar por agendamento"; its version changes whenever
+its items change and the cache is invalidated by any schedule change. The agent runs items from
+its stored agenda even with the hub off.
+**FR-501.2 Push (order).** When the hub is running, at **T − aviso − 1 min** (T = shutdown time) the
+scheduler sends a shutdown order for the occurrence to every targeted ready machine **through the
+manual-shutdown service** (same orders, warning, postpone and active-user rules, same live job
+view). In team mode only the hub that wins the schedule lease sends it.
+**FR-501.3 One execution.** Both paths carry the same run id (the occurrence UUID, v5 of schedule
+UUID + T). The agent records it in its handled ids whichever path runs first and ignores the other.
+**FR-501.4 Reconciliation.** 10 minutes after T, per targeted machine: **desligou** (report or
+monitor offline) with the path that ran it (**agenda** / **ordem direta**), **adiado — usuário
+ativo**, **ainda ligado**, **sem agente**, **agenda desatualizada** (its last check-in got an agenda
+version without the item), **sem resposta** (no check-in since before the warning). "Ainda ligado"
+with no reason gets **one** retry through the push path. Results appear in the schedule's
+history (Agendamentos › Execuções) and in Histórico.
+**FR-501.5 This PC.** If a shutdown (scheduled or manual) targets the PC that runs the hub, the
+form and the preview say so ("Inclui este PC, que roda o UniWake…"); it is never skipped silently.
+**FR-501.6 Wake unchanged.** The scheduled wake path changes only in shared code.
+
+### FR-502 Why a machine has (no) scheduled shutdown
+**FR-502.1** Per device, for each enabled shutdown schedule: included or the reason (target does not
+include it — with the target and the machine's room/tags —, excluded tag, "Nunca desligar por
+agendamento", machine disabled, no occurrence in the window, holiday/vacation/pause).
+**FR-502.2** Enrollment that **creates** a new device while another device has the same hostname
+records a notice "Possível máquina duplicada" (both names and MACs) on the dashboard and the
+device page.
+
+### FR-503 Online status from several signals
+**FR-503.1** A device is **online if any signal is positive**: (1) **agent check-in** in the last 2
+minutes (strongest), (2) ICMP echo, (3) TCP connect on the configured ports (135, 445, 3389), (4)
+the hub's neighbor (ARP) table has the device MAC in state *Reachable*. Lab PCs open no port of
+their own (the agent only connects out), so there is no agent port to probe.
+**FR-503.2** Offline only after `monitor.offlineAfter` (default 2) consecutive sweeps with every
+signal negative.
+**FR-503.3** The device's IP follows its MAC: the source address of its last agent check-in, then
+its neighbor-table entry, then DNS; a changed IP is recorded with its source and used from the next
+sweep (never keep probing a stale DHCP address).
+**FR-503.4** The panel shows the confirming signal and time: "Ligada — agente/ping/porta/ARP, há 1
+min", and the IP's source.
+**FR-503.5** The ICMP helper answers every request with its id, errors per address; the hub never
+sends an empty address; if the helper fails, the sweep logs one warning and uses the other
+signals.
+
+### FR-504 Diagnostics
+**FR-504.1** Device page "Desligamento remoto": agent version, last check-in, agenda version and item
+count it holds (as last served), next scheduled shutdown (local time), last shutdown result and
+path, current IP and how it was learned, plus FR-502.1.
+**FR-504.2** Info-level hub log lines: schedule fired (action, schedule, targets), agenda changed
+(device, version, items), agenda served with a new version (device, version), push order sent
+(occurrence, count), reconciliation result (occurrence, counts).
+**FR-504.3** "Testar agendamento" (device page, admin/operator): a one-off scheduled shutdown of that
+machine in N minutes (2–60), delivered through **both** paths and reconciled like a schedule.
+
+### Acceptance criteria
+- AC-501-01: Given a room-, tag- or device-targeted shutdown schedule, Then the agenda of every
+  targeted ready device lists its occurrences (America/Sao_Paulo time) and its version changes when
+  the schedule is created, edited, disabled or deleted.
+- AC-501-02: Given the hub running at T − aviso − 1 min, Then each targeted ready machine gets one
+  order carrying the occurrence id, with the schedule's warning and postpone policy, excluded tags
+  and flagged machines left out.
+- AC-501-03 [Pester]: Given the same occurrence by agenda and by order, Then the agent runs it once,
+  whichever comes first.
+- AC-501-04: Given the hub off at fire time, Then nothing is pushed and the agent's agenda still
+  shuts the machine down (fake agent); after a hub restart before T + 60 min the push is sent and
+  ignored by the agent that already ran it.
+- AC-501-05: Given reconciliation at T + 10 min, Then each machine has one result with its path,
+  and "ainda ligado" without a reason gets exactly one retry.
+- AC-501-06: Given a shutdown targeting the hub's own PC, Then the preview and the schedule form
+  warn.
+- AC-501-07: Given scheduled wake schedules, Then they fire exactly as before (regression).
+- AC-502-01: Given a device not targeted, Then the explanation names the schedule and the reason.
+- AC-502-02: Given an enrollment that creates a device with the hostname of another, Then a
+  duplicate notice is recorded.
+- AC-503-01: Given ICMP blocked but a check-in 1 minute ago, Then the device is online "via
+  agente".
+- AC-503-02: Given a DHCP change (new IP in the check-in source / neighbor table), Then the next
+  sweep probes the new IP and an IP change event names its source.
+- AC-503-03: Given one negative sweep, Then the status stays online; after two, offline.
+- AC-503-04 [CI-Win]: Given an empty or invalid address in a batch, Then the helper answers with the
+  request id and per-address errors; the hub resolves the batch without a deadline restart.
+- AC-504-01: Given "Testar agendamento" in 5 minutes, Then the device agenda has a one-off item and
+  the push is sent at its time; the result is reconciled.
+- AC-504-02: Given the device page, Then it shows agenda version, item count, next shutdown, last
+  result with path and the IP source.
 
 ## 7. Non-functional requirements
 | ID | Requirement | Measure / test |

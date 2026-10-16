@@ -49,6 +49,11 @@ export interface EnrollmentTokenView extends EnrollmentTokenRow {
 }
 
 export interface EnrollmentRepo {
+  /** v1.6 (FR-502.2): another device with this computer name, if any. */
+  sameComputerName?(
+    hostname: string,
+    exceptId: number,
+  ): { id: number; name: string; mac: string } | undefined;
   insertToken(t: Omit<EnrollmentTokenRow, 'id' | 'uses' | 'revokedAt'>): number;
   getToken(id: number): EnrollmentTokenView | undefined;
   findByHash(hash: string): EnrollmentTokenView | undefined;
@@ -102,6 +107,16 @@ export interface EnrollmentDeps {
   agentPort: number;
   /** AC-007-07: moved machines are listed on the dashboard for 24 h. */
   onMoved: (move: EnrollMove) => void;
+  /** v1.6 (FR-502.2): a new device whose computer name another device already has. */
+  onPossibleDuplicate?: (d: {
+    deviceId: number;
+    deviceName: string;
+    mac: string;
+    otherId: number;
+    otherName: string;
+    otherMac: string;
+    at: number;
+  }) => void;
   /** v1.3: the hub key id for `-HubKeyId`; null while the key is not loaded. */
   hubKeyId?: () => string | null;
 }
@@ -403,6 +418,18 @@ export class EnrollmentService {
         name = req.hostname.slice(0, LIMITS.name);
         deviceId = this.d.repo.insertDevice({ ...write, name }, now);
         result = 'created';
+        const twin = this.d.repo.sameComputerName?.(req.hostname, deviceId);
+        if (twin) {
+          this.d.onPossibleDuplicate?.({
+            deviceId,
+            deviceName: name,
+            mac: req.mac,
+            otherId: twin.id,
+            otherName: twin.name,
+            otherMac: twin.mac,
+            at: now,
+          });
+        }
       } else {
         ({ id: deviceId, name } = existing);
         this.d.repo.updateDevice(deviceId, write, now);
