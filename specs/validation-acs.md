@@ -5,7 +5,7 @@ and CI workflow steps. "pass (automated)" means the listed tests or CI steps exi
 verify` / CI ran them green on the commit this file was generated from; up to three pieces of
 evidence are shown per criterion.
 
-**197** automated criteria with evidence · **1** manual (owner checklist, V-T05) ·
+**212** automated criteria with evidence · **1** manual (owner checklist, V-T05) ·
 **0** without evidence.
 
 | AC | Task | Status | Evidence |
@@ -183,7 +183,7 @@ evidence are shown per criterion.
 | AC-305-04 | M17-T03 | pass (automated) | `apps/server/test/power-orders.test.ts` › AC-305-04: a machine flagged "Nunca desligar por agendamento" is named and needs an explicit confirmation |
 | AC-305-02 | M17-T03 | pass (automated) | `apps/server/test/power-orders.test.ts` › AC-305-02: executed + offline = desligou; still online 5 min later = não confirmou |
 | AC-305-03 | M19-T02 | pass (automated) | `e2e/power.spec.ts` › AC-305-03: "Desligar" on a room shows the machines receiving, one postponing and the rest shutting down |
-| AC-306-01 | M17-T04 | pass (automated) | `apps/server/test/schedule-actions.test.ts` › AC-306-01: the hub never runs a shutdown schedule; the machines' agendas carry it |
+| AC-306-01 | M17-T04 | pass (automated) | `apps/server/test/schedule-actions.test.ts` › AC-306-01: a shutdown schedule never wakes anything; the agendas carry it and the hub pushes it (ADR-053) |
 | AC-306-02 | M19-T01 | pass (automated) | `e2e/power.spec.ts` › AC-306-02: a "Desligar" schedule lists its next runs and shows its action |
 | AC-306-03 | M16-T05 | pass (automated) | `apps/server/test/agenda.test.ts` › AC-306-03: excluded tags and "Nunca desligar por agendamento" get no items; others do |
 | AC-307-01 | M17-T05 | pass (automated) | `apps/server/test/power-status.test.ts` › AC-307-01: reports arriving over several check-ins become one row aggregated by outcome |
@@ -208,3 +208,18 @@ evidence are shown per criterion.
 | AC-405-01 | M23-T03 | pass (automated) | `apps/server/test/auto-export.test.ts` › AC-405-01: writes a file without secrets to the folder<br>`apps/server/test/auto-export.test.ts` › AC-405-01: keeps only the newest N of this PC and never touches other files<br>`apps/server/test/auto-export.test.ts` › AC-405-01: a missing folder is a warning in "Saúde do sistema" until the next success |
 | AC-406-01 | M23-T04 | pass (automated) | `apps/server/test/migration-cli.test.ts` › AC-406-01: --export writes a valid file; secret sections need --password-env<br>`apps/server/test/migration-cli.test.ts` › AC-406-01: --import refuses while a hub answers (exit 3), then imports (exit 0) |
 | AC-407-01 | M24-T01 | pass (automated) | `apps/web/test/help-pages.test.tsx` › AC-407-01: "Backup e migração" opens from the help index |
+| AC-501-01 | M25-T01 | pass (automated) | `apps/server/test/scheduled-shutdown.test.ts` › AC-501-01: room-, tag- and device-targeted schedules reach exactly their devices<br>`apps/server/test/scheduled-shutdown.test.ts` › AC-501-01: the version changes on create, edit, disable, enable and delete |
+| AC-501-02 | M25-T02 | pass (automated) | `apps/server/test/scheduled-shutdown.test.ts` › AC-501-02: at T − aviso − 1 min each ready machine gets one order with the run id and policy |
+| AC-501-03 | M25-T03 | pass (automated) | `apps/server/test/scheduled-shutdown.test.ts` › AC-501-03 (hub): pull and push of the same occurrence run once<br>`scripts/tests/agent-executor.Tests.ps1` › AC-501-03: the order arrives first: it runs, reports both ids and T, and the agenda item never runs<br>`scripts/tests/agent-executor.Tests.ps1` › AC-501-03: the agenda ran first: the late order is settled as already_done and never runs |
+| AC-501-04 | M25-T02 | pass (automated) | `apps/server/test/scheduled-shutdown.test.ts` › AC-501-04: hub off at fire time → the agenda shuts it down; a late push is ignored<br>`apps/server/test/scheduled-shutdown.test.ts` › AC-501-04: past T + 60 min nothing is pushed any more |
+| AC-501-05 | M25-T04 | pass (automated) | `apps/server/test/scheduled-shutdown.test.ts` › AC-501-05: each machine gets one result with its path; "ainda ligado" gets exactly one retry |
+| AC-501-06 | M25-T05 | pass (automated) | `apps/server/test/scheduled-shutdown.test.ts` › AC-501-06: the shutdown preview names the hub PC among the targets<br>`apps/web/test/schedules-page.test.tsx` › AC-501-06: a "Desligar" schedule shows who it reaches today and warns when it includes this PC |
+| AC-501-07 | M25-T02 | pass (automated) | `apps/server/test/scheduled-shutdown.test.ts` › AC-501-07: scheduled wake fires exactly as before next to a shutdown schedule |
+| AC-502-01 | M27-T01 | pass (automated) | `apps/server/test/shutdown-diagnostics.test.ts` › AC-502-01: each "Desligar" schedule is listed with its reason; the included one with its next time |
+| AC-502-02 | M27-T01 | pass (automated) | `apps/server/test/shutdown-diagnostics.test.ts` › AC-502-02: enrollment that creates a device named like another one leaves a duplicate notice |
+| AC-503-01 | M26-T02 | pass (automated) | `apps/server/test/monitor.test.ts` › AC-503-01: ICMP blocked but an agent check-in 1 minute ago → online "via agente"<br>`apps/server/test/monitor.test.ts` › AC-503-01: a Reachable neighbor entry for the MAC counts; a Stale one does not |
+| AC-503-02 | M26-T02 | pass (automated) | `apps/server/test/monitor.test.ts` › AC-503-02: after a DHCP change the next sweep probes the new IP (agent source, then ARP) |
+| AC-503-03 | M26-T02 | pass (automated) | `apps/server/test/monitor.test.ts` › AC-503-03: one all-negative sweep keeps it online; the second one marks it offline |
+| AC-503-04 | M26-T01 | pass (automated) | `apps/server/test/icmp.test.ts` › AC-503-04: an error answer (with or without its id) resolves the batch at once, without a restart<br>`apps/server/test/icmp.test.ts` › AC-503-04: an empty address is never sent to the helper<br>`apps/server/test/icmp.test.ts` › AC-503-04: the real helper answers a batch with an empty and an invalid address per address, with its id |
+| AC-504-01 | M27-T02 | pass (automated) | `apps/server/test/shutdown-diagnostics.test.ts` › AC-504-01: a test in 5 minutes reaches the agenda and the push, runs once and is reconciled<br>`apps/server/test/shutdown-diagnostics.test.ts` › AC-504-01: with the hub off at the push time, the agenda alone shuts the machine down<br>`apps/web/test/device-page.test.tsx` › AC-504-01: schedules a one-off shutdown in N minutes and shows how it went |
+| AC-504-02 | M27-T01 | pass (automated) | `apps/web/test/device-page.test.tsx` › AC-504-02: shows the next shutdown, the served and current agenda, the last result and each schedule with its reason |

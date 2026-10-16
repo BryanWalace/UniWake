@@ -389,3 +389,37 @@ describe('the PC running the hub (FR-501.5)', () => {
     expect(other.json<{ self: unknown[] }>().self).toEqual([]);
   });
 });
+
+describe('field scenario: push only (V6-T01)', () => {
+  it('a machine whose agenda misses the schedule (the v1.4.0 symptom) still shuts down by order', async () => {
+    const { w, s, room, inRoom } = await lab();
+    s.schedules.create(
+      {
+        name: 'Desligar',
+        weekdays: 127,
+        timeLocal: '06:30',
+        target: { type: 'rooms', roomIds: [room.id] },
+        action: 'shutdown',
+      },
+      ACTOR,
+    );
+    const a = w.agent(inRoom);
+    const emptyAgenda = async () => {
+      await a.checkin();
+      a.agenda = { ...a.agenda!, items: [] }; // what the field PC held
+    };
+    await emptyAgenda();
+    w.h.clock.set(AT_0630 - 6 * MIN);
+    s.scheduler.tick();
+    await emptyAgenda();
+    a.step(w.h.clock.now());
+    a.step(AT_0630);
+    expect(a.executions).toEqual([expect.objectContaining({ path: 'order' })]);
+    await a.checkin();
+    w.h.clock.set(AT_0630 + 10 * MIN);
+    s.scheduler.tick();
+    const run = s.db.get<{ detail: string }>('SELECT detail FROM schedule_runs');
+    expect(run!.detail).toContain('conferência às T+10: 1 desligou');
+    expect(run!.detail).toContain('por ordem direta: 1');
+  });
+});
