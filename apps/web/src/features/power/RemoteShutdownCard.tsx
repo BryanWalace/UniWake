@@ -86,7 +86,11 @@ export function RemoteShutdownCard({
       ) : (
         <>
           <AgentDetails agent={q.data} />
-          <ShutdownDiagnosticsPanel deviceId={deviceId} />
+          <ShutdownDiagnosticsPanel
+            deviceId={deviceId}
+            deviceName={deviceName}
+            ready={q.data.readiness === 'ready'}
+          />
         </>
       )}
       <FormError message={error} />

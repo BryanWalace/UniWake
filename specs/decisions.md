@@ -968,6 +968,14 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
   - "Testar agendamento": machine-local one-off items (`power_tests`: device, T, policy, uuid);
     the agenda builder adds them for that device and the scheduler pushes and reconciles them like
     schedule occurrences. Machine-local on purpose (a test from the hub the PC talks to).
+    Implementation (M27-T02): the test's random UUID is the run id on both paths (agenda item
+    occurrence and pushed job UUID). T is rounded up to the minute. The warning is the default
+    one, capped at N − 1 min so the order can arrive before it starts. Postpone follows the
+    settings. Holidays, the pause and exclusions do not apply (an explicit test), but a machine
+    without a ready agent or marked "Nunca desligar por agendamento" is refused with a clear
+    message. The reconciliation counts go to `power_reconciled`. The device page computes the
+    result on demand with the same classifier, and the history names it "Testar agendamento
+    (máquina)".
   - Info logs for fires, agenda changes, agenda served with a new version, pushes, reconciliations
     (only on change, so 500 PCs do not flood the log).
 

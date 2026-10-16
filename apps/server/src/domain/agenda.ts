@@ -63,6 +63,11 @@ export interface AgendaInput {
   occurrenceId: (scheduleUuid: string, at: number) => string;
   /** Hex digest of a string (SHA-256 in the application layer): the agenda version. */
   digest: (text: string) => string;
+  /**
+   * v1.6 "Testar agendamento" (FR-504.3, ADR-056): one-off shutdowns of this machine. An explicit
+   * test, so holidays, the pause and the exclusions do not apply; a disabled machine gets none.
+   */
+  oneOffs?: readonly AgendaItem[];
 }
 
 const matchesDevice = (s: AgendaSchedule, d: AgendaDevice) =>
@@ -156,6 +161,13 @@ export function buildAgenda(input: AgendaInput): Agenda {
       };
       const other = byInstant.get(at);
       if (!other || item.occurrence < other.occurrence) byInstant.set(at, item);
+    }
+  }
+  if (device.enabled) {
+    for (const item of input.oneOffs ?? []) {
+      if (item.at <= from || item.at > to) continue;
+      const other = byInstant.get(item.at);
+      if (!other || item.occurrence < other.occurrence) byInstant.set(item.at, item);
     }
   }
   let items = [...byInstant.values()].sort((a, b) => a.at - b.at);

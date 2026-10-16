@@ -10,6 +10,7 @@ import { AppError } from '../errors';
 import type { Clock } from '../ports';
 import type { AgendaService } from './agenda-service';
 import { type ReportRow, resultOf } from './power-status';
+import type { ShutdownTestService } from './shutdown-test';
 
 export interface DiagnosticsStore {
   served(
@@ -31,6 +32,8 @@ export class ShutdownDiagnosticsService {
     private readonly d: {
       agenda: Pick<AgendaService, 'forDevice' | 'explain'>;
       store: DiagnosticsStore;
+      /** FR-504.3: the latest "Testar agendamento" (absent in tests that do not need it). */
+      tests?: Pick<ShutdownTestService, 'latest'>;
       clock: Clock;
     },
   ) {}
@@ -66,6 +69,7 @@ export class ShutdownDiagnosticsService {
           detail: r.detail,
         };
       })(),
+      test: this.d.tests?.latest(deviceId) ?? null,
     };
   }
 }

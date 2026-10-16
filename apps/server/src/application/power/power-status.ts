@@ -68,6 +68,28 @@ export interface DeviceExtras {
   agendaItems?: number | null;
 }
 
+/**
+ * Who an occurrence targets and the policy that bounds its timing (ADR-054): a schedule's, or a
+ * "Testar agendamento" one-off's (FR-504.3).
+ */
+export interface OccurrenceScope {
+  target: WakeTarget;
+  /** Tag UUIDs it skips. */
+  excludeTags: readonly string[];
+  warningMinutes: number | null;
+  allowPostpone: boolean | null;
+  postponeMax: number | null;
+  postponeMinutes: number | null;
+}
+
+/** v1.6 (FR-504.3): a "Testar agendamento" one-off, listed in the history like a schedule. */
+export interface TestOccurrence {
+  uuid: string;
+  at: number;
+  deviceName: string;
+  scope: OccurrenceScope;
+}
+
 export interface PowerStatusDeps {
   agents: (deviceIds?: readonly number[]) => AgentRowView[];
   /** Reports of scheduled occurrences planned since `since`, oldest first. */
@@ -78,6 +100,8 @@ export interface PowerStatusDeps {
   pushedOccurrences?: (since: number) => { occurrence: string; plannedAt: number }[];
   /** v1.6: per machine, the state and postpones of the pushed order of an occurrence. */
   occurrenceOrders?: (occurrence: string) => Map<number, { state: string; postpones: number }>;
+  /** v1.6 (FR-504.3): the "Testar agendamento" one-offs planned since `since`. */
+  tests?: (since: number) => TestOccurrence[];
   schedules: () => ScheduleRecord[];
   refs: TargetRefs;
   resolve: (target: WakeTarget) => { devices: DeviceSnap[] };
@@ -168,6 +192,7 @@ export class PowerStatusService {
     // v1.6 (ADR-053/054): occurrences the hub pushed are listed even before any report arrives.
     const pushed = this.d.pushedOccurrences?.(now - HISTORY_DAYS * DAY) ?? [];
     for (const p of pushed) if (!groups.has(p.occurrence)) groups.set(p.occurrence, []);
+    const tests = new Map((this.d.tests?.(now - HISTORY_DAYS * DAY) ?? []).map((t) => [t.uuid, t]));
     const occurrences: PowerOccurrence[] = [];
     for (const [occurrence, rows] of groups) {
       const plannedAt =
@@ -178,7 +203,10 @@ export class PowerStatusService {
         plannedAt === null
           ? undefined
           : schedules.find((s) => this.d.occurrenceId(s.uuid!, plannedAt) === occurrence);
-      const devices = this.occurrenceDevices(occurrence, rows, schedule, plannedAt, now);
+      const test = schedule ? undefined : tests.get(occurrence);
+      const devices = test
+        ? this.occurrenceDevicesFor(occurrence, rows, test.scope, test.at, now)
+        : this.occurrenceDevices(occurrence, rows, schedule, plannedAt, now);
       const counts = Object.fromEntries(
         [...SHUTDOWN_RESULTS, 'postponed'].map((k) => [k, 0]),
       ) as PowerOccurrence['counts'];
@@ -189,7 +217,7 @@ export class PowerStatusService {
       occurrences.push({
         occurrence,
         scheduleId: schedule?.id ?? null,
-        scheduleName: schedule?.name ?? null,
+        scheduleName: test ? `Testar agendamento (${test.deviceName})` : (schedule?.name ?? null),
         plannedAt,
         counts,
         maxPostpones: Math.max(0, ...devices.map((x) => x.postpones)),
@@ -219,6 +247,30 @@ export class PowerStatusService {
     plannedAt: number | null,
     now: number,
   ): PowerOccurrenceDevice[] {
+    return this.occurrenceDevicesFor(
+      occurrence,
+      rows,
+      schedule && {
+        target: rowsToTarget(schedule.targets, this.d.refs),
+        excludeTags: schedule.excludeTags ?? [],
+        warningMinutes: schedule.warningMinutes ?? null,
+        allowPostpone: schedule.allowPostpone ?? null,
+        postponeMax: schedule.postponeMax ?? null,
+        postponeMinutes: schedule.postponeMinutes ?? null,
+      },
+      plannedAt,
+      now,
+    );
+  }
+
+  /** The same as `occurrenceDevices` for any scope (a schedule or a one-off test). */
+  occurrenceDevicesFor(
+    occurrence: string,
+    rows: readonly ReportRow[],
+    scope: OccurrenceScope | undefined,
+    plannedAt: number | null,
+    now: number,
+  ): PowerOccurrenceDevice[] {
     const devices: PowerOccurrenceDevice[] = rows.map((r) => ({
       deviceId: r.deviceId,
       name: r.deviceName,
@@ -230,9 +282,9 @@ export class PowerStatusService {
       nativeWarning: r.nativeWarning,
       userLoggedOn: r.userLoggedOn,
     }));
-    if (schedule && plannedAt !== null) {
+    if (scope && plannedAt !== null) {
       devices.push(
-        ...this.missing(occurrence, schedule, plannedAt, new Set(rows.map((r) => r.deviceId)), now),
+        ...this.missing(occurrence, scope, plannedAt, new Set(rows.map((r) => r.deviceId)), now),
       );
     }
     return devices;
@@ -241,19 +293,17 @@ export class PowerStatusService {
   /** Machines the schedule targets that have not reported this occurrence (ADR-054). */
   private missing(
     occurrence: string,
-    schedule: ScheduleRecord,
+    schedule: OccurrenceScope,
     plannedAt: number,
     reported: Set<number>,
     now: number,
   ): PowerOccurrenceDevice[] {
-    const targeted = this.d
-      .resolve(rowsToTarget(schedule.targets, this.d.refs))
-      .devices.filter((d) => !reported.has(d.id));
+    const targeted = this.d.resolve(schedule.target).devices.filter((d) => !reported.has(d.id));
     if (targeted.length === 0 || now < plannedAt) return [];
     const agents = new Map(this.d.agents(targeted.map((d) => d.id)).map((a) => [a.deviceId, a]));
     const extras = this.d.deviceExtras(targeted.map((d) => d.id));
     const orders = this.d.occurrenceOrders?.(occurrence) ?? new Map<number, OrderView>();
-    const exclude = new Set(schedule.excludeTags ?? []);
+    const exclude = new Set(schedule.excludeTags);
     const warningStart = plannedAt - (schedule.warningMinutes ?? 5) * 60_000;
     // While a user may still be postponing, the hub hears nothing until the final report.
     const postponeEnd =

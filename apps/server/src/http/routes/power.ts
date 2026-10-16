@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { idParamSchema, powerRequestSchema } from '@uniwake/shared';
+import { idParamSchema, powerRequestSchema, shutdownTestRequestSchema } from '@uniwake/shared';
 import type { HttpServices } from '../context';
 import { actorOf } from '../session-auth';
 
@@ -32,6 +32,14 @@ export function powerRoutes(app: FastifyInstance, s: HttpServices): void {
     '/api/devices/:id/shutdown-diagnostics',
     { config: auth, schema: { params: idParamSchema } },
     async (req) => s.shutdownDiagnostics.forDevice(req.params.id),
+  );
+
+  // v1.6 (FR-504.3): "Testar agendamento" — a one-off scheduled shutdown of this machine.
+  r.post(
+    '/api/devices/:id/shutdown-test',
+    { config: auth, schema: { params: idParamSchema, body: shutdownTestRequestSchema } },
+    async (req, reply) =>
+      reply.status(201).send(s.shutdownTests.create(req.params.id, req.body.minutes, actorOf(req))),
   );
 
   r.get('/api/power/history', { config: auth }, async () => s.powerStatus.history());

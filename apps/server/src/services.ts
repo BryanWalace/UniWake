@@ -12,6 +12,7 @@ import { AutoExportService } from './application/migration/auto-export';
 import { ShutdownReconciler } from './application/power/reconcile';
 import { SelfDeviceService } from './application/power/self-device';
 import { ShutdownDiagnosticsService } from './application/power/diagnostics';
+import { ShutdownTestService } from './application/power/shutdown-test';
 import { nodeExportFolder } from './adapters/export-folder';
 import { SqliteMigrationStateRepo } from './db/repositories/migration-repo';
 import { applyImport, hasPreparedMachines, previewImport } from './db/sync/import';
@@ -107,6 +108,7 @@ import {
   pushedOccurrences,
   SqliteReconcileStore,
   SqliteDiagnosticsStore,
+  SqliteShutdownTestsStore,
   occurrenceReports,
   recentPowerJobIds,
   SqlitePowerJobsRepo,
@@ -446,9 +448,14 @@ export function createServices(
           )
           .map((r) => r.id);
   const lateReconcile: { r?: ShutdownReconciler } = {};
+  // v1.6 (FR-504.3): "Testar agendamento" one-offs, built with the power services below.
+  const lateTests: { t?: ShutdownTestService } = {};
   const scheduler = new Scheduler({
     repo: schedulerRepo,
-    reconcile: (now) => void lateReconcile.r?.tick(now),
+    reconcile: (now) => {
+      lateTests.t?.tick(now);
+      lateReconcile.r?.tick(now);
+    },
     pushShutdown: (sched, plannedAt) => {
       if (!latePower.power || !sched.uuid) throw new Error('shutdown service not ready');
       const occurrence = scheduleRunUuid(sched.uuid, plannedAt);
@@ -663,6 +670,7 @@ export function createServices(
     dataVersion: () => powerRepo.dataVersion(),
     occurrenceId: scheduleRunUuid,
     digest: (t) => createHash('sha256').update(t).digest('hex'),
+    oneOffs: (id) => lateTests.t?.oneOffs(id) ?? [],
     clock,
   });
   const power = (latePower.power = new PowerOrdersService({
@@ -681,6 +689,7 @@ export function createServices(
     deviceExtras: (ids) => deviceExtras(db, ids),
     pushedOccurrences: (since) => pushedOccurrences(db, since),
     occurrenceOrders: (occ) => occurrenceOrders(db, occ),
+    tests: (since) => lateTests.t?.forHistory(since) ?? [],
     schedules: () => schedulesRepo.list(),
     refs,
     resolve: (target) => wake.resolveForPower(target),
@@ -705,6 +714,34 @@ export function createServices(
     clock,
     logger: ports.logger.child({ module: 'reconcile' }),
   });
+  const shutdownTests = (lateTests.t = new ShutdownTestService({
+    store: new SqliteShutdownTestsStore(db),
+    device: (id) => {
+      const r = db.get<{ name: string; never: number }>(
+        'SELECT name, never_scheduled_shutdown AS never FROM devices WHERE id = ?',
+        [id],
+      );
+      return r && { name: r.name, neverScheduledShutdown: r.never === 1 };
+    },
+    readiness: (id) => powerStatus.device(id).readiness,
+    agenda,
+    power,
+    status: powerStatus,
+    jobIdByUuid: (uuid) =>
+      db.get<{ id: number }>('SELECT id FROM power_jobs WHERE uuid = ?', [uuid])?.id ?? null,
+    orderUuid: (occurrence, deviceId, suffix) =>
+      uuidV5(
+        `power-order:${occurrence}:${changeLog(db).uuidOf('device', deviceId) ?? deviceId}` +
+          (suffix ? `:${suffix}` : ''),
+      ),
+    newUuid: () => randomUUID(),
+    settings,
+    audit,
+    standby: () => migrationState.standby() !== null,
+    transaction: tx,
+    clock,
+    logger: ports.logger.child({ module: 'power-test' }),
+  }));
   const agentPort = opts.running?.agentPort ?? 47101;
   const agent = new AgentService({
     tokens: agentTokens,
@@ -800,8 +837,10 @@ export function createServices(
     shutdownDiagnostics: new ShutdownDiagnosticsService({
       agenda,
       store: new SqliteDiagnosticsStore(db),
+      tests: shutdownTests,
       clock,
     }),
+    shutdownTests,
     selfDevice: new SelfDeviceService({
       interfaces: ports.interfaces,
       devicesMatching: (macs, ips) =>

@@ -14,6 +14,7 @@ import type {
 import type { DeviceExtras, ReportRow } from '../../application/power/power-status';
 import type { ReconcileStore } from '../../application/power/reconcile';
 import type { DiagnosticsStore } from '../../application/power/diagnostics';
+import type { ShutdownTestRow, ShutdownTestStore } from '../../application/power/shutdown-test';
 import type { AgendaDevice } from '../../domain/agenda';
 import type { Db } from '../connection';
 import { changeLog } from '../sync/change-log';
@@ -646,6 +647,51 @@ export function occurrenceOrders(
       });
   }
   return out;
+}
+
+/** FR-504.3 (ADR-056): the machine-local "Testar agendamento" one-offs. */
+export class SqliteShutdownTestsStore implements ShutdownTestStore {
+  constructor(private readonly db: Db) {}
+
+  insert(t: {
+    uuid: string;
+    deviceId: number;
+    at: number;
+    warningMinutes: number;
+    createdBy: number | null;
+    createdAt: number;
+  }): void {
+    this.db.run(
+      'INSERT INTO power_tests (uuid, device_id, at, warning_minutes, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [t.uuid, t.deviceId, t.at, t.warningMinutes, t.createdBy, t.createdAt],
+    );
+  }
+
+  since(since: number, deviceId?: number): ShutdownTestRow[] {
+    return this.db.all<ShutdownTestRow>(
+      `SELECT t.id, t.uuid, t.device_id AS deviceId, d.name AS deviceName, t.at,
+              t.warning_minutes AS warningMinutes, t.created_at AS createdAt,
+              t.pushed_at AS pushedAt, t.reconciled_at AS reconciledAt
+       FROM power_tests t JOIN devices d ON d.id = t.device_id
+       WHERE t.at >= ? AND (? IS NULL OR t.device_id = ?)
+       ORDER BY t.at, t.id`,
+      [since, deviceId ?? null, deviceId ?? null],
+    );
+  }
+
+  markPushed(id: number, at: number): void {
+    this.db.run('UPDATE power_tests SET pushed_at = ? WHERE id = ?', [at, id]);
+  }
+
+  markReconciled(id: number, occurrence: string, at: number, counts: Record<string, number>): void {
+    this.db.transaction(() => {
+      this.db.run('UPDATE power_tests SET reconciled_at = ? WHERE id = ?', [at, id]);
+      this.db.run(
+        'INSERT OR IGNORE INTO power_reconciled (occurrence, reconciled_at, counts) VALUES (?, ?, ?)',
+        [occurrence, at, JSON.stringify(counts)],
+      );
+    });
+  }
 }
 
 /** FR-504.1 (ADR-056): what the device diagnostics read. */

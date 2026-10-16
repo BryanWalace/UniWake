@@ -162,6 +162,27 @@ export const SHUTDOWN_REASON_LABEL = {
 } as const;
 export type ShutdownReason = keyof typeof SHUTDOWN_REASON_LABEL;
 
+/** FR-504.3 "Testar agendamento": a one-off scheduled shutdown of one machine in N minutes. */
+export const SHUTDOWN_TEST_MINUTES = { min: 2, max: 60, default: 5 } as const;
+export const shutdownTestRequestSchema = z.object({
+  minutes: z.number().int().min(SHUTDOWN_TEST_MINUTES.min).max(SHUTDOWN_TEST_MINUTES.max),
+});
+export type ShutdownTestRequest = z.infer<typeof shutdownTestRequestSchema>;
+
+export interface ShutdownTest {
+  uuid: string;
+  /** The planned shutdown instant. */
+  at: number;
+  warningMinutes: number;
+  createdAt: number;
+  /** When the hub sent the order (push path), null before T − aviso − 1 min. */
+  pushedAt: number | null;
+  reconciledAt: number | null;
+  /** Null while it is still ahead (or in its warning); then as in the history. */
+  result: ShutdownResult | null;
+  path: 'agenda' | 'order' | null;
+}
+
 /** FR-504.1: the device page's "Desligamento remoto" diagnostics. */
 export interface ShutdownDiagnostics {
   agenda: {
@@ -181,6 +202,8 @@ export interface ShutdownDiagnostics {
     path: 'agenda' | 'order' | null;
     detail: string | null;
   } | null;
+  /** FR-504.3: the latest "Testar agendamento" of this machine (last 24 h). */
+  test: ShutdownTest | null;
 }
 
 export interface PowerOccurrenceDevice extends PowerDeviceRef {

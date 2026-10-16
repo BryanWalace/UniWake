@@ -519,3 +519,68 @@ describe('scheduled-shutdown diagnostics (v1.6, FR-502.1, FR-504.1)', () => {
     expect(card).toHaveTextContent('A máquina ainda não recebeu a agenda atual');
   });
 });
+
+describe('"Testar agendamento" (v1.6, FR-504.3)', () => {
+  const READY = { deviceId: 5, readiness: 'ready', agentVersion: '1.6.0', lastCheckin: at(9) };
+  const diag = (test: unknown) => ({
+    agenda: {
+      servedVersion: 'fedcba9876543210',
+      servedItems: 1,
+      servedAt: at(9),
+      currentVersion: 'fedcba9876543210',
+      currentItems: 1,
+      nextShutdownAt: null,
+    },
+    schedules: [],
+    lastShutdown: null,
+    test,
+  });
+
+  it('AC-504-01: schedules a one-off shutdown in N minutes and shows how it went', async () => {
+    const api = deviceApi()
+      .on('GET', '/api/devices/5/agent', { body: READY })
+      .on('GET', '/api/devices/5/shutdown-diagnostics', { body: diag(null) })
+      .on('POST', '/api/devices/5/shutdown-test', { status: 201, body: {} });
+    const user = userEvent.setup();
+    renderApp('/dispositivos/5');
+    const card = await screen.findByRole('region', { name: 'Desligamento remoto' });
+    await user.click(await within(card).findByRole('button', { name: 'Testar agendamento' }));
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Testar o desligamento agendado de LAB1-PC05?',
+    });
+    const field = within(dialog).getByLabelText('Desligar daqui a (minutos)');
+    await user.clear(field);
+    await user.type(field, '1');
+    await user.click(within(dialog).getByRole('button', { name: 'Agendar teste' }));
+    expect(await within(dialog).findByText('Escolha de 2 a 60 minutos.')).toBeInTheDocument();
+    await user.clear(field);
+    await user.type(field, '3');
+    await user.click(within(dialog).getByRole('button', { name: 'Agendar teste' }));
+    await waitFor(() =>
+      expect(api.calls.find((c) => c.path === '/api/devices/5/shutdown-test')?.body).toEqual({
+        minutes: 3,
+      }),
+    );
+  });
+
+  it('shows the latest test with its result and path, and no button without an agent', async () => {
+    deviceApi()
+      .on('GET', '/api/devices/5/agent', { body: { ...READY, readiness: 'needs_preparation' } })
+      .on('GET', '/api/devices/5/shutdown-diagnostics', {
+        body: diag({
+          uuid: 'b7e1c2d3-0000-4000-8000-000000000001',
+          at: at(10),
+          warningMinutes: 4,
+          createdAt: at(9),
+          pushedAt: at(9),
+          reconciledAt: at(10),
+          result: 'done',
+          path: 'agenda',
+        }),
+      });
+    renderApp('/dispositivos/5');
+    const card = await screen.findByRole('region', { name: 'Desligamento remoto' });
+    expect(await within(card).findByText(/aviso de 4 minutos/)).toHaveTextContent('pela agenda');
+    expect(within(card).queryByRole('button', { name: 'Testar agendamento' })).toBeNull();
+  });
+});

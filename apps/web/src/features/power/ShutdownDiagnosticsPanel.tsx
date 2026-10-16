@@ -1,11 +1,16 @@
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   SHUTDOWN_REASON_LABEL,
   SHUTDOWN_RESULT_LABEL,
+  SHUTDOWN_TEST_MINUTES,
   type ShutdownDiagnostics,
+  type ShutdownTest,
 } from '@uniwake/shared';
-import { api } from '../../api/client';
-import { formatDateTime } from '../../lib/format';
+import { api, ApiRequestError } from '../../api/client';
+import { FormError, TextField } from '../../components/form';
+import { Button, ConfirmDialog } from '../../components/ui';
+import { formatDateTime, plural } from '../../lib/format';
 
 const PATH = { agenda: 'pela agenda', order: 'por ordem direta' } as const;
 
@@ -20,10 +25,19 @@ export const useShutdownDiagnostics = (deviceId: number) =>
  * v1.6 (FR-502.1, FR-504.1): why this machine will or will not shut down on a schedule — what it
  * was last given, what the hub would give now, and each "Desligar" schedule with its reason.
  */
-export function ShutdownDiagnosticsPanel({ deviceId }: { deviceId: number }) {
+export function ShutdownDiagnosticsPanel({
+  deviceId,
+  deviceName,
+  ready,
+}: {
+  deviceId: number;
+  deviceName: string;
+  /** The agent is ready: "Testar agendamento" is offered. */
+  ready: boolean;
+}) {
   const q = useShutdownDiagnostics(deviceId);
   if (q.isPending || q.isError) return null; // the card above already shows loading/error
-  const { agenda: a, schedules, lastShutdown } = q.data;
+  const { agenda: a, schedules, lastShutdown, test } = q.data;
   const stale = a.servedVersion !== null && a.servedVersion !== a.currentVersion;
   return (
     <div className="mt-4 space-y-3 border-t border-slate-100 pt-3 text-sm">
@@ -57,6 +71,7 @@ export function ShutdownDiagnosticsPanel({ deviceId }: { deviceId: number }) {
               : `${SHUTDOWN_RESULT_LABEL[lastShutdown.result]}${lastShutdown.path ? ` ${PATH[lastShutdown.path]}` : ''}, ${formatDateTime(lastShutdown.at)}`
           }
         />
+        {test && <Row k="Teste de agendamento" v={testText(test)} />}
       </dl>
       {stale && (
         <p className="text-amber-900">
@@ -79,7 +94,77 @@ export function ShutdownDiagnosticsPanel({ deviceId }: { deviceId: number }) {
           ))}
         </ul>
       )}
+      {ready && <TestShutdown deviceId={deviceId} deviceName={deviceName} />}
     </div>
+  );
+}
+
+function testText(t: ShutdownTest): string {
+  const when = `desligar às ${formatDateTime(t.at)} (aviso de ${plural(t.warningMinutes, 'minuto', 'minutos')})`;
+  if (t.result) {
+    return `${when}: ${SHUTDOWN_RESULT_LABEL[t.result]}${t.path ? ` ${PATH[t.path]}` : ''}`;
+  }
+  return `${when}: ${t.pushedAt === null ? 'na agenda da máquina' : 'na agenda e ordem enviada'}`;
+}
+
+/** FR-504.3: a one-off scheduled shutdown of this machine, through both paths. */
+function TestShutdown({ deviceId, deviceName }: { deviceId: number; deviceName: string }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [minutes, setMinutes] = useState(String(SHUTDOWN_TEST_MINUTES.default));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const n = Number(minutes);
+  const valid =
+    Number.isInteger(n) && n >= SHUTDOWN_TEST_MINUTES.min && n <= SHUTDOWN_TEST_MINUTES.max;
+
+  async function start() {
+    if (!valid) {
+      setError(`Escolha de ${SHUTDOWN_TEST_MINUTES.min} a ${SHUTDOWN_TEST_MINUTES.max} minutos.`);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post(`/api/devices/${deviceId}/shutdown-test`, { minutes: n });
+      setOpen(false);
+      await qc.invalidateQueries({ queryKey: ['power'] });
+    } catch (e) {
+      setError(e instanceof ApiRequestError ? e.message : 'Erro inesperado.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <Button onClick={() => setOpen(true)}>Testar agendamento</Button>
+      <ConfirmDialog
+        open={open}
+        title={`Testar o desligamento agendado de ${deviceName}?`}
+        confirmLabel="Agendar teste"
+        busy={busy}
+        onConfirm={() => void start()}
+        onCancel={() => setOpen(false)}
+      >
+        <p>
+          A máquina recebe um desligamento agendado só para ela, pela agenda e por ordem direta,
+          como um agendamento de verdade: mostra o aviso na tela e desliga no horário. Use numa
+          máquina que pode ser desligada agora.
+        </p>
+        <TextField
+          className="mt-3"
+          label="Desligar daqui a (minutos)"
+          hint={`De ${SHUTDOWN_TEST_MINUTES.min} a ${SHUTDOWN_TEST_MINUTES.max} minutos.`}
+          type="number"
+          min={SHUTDOWN_TEST_MINUTES.min}
+          max={SHUTDOWN_TEST_MINUTES.max}
+          value={minutes}
+          onChange={(e) => setMinutes(e.target.value)}
+        />
+        <FormError message={error} />
+      </ConfirmDialog>
+    </>
   );
 }
 

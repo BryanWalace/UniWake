@@ -3,7 +3,7 @@
  * per device while the replicated data are unchanged (the change log's highest sequence) and for
  * at most ten minutes, so 500 PCs checking in every minute cost almost nothing (NFR-301).
  */
-import type { Agenda } from '@uniwake/shared';
+import type { Agenda, AgendaItem } from '@uniwake/shared';
 import {
   buildAgenda,
   explainAgenda,
@@ -26,6 +26,8 @@ export interface AgendaDeps {
   dataVersion: () => number;
   occurrenceId: (scheduleUuid: string, at: number) => string;
   digest: (text: string) => string;
+  /** v1.6 (FR-504.3): this machine's "Testar agendamento" one-offs. */
+  oneOffs?: (deviceId: number) => AgendaItem[];
   clock: Clock;
 }
 
@@ -57,9 +59,15 @@ export class AgendaService {
       now,
       occurrenceId: this.d.occurrenceId,
       digest: this.d.digest,
+      oneOffs: this.d.oneOffs?.(deviceId) ?? [],
     });
     this.cache.set(deviceId, { key, agenda });
     return agenda;
+  }
+
+  /** A machine-local change of one machine's agenda (a "Testar agendamento" one-off). */
+  invalidate(deviceId: number): void {
+    this.cache.delete(deviceId);
   }
 
   /** FR-502.1: each shutdown schedule with why it does (not) reach this machine. */
