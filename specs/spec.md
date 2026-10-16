@@ -1298,7 +1298,7 @@ machine in N minutes (2–60), delivered through **both** paths and reconciled l
 - AC-503-02: Given a DHCP change (new IP in the check-in source / neighbor table), Then the next
   sweep probes the new IP and an IP change event names its source.
 - AC-503-03: Given one negative sweep, Then the status stays online; after two, offline.
-- AC-503-04 [Pester]: Given an empty or invalid address in a batch, Then the helper answers with the
+- AC-503-04 [CI-Win]: Given an empty or invalid address in a batch, Then the helper answers with the
   request id and per-address errors; the hub resolves the batch without a deadline restart.
 - AC-504-01: Given "Testar agendamento" in 5 minutes, Then the device agenda has a one-off item and
   the push is sent at its time; the result is reconciled.

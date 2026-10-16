@@ -234,7 +234,10 @@ export class MonitorService {
     );
 
     // 2. Probe every distinct address once.
-    const addresses = [...new Set([...addressOf.values()].filter((a): a is string => a !== null))];
+    // v1.6 field fix: an empty stored address (CSV, older data) is no address at all.
+    const addresses = [
+      ...new Set([...addressOf.values()].filter((a): a is string => a !== null && a.trim() !== '')),
+    ];
     const results = await this.d.prober.probe(addresses, {
       icmpTimeoutMs: s.get('monitor.icmpTimeoutMs'),
       tcpPorts: s.get('monitor.tcpPorts'),
