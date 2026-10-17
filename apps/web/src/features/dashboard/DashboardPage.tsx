@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type {
+  AgentBlockedEvent,
   DashboardNotice,
   DashboardRoom,
   DeviceStatus,
@@ -40,9 +41,33 @@ const NOTICE_TEXT: Record<string, (data: Record<string, unknown>) => string> = {
     'Este PC foi removido do Modo equipe por outro PC e parou de sincronizar. O cadastro continua aqui; para voltar, pareie de novo.',
   possible_duplicate: (data) =>
     `Possível máquina duplicada: "${String(data.deviceName)}" (${String(data.mac)}) foi cadastrada pelo preparo, mas "${String(data.otherName)}" (${String(data.otherMac)}) já tem o mesmo nome de computador. Se for o mesmo PC, exclua o cadastro antigo e confira os agendamentos: eles podem estar apontando para o registro errado.`,
+  agent_blocked: (data) => agentBlockedText(data),
   lan_error: (data) =>
     `O acesso ao painel pela rede está ligado, mas não iniciou: ${typeof data.message === 'string' ? data.message : 'erro desconhecido.'} Corrija em Configurações e reinicie o serviço.`,
 };
+
+/** v1.6.0 (FR-604.2): one line per event, the latest first, at most three. */
+export function agentBlockedText(data: Record<string, unknown>): string {
+  const events = ((data.events as AgentBlockedEvent[] | undefined) ?? []).slice().reverse();
+  const machines = new Set(events.map((e) => e.deviceId)).size;
+  const one = (e: AgentBlockedEvent) => {
+    const who = e.product ?? 'o antivírus';
+    const when = formatDateTime(e.at);
+    switch (e.kind) {
+      case 'detection':
+        return `${e.deviceName}: ${who} pegou ${e.file}${e.threat ? ` (${e.threat})` : ''}${e.action ? ` — ${e.action}` : ''} em ${when}`;
+      case 'update_blocked':
+        return `${e.deviceName}: a atualização de ${e.file} foi ${e.outcome === 'removed_after_write' ? 'apagada logo depois de gravada' : 'bloqueada'}${e.code === 225 || e.code === 226 ? ` pelo antivírus (${who})` : e.product ? ` (antivírus instalado: ${e.product})` : ''} em ${when}`;
+      case 'repair':
+        return `${e.deviceName}: ${e.file} ${e.reason === 'changed' ? 'foi alterado' : 'sumiu'} e ${e.outcome === 'restored' ? 'foi restaurado da cópia do UniWake' : 'não pôde ser restaurado'} em ${when}`;
+      default:
+        return `${e.deviceName}: o agente sumiu e não há cópia para restaurar (${when}) — rode nela o comando de Preparar máquinas`;
+    }
+  };
+  const lines = events.slice(0, 3).map(one);
+  const more = events.length > 3 ? ` (e mais ${events.length - 3})` : '';
+  return `Antivírus bloqueou o UniWake em ${plural(machines, 'máquina', 'máquinas')}: ${lines.join('; ')}${more}. Enquanto o arquivo estiver bloqueado, a máquina não recebe agendamentos nem ordens de desligar. Libere a pasta C:\\ProgramData\\UniWake no antivírus (Ajuda › Antivírus).`;
+}
 
 /** "Ligada às 06:50 por agendamento — 28/30 acordaram" (FR-004.5). */
 export function lastActionText(a: RoomLastAction, now: number): string {

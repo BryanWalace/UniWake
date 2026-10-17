@@ -31,6 +31,8 @@ export function DevicesTable({
   const agentList = useAgents();
   /** FR-309: readiness per machine (badges under the status). */
   const agents = new Map((agentList.data ?? []).map((a) => [a.deviceId, a.readiness]));
+  // v1.6.0 (FR-603.5): the agent was blocked/removed (antivirus) or is older than this UniWake's.
+  const alerts = new Map((agentList.data ?? []).map((a) => [a.deviceId, a.agentAlert ?? null]));
   const allSelected = ids.length > 0 && ids.every((id) => selected.has(id));
   return (
     <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
@@ -103,6 +105,16 @@ export function DevicesTable({
                     className={`mt-1 block w-fit rounded px-1.5 text-xs font-medium ${READINESS_TONE[agents.get(d.id)!]}`}
                   >
                     {READINESS_SHORT[agents.get(d.id)!]}
+                  </span>
+                )}
+                {alerts.get(d.id) === 'blocked' && (
+                  <span className="mt-1 block w-fit rounded bg-red-100 px-1.5 text-xs font-medium text-red-900">
+                    Agente bloqueado
+                  </span>
+                )}
+                {alerts.get(d.id) === 'outdated' && (
+                  <span className="mt-1 block w-fit rounded bg-slate-200 px-1.5 text-xs font-medium text-slate-900">
+                    Agente desatualizado
                   </span>
                 )}
               </td>

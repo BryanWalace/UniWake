@@ -584,3 +584,81 @@ describe('"Testar agendamento" (v1.6, FR-504.3)', () => {
     expect(within(card).queryByRole('button', { name: 'Testar agendamento' })).toBeNull();
   });
 });
+
+describe('agent health on the device page (v1.6.0, FR-603.5, FR-604)', () => {
+  const READY = { deviceId: 5, readiness: 'ready', agentVersion: '1.6.0', lastCheckin: at(9) };
+
+  it('AC-603-05: shows the version vs. this UniWake, the update outcome, the antivirus and what it caught', async () => {
+    deviceApi().on('GET', '/api/devices/5/agent', {
+      body: {
+        ...READY,
+        latestVersion: '1.7.0',
+        agentAlert: 'blocked',
+        health: {
+          installLevel: 2,
+          update: {
+            outcome: 'write_blocked',
+            file: 'uniwake-aviso.ps1',
+            at: at(8),
+            code: 225,
+            detail: null,
+          },
+          repairs: [
+            { at: at(7), file: 'uniwake-agent.ps1', reason: 'missing', outcome: 'restored' },
+          ],
+          antivirus: {
+            at: at(8),
+            products: [{ name: 'ESET Security', enabled: true, upToDate: false }],
+            detections: [
+              {
+                at: at(6),
+                threat: 'Trojan:Teste',
+                file: 'uniwake-agent.ps1',
+                action: 'quarentena',
+              },
+            ],
+          },
+          alert: null,
+          receivedAt: at(9),
+        },
+      },
+    });
+    renderApp('/dispositivos/5');
+    const card = await screen.findByRole('region', { name: 'Desligamento remoto' });
+    expect(await within(card).findByText('1.6.0 (a deste UniWake é 1.7.0)')).toBeInTheDocument();
+    expect(card).toHaveTextContent('uniwake-aviso.ps1: a gravação foi bloqueada pelo antivírus');
+    expect(card).toHaveTextContent('ESET Security (desatualizado)');
+    const alert = within(card).getByRole('alert');
+    expect(alert).toHaveTextContent(
+      'Antivírus pegou uniwake-agent.ps1 (Trojan:Teste) — quarentena',
+    );
+    expect(alert).toHaveTextContent('uniwake-agent.ps1 sumiu: restaurado da cópia do UniWake');
+    expect(
+      within(alert).getByRole('link', { name: /Antivírus e o agente do UniWake/ }),
+    ).toHaveAttribute('href', '/ajuda/antivirus');
+  });
+
+  it('AC-604-02: a "perdido" machine lists the probable causes and its last report', async () => {
+    deviceApi().on('GET', '/api/devices/5/agent', {
+      body: {
+        ...READY,
+        readiness: 'lost',
+        health: {
+          installLevel: 2,
+          update: null,
+          repairs: [],
+          antivirus: null,
+          alert: null,
+          receivedAt: at(7),
+        },
+      },
+    });
+    renderApp('/dispositivos/5');
+    const card = await screen.findByRole('region', { name: 'Desligamento remoto' });
+    expect(
+      await within(card).findByText(/o antivírus bloqueou ou apagou um arquivo do agente/),
+    ).toBeInTheDocument();
+    expect(card).toHaveTextContent('a tarefa "UniWake" foi desativada ou removida');
+    expect(card).toHaveTextContent('Último relatório do agente:');
+  });
+});

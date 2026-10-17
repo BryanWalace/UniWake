@@ -36,7 +36,9 @@ export interface HealthWarning {
     | 'active_hours'
     | 'database'
     | 'remote_shutdown_lost'
-    | 'auto_export_failed';
+    | 'auto_export_failed'
+    | 'agent_blocked'
+    | 'agent_outdated';
   severity: 'error' | 'warning';
   message: string;
 }
@@ -81,6 +83,8 @@ export interface HealthDeps {
   host: HostChecks | null;
   time: TimeCheck | null;
   powerCounts?: () => { ready: number; needs_preparation: number; revoked: number; lost: number };
+  /** v1.6.0 (FR-603.5): agents blocked or older than the one this hub ships. */
+  agentAlerts?: () => { blocked: { name: string }[]; outdated: { name: string }[] };
   /** v1.4 automatic export (FR-405): its last result, or null when it never ran. */
   lastAutoExport?: () => { ok: boolean; error: string | null; at: number } | null;
 }
@@ -256,6 +260,27 @@ export class HealthService {
         code: 'remote_shutdown_lost',
         severity: 'warning',
         message: `${counts.lost} ${counts.lost === 1 ? 'máquina está' : 'máquinas estão'} com "Desligamento remoto perdido": ligadas, mas sem falar com o UniWake (provável congelamento ou tarefa removida). Veja Ajuda › Laboratórios com Deep Freeze ou similar.`,
+      });
+    }
+    // v1.6.0 (FR-603.5, FR-604.2): agents blocked by an antivirus or older than this hub's.
+    const alerts = this.d.agentAlerts?.() ?? null;
+    const names = (list: readonly { name: string }[]) =>
+      list
+        .slice(0, 5)
+        .map((d) => d.name)
+        .join(', ') + (list.length > 5 ? ` e mais ${list.length - 5}` : '');
+    if (alerts && alerts.blocked.length > 0) {
+      warnings.push({
+        code: 'agent_blocked',
+        severity: 'warning',
+        message: `O agente do UniWake foi bloqueado ou apagado em ${alerts.blocked.length} ${alerts.blocked.length === 1 ? 'máquina' : 'máquinas'} (${names(alerts.blocked)}), provavelmente pelo antivírus. Veja a página de cada uma e Ajuda › Antivírus.`,
+      });
+    }
+    if (alerts && alerts.outdated.length > 0) {
+      warnings.push({
+        code: 'agent_outdated',
+        severity: 'warning',
+        message: `${alerts.outdated.length} ${alerts.outdated.length === 1 ? 'máquina está' : 'máquinas estão'} com o agente desatualizado (${names(alerts.outdated)}). Ele se atualiza na próxima consulta; se continuar, veja a página da máquina.`,
       });
     }
     return {

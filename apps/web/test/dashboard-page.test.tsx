@@ -284,3 +284,40 @@ describe('system notices', () => {
     ).toBeInTheDocument();
   });
 });
+
+describe('antivirus notice text (v1.6.0, FR-604.2)', () => {
+  it('AC-604-01: names the machine, the product, the file and what to allow', async () => {
+    const { agentBlockedText } = await import('../src/features/dashboard/DashboardPage');
+    const text = agentBlockedText({
+      events: [
+        {
+          deviceId: 5,
+          deviceName: 'LAB1-PC05',
+          kind: 'detection',
+          file: 'uniwake-agent.ps1',
+          at: Date.UTC(2026, 9, 17, 11, 12),
+          product: 'Microsoft Defender Antivirus',
+          threat: 'Trojan:Teste',
+          action: 'quarentena',
+        },
+        {
+          deviceId: 6,
+          deviceName: 'LAB1-PC06',
+          kind: 'update_blocked',
+          file: 'uniwake-aviso.ps1',
+          at: Date.UTC(2026, 9, 17, 11, 20),
+          product: 'ESET Security',
+          outcome: 'write_blocked',
+          code: 225,
+        },
+      ],
+    });
+    expect(text).toMatch(
+      /^Antivírus bloqueou o UniWake em 2 máquinas: LAB1-PC06: a atualização de uniwake-aviso\.ps1 foi bloqueada pelo antivírus \(ESET Security\)/,
+    );
+    expect(text).toContain(
+      'LAB1-PC05: Microsoft Defender Antivirus pegou uniwake-agent.ps1 (Trojan:Teste) — quarentena',
+    );
+    expect(text).toContain(String.raw`Libere a pasta C:\ProgramData\UniWake no antivírus`);
+  });
+});

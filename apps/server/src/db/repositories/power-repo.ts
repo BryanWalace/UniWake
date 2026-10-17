@@ -654,19 +654,32 @@ export function deviceExtras(db: Db, ids: readonly number[]): Map<number, Device
 }
 
 /** v1.6 (ADR-053): occurrences the hub pushed since `since` (job UUID = occurrence, with T). */
+interface HealthRow {
+  device_id: number;
+  received_at: number;
+  install_level: number | null;
+  update_json: string | null;
+  repairs_json: string | null;
+  antivirus_json: string | null;
+  antivirus_at: number | null;
+  alert_file: string | null;
+  alert_at: number | null;
+}
+
 /** v1.6.0 (ADR-059): what the hub keeps of a machine's health, or null. */
 export function readHealth(db: Db, deviceId: number): StoredHealth | null {
-  const r = db.get<{
-    received_at: number;
-    install_level: number | null;
-    update_json: string | null;
-    repairs_json: string | null;
-    antivirus_json: string | null;
-    antivirus_at: number | null;
-    alert_file: string | null;
-    alert_at: number | null;
-  }>('SELECT * FROM agent_health WHERE device_id = ?', [deviceId]);
-  if (!r) return null;
+  const r = db.get<HealthRow>('SELECT * FROM agent_health WHERE device_id = ?', [deviceId]);
+  return r ? healthOf(r) : null;
+}
+
+/** Every machine's stored health in one query (device list marks). */
+export function readAllHealth(db: Db): Map<number, StoredHealth> {
+  return new Map(
+    db.all<HealthRow>('SELECT * FROM agent_health').map((r) => [r.device_id, healthOf(r)]),
+  );
+}
+
+function healthOf(r: HealthRow): StoredHealth {
   const parse = <T>(text: string | null, fallback: T): T => {
     if (text === null) return fallback;
     try {

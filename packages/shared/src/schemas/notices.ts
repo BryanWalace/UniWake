@@ -6,6 +6,25 @@ import type { DeviceResult } from './wake';
 
 export const NOTICE_TYPES = ['morning_result', 'enrollment_moves'] as const;
 
+/**
+ * v1.6.0 (FR-604.2): one event of an `agent_blocked` notice — the antivirus or something else blocked
+ * or removed a UniWake file on a lab PC, or its repair task acted.
+ */
+export interface AgentBlockedEvent {
+  deviceId: number;
+  deviceName: string;
+  kind: 'update_blocked' | 'repair' | 'detection' | 'agent_missing';
+  file: string;
+  at: number;
+  /** Antivirus product to name, when known. */
+  product: string | null;
+  threat?: string;
+  action?: string | null;
+  outcome?: string;
+  reason?: string;
+  code?: number | null;
+}
+
 /** One machine moved to another room by self-enrollment (AC-007-07). */
 export interface EnrollMove {
   deviceId: number;

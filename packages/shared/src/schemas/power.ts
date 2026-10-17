@@ -1,6 +1,6 @@
 /** Manual shutdown and restart from the panel (FR-305, plan §15.4). */
 import { z } from 'zod';
-import type { PowerPolicy } from '../agent/checkin';
+import type { AgentHealth, PowerPolicy, UpdateOutcome } from '../agent/checkin';
 import { idSchema, LIMITS } from './common';
 import { wakeTargetSchema } from './wake';
 
@@ -115,7 +115,32 @@ export interface DeviceAgentInfo {
   sessions: number | null;
   clockOffsetMs: number | null;
   tokenRotatedAt: number | null;
+  /** v1.6.0 (FR-603.5): the agent version this hub ships (null when unknown). */
+  latestVersion?: string | null;
+  /** v1.6.0: the device list mark — antivirus/blocked update/agent removed, or an older agent. */
+  agentAlert?: 'blocked' | 'outdated' | null;
+  /** v1.6.0: the last health the machine sent (device page only). */
+  health?: AgentHealthView | null;
 }
+
+/** v1.6.0 (FR-603.5, FR-604.2): what the device page shows of a machine's health. */
+export interface AgentHealthView {
+  installLevel: number | null;
+  update: AgentHealth['update'];
+  repairs: AgentHealth['repairs'];
+  antivirus: (NonNullable<AgentHealth['antivirus']> & { at: number }) | null;
+  /** The repair task could not restore the agent and told the hub. */
+  alert: { file: string; at: number } | null;
+  receivedAt: number;
+}
+
+export const UPDATE_OUTCOME_LABEL: Record<UpdateOutcome, string> = {
+  updated: 'atualizado',
+  download_failed: 'não conseguiu baixar do UniWake (tenta de novo na próxima consulta)',
+  hash_mismatch: 'o arquivo baixado não conferiu e foi descartado',
+  write_blocked: 'a gravação foi bloqueada',
+  removed_after_write: 'o arquivo sumiu logo depois de gravado (provável antivírus)',
+};
 
 export interface PowerJob {
   id: number;
