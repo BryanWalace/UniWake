@@ -1,15 +1,119 @@
 # NEXT — handoff
 
-Atualizado: 2026-10-16 · Branch de trabalho: **`dev`** (ADR-030) · **`main` = `7eb76bc`** · **release v1.5.0
-publicada** a seu pedido (tag `v1.5.0`, `releases/latest` = v1.5.0, instalador baixado e SHA-256 `c1248b3e…862d`
-conferido). Os PCs com o UniWake se atualizam sozinhos na janela 03:00–05:00. **Falta o seu teste num PC do
-laboratório** (passo a passo abaixo).
+Atualizado: 2026-10-17 · Branch de trabalho: **`dev`** (ADR-030) · **`main` = `6e1e8ff`** (release **v1.5.0** publicada).
+**Na `dev`: versão 1.6.0 "Máquinas que se atualizam e avisam", validada, sem merge e sem tag — aguardando o seu
+teste.** Nada da 1.6.0 foi para a `main`.
 
-## Release v1.5.0 (2026-10-16)
-- Antes: verify, Pester, E2E e CI verdes na `dev` e na `main`; teste de fumaça no pacote montado
-  (21/21, com check-ins reais do agente PowerShell 5.1 contra o hub no loopback: o "Testar agendamento"
-  chegou pela agenda e por ordem direta com o mesmo código de execução; nenhum "missed its deadline").
-- Notas: `specs/releases/v1.5.0.md`.
+## v1.6.0 — exclusões visíveis, agente que se atualiza e avisa, hibernação (na `dev`, aguardando seu teste)
+
+> Nos documentos técnicos é a "revisão 1.7" da especificação; a versão do programa é **1.6.0** (a de teste,
+> `1.6.0-dev.N`). O agente nas máquinas passa a **1.7.0**.
+
+**O que o seu log de 16/10 mostrou e foi corrigido:**
+1. **O agendamento "teste" não desligou porque a única máquina da sala estava excluída** ("Nunca desligar por
+   agendamento" ou etiqueta excluída). O formulário dizia "alcança 1 máquina pronta" porque usava a prévia do
+   Desligar manual (que inclui essas máquinas com confirmação). **Agora o formulário segue as regras do
+   agendamento** e diz "N máquinas ficam fora deste agendamento: NOME (motivo)". A conferência das T+10 e o
+   Histórico também mostram as excluídas com o motivo, em vez de "nenhuma máquina no alvo".
+2. **As ordens saíram ~1min40s depois do horário** porque o agendamento foi salvo com um horário que já tinha
+   passado. **Agora salvar ou editar um agendamento nunca desliga as máquinas na hora**; para testar rápido,
+   use "Testar agendamento" na página da máquina.
+
+**Novidades:**
+3. **Atualização do agente que funciona e avisa** (sem preparar de novo):
+   - o agente confere cada arquivo depois de gravar e conta ao UniWake o que aconteceu (atualizado, não
+     conseguiu baixar, bloqueado — com o código do antivírus —, apagado logo depois de gravado);
+   - ele mesmo instala os passos novos: uma **cópia conferida** dos scripts e a tarefa **"UniWake Reparo"**,
+     que restaura um arquivo apagado e avisa o painel;
+   - lista de Dispositivos: **"Agente bloqueado"** / **"Agente desatualizado"**; Saúde do sistema avisa os
+     dois.
+4. **Aviso de antivírus:** "Antivírus bloqueou o UniWake em N máquinas" no painel inicial, com a máquina, o
+   arquivo, o antivírus e a hora. O Microsoft Defender é lido diretamente (arquivo, nome da ameaça, ação);
+   outros antivírus são percebidos pelo efeito (gravação recusada, arquivo sumido) e o UniWake diz qual está
+   instalado. Nova ajuda "Antivírus e o agente do UniWake". **O UniWake nunca cria exceção no antivírus
+   sozinho.**
+5. **Computadores hibernados ou suspensos:**
+   - **"Acordar para desligar"** (ligado por padrão): ao enviar um desligamento, as máquinas prontas que não
+     respondem mas falaram com o UniWake nas últimas 12 h recebem o pacote de ligar e desligam ao acordar;
+   - a página da máquina mostra a hibernação ("após 180 minutos") e a **última ausência sem reiniciar**
+     ("Hibernada de … a … — não desligou");
+   - **"Impedir suspensão e hibernação"** (desligado por padrão, como você pediu): o agente desliga a
+     suspensão e a hibernação automáticas na tomada e a hibernação do Windows; ao desmarcar, volta o que era.
+
+**Um erro meu durante a validação (já corrigido):** no primeiro teste de fumaça do pacote, aqui no seu PC, o
+"Desligar" manual de teste acionou o "Acordar para desligar" e o UniWake de teste **enviou um pacote de ligar
+real na sua rede** para um MAC inventado (`02:00:00:00:AB:01`). Nenhuma máquina tem esse MAC, então nada ligou.
+Os testes de fumaça agora ligam o modo simulação antes de tudo (o segundo rodou 27/27 sem enviar nada).
+
+### Como testar a v1.6.0 (passo a passo)
+
+**0. Instalar a versão de teste no PC do UniWake**
+1. GitHub → **Actions** → o último **CI** verde da branch `dev` → **Artifacts** → **UniWake-Setup-dev**
+   (`UniWake-Setup-1.6.0-dev.N.exe` + `.sha256`). Confira com `Get-FileHash .\UniWake-Setup-1.6.0-dev.N.exe`.
+2. Instale por cima da 1.5.0 (backup automático). **Saúde do sistema**: `1.6.0-dev.N`. Ela não volta sozinha
+   para a 1.5.0; só se atualiza quando sair uma release estável mais nova.
+
+**1. As máquinas pegam o agente novo sozinhas**
+1. Ligue as máquinas de teste. Em 1–2 minutos, a página de cada uma mostra **Versão do agente 1.7.0**.
+2. **Dispositivos**: procure **"Agente desatualizado"** ou **"Agente bloqueado"** embaixo do status. Em
+   **Saúde do sistema** aparecem os dois avisos com os nomes.
+3. Uma máquina que continua desatualizada depois de 10 minutos ligada: abra a página dela →
+   "Última atualização do agente" diz o motivo. Se for antivírus, veja o passo 4. Se o agente nem consulta
+   ("Desligamento remoto perdido"), prepare essa máquina **uma última vez** — depois disso, as próximas
+   atualizações chegam sozinhas.
+
+**2. Exclusões (a causa do seu teste de 16/10)**
+1. **Agendamentos** → abra o "teste" (ou outro de Desligar). Embaixo do alvo: "Hoje este agendamento alcança
+   N máquinas prontas" e, se houver, **"N máquinas ficam fora deste agendamento: NOME (Nunca desligar por
+   agendamento / etiqueta excluída neste agendamento)"**.
+2. Se a máquina não devia ficar de fora: na página dela, desmarque "Nunca desligar por agendamento" ou tire a
+   etiqueta das excluídas do agendamento. Salve e confira que o aviso sumiu.
+3. Depois de um desligamento agendado, em **Agendamentos → Execuções**, a conferência das T+10 lista as
+   excluídas com o motivo.
+
+**3. Salvar não desliga na hora**
+1. Edite um agendamento de Desligar e ponha um horário que **acabou de passar** (ex.: 1 minuto atrás). Salve.
+2. Esperado: **nada desliga**. Para testar rápido, use **Testar agendamento** (página da máquina).
+
+**4. Reparo automático e aviso (simula o antivírus, sem antivírus)**
+1. Num PC de teste, abra o PowerShell **como administrador** e apague o arquivo do aviso:
+   `Remove-Item C:\ProgramData\UniWake\agent\uniwake-aviso.ps1`
+2. Abra o **Agendador de Tarefas** → Biblioteca → **UniWake Reparo** → botão direito → **Executar** (ou espere até
+   30 minutos).
+3. Esperado: o arquivo volta; em 1–2 minutos o painel inicial mostra **"Antivírus bloqueou o UniWake em 1
+   máquina: … uniwake-aviso.ps1 sumiu e foi restaurado da cópia do UniWake"** e a página da máquina mostra
+   "Bloqueios do agente". Clique **Ciente** no aviso.
+4. Se essa tarefa não existir: a máquina ainda não rodou o agente 1.7.0 (veja o passo 1).
+
+**5. Antivírus de verdade (só observar)**
+1. Na página de uma máquina, a linha **Antivírus** mostra o que o Windows informa (ex.: "Microsoft Defender
+   Antivirus"; "(desatualizado)" quando for o caso).
+2. Se algum antivírus pegar um arquivo do UniWake, o aviso aparece sozinho no painel inicial. **Não tente criar
+   um arquivo "infectado" para testar.** Se aparecer, siga Ajuda › Antivírus e o agente do UniWake (liberar
+   `C:\ProgramData\UniWake` no antivírus).
+
+**6. Hibernada: acordar para desligar**
+1. Num PC de teste preparado, sem usuário: `shutdown /h` (hiberna). Espere ele apagar.
+2. No painel, página da máquina → **Testar agendamento** → **5** minutos.
+3. Esperado: em até 1 minuto o UniWake manda o pacote de ligar; o PC acorda (se a placa de rede acordar da
+   hibernação — não verificado no seu modelo), mostra o aviso e **desliga de verdade**. Depois de ligar de novo,
+   a página mostra **"Última ausência sem reiniciar: Hibernada de … a … — não desligou"**.
+4. No **Desligar** manual de uma sala, com máquinas apagadas, o resumo agora diz quantas "vão receber o pacote
+   de ligar para acordar e desligar". Para desligar essa função: Configurações → Desligar computadores →
+   "Acordar máquinas suspensas ou hibernadas para desligar".
+
+**7. Impedir suspensão e hibernação (opcional, desligado por padrão)**
+1. **Configurações → Desligar computadores → "Impedir suspensão e hibernação nas máquinas"** → marque e salve.
+2. Em 1–2 minutos, na página de uma máquina ligada: **"Impedir suspensão e hibernação: aplicado em …"**,
+   **"Suspensão (na tomada): nunca"** e **"Hibernação (na tomada): desativada"**.
+3. Desmarque e salve: em 1–2 minutos, **"desfeito (valores de antes)"** e os valores antigos de volta.
+4. Em máquinas congeladas, o agente aplica de novo a cada reinício (o congelamento volta o plano de energia).
+
+**Se algo falhar, me mande:** print da página da máquina (quadro "Desligamento remoto" inteiro), o aviso do
+painel inicial, e em **Logs** as linhas "agent", "power-test", "woke sleeping machines", "scheduled shutdown".
+
+Quando estiver bom, me diga se quer publicar ("pode subir a dev para a main" e se quer a release 1.6.0). As notas
+já estão prontas em `specs/releases/v1.6.0.md`.
 
 ## v1.5 — correções do desligamento agendado e do status (publicada na v1.5.0, aguardando seu teste)
 
@@ -502,6 +606,13 @@ WoL real por modelo de PC, reinício sem ninguém logado, VLANs, HTTPS na rede) 
 ## Agent notes (English)
 
 ### Current state
+- **2026-10-17: v1.6.0 (spec §6e, revision 1.7) complete and validated on `dev`** — M28 (schedule reach
+  with the schedule's exclusions; excluded result; ADR-058 save rule), M29 (agent health contract with
+  feature negotiation, migration 009, verified self-update, self-install level 2 with the verified copy
+  and "UniWake Reparo", antivirus via Security Center + Defender, notices/marks/help; ADR-059/060), M30
+  (resume/hibernation facts, "Acordar para desligar", "Impedir suspensão e hibernação"; ADR-061), Phase 16
+  (`validation.md` §v1.7). Agent script 1.7.0. Not merged, not tagged; release notes ready in
+  `specs/releases/v1.6.0.md`. **STOP point:** waiting for the owner's checklist above.
 - **2026-10-16: field fixes (spec §6d, product version 1.5.0, spec revision "v1.6") complete and
   validated on `dev`** — M25 (scheduled shutdown push + one execution + T+10 reconciliation,
   ADR-053/054), M26 (online status from agent/ICMP/TCP/ARP, IP follows MAC, probe-helper fix,
@@ -528,6 +639,9 @@ WoL real por modelo de PC, reinício sem ninguém logado, VLANs, HTTPS na rede) 
 - CI on `dev` uploads `UniWake-Setup-dev` (`DEV_VERSION_BASE` 1.6.0, ADR-041).
 
 ### Next steps
+0. v1.6.0: act on the owner's results (tests first). On "pode subir a dev para a main": verify, merge, tag
+   `v1.6.0` only if asked (notes ready). Field items still não verificados: event 42 TargetState, wake
+   from S4, third-party antivirus, whether an antivirus flags the repair task's inline command.
 0. v1.5 field fixes: act on the owner's lab-PC results (tests first). If a schedule still misses a
    machine, the device page reason and the "possible_duplicate" notice name the record to fix. Fixes
    go to `dev` again; `main`/tags only on a new explicit request.
@@ -538,6 +652,11 @@ WoL real por modelo de PC, reinício sem ninguém logado, VLANs, HTTPS na rede) 
 3. Roadmap after v1.4: RM-1..RM-8 (spec §11); nothing started.
 
 ### Working conventions
+- **Package smoke on the owner's PC: `PATCH /api/settings {"wake.dryRun": true}` first** and check
+  `wake_jobs.dry_run = 1` after (2026-10-17: a smoke run without it sent one real magic packet through
+  "Acordar para desligar"). Agent check-ins are limited to 6 per minute per machine: space them.
+- Pester locally: `.tools/psmodules/Pester/5.9.1` (scratchpad `pester-one.ps1 -Path <file>`); the
+  real "UniWake Reparo" registration test runs only on CI (`GITHUB_ACTIONS=true`).
 - Commit via the verify-gated helper (scratchpad `commit-task.sh <TASK|-> <msg-file>`: prettier →
   mark task → `npm run verify` → `npm run test:ps` when a .ps1 changed → staged gitleaks scan →
   commit → push **origin dev** → prints the last CI result; refuses any branch but `dev`). Recreate it
