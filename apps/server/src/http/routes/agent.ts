@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import {
+  agentAlertSchema,
   CHECKIN_MAX_BODY_BYTES,
   checkinRequestSchema,
   enrollAgentRequestSchema,
@@ -113,6 +114,35 @@ export function checkinRoute(
       await s.hubKey.ensure();
       const answer = s.agent.checkin(who, parsed.data, { ip: req.ip, host: req.headers.host });
       return sendSigned(reply, s.hubKey, parsed.data.nonce, answer);
+    },
+  );
+}
+
+/**
+ * v1.6.0 (FR-603.4, ADR-059): the repair task's alert when it cannot restore the agent. Same
+ * limits and token as the check-in; nothing is sent back for the machine to run.
+ */
+export function alertRoute(
+  app: FastifyInstance,
+  s: Pick<HttpServices, 'agent' | 'importer'>,
+): void {
+  app.post(
+    '/agent/v1/alert',
+    {
+      config: { auth: 'agent' },
+      bodyLimit: 1024,
+      onRequest: async (req) => {
+        if (!s.agent.allowFrom(req.ip)) throw new AppError('AGENT_RATE_LIMITED');
+        agentToken(req);
+      },
+    },
+    async (req, reply) => {
+      if (s.importer.standby()) throw new AppError('AGENT_STANDBY');
+      const who = s.agent.identify(agentToken(req));
+      const parsed = agentAlertSchema.safeParse(req.body);
+      if (!parsed.success) throw new AppError('VALIDATION_FAILED');
+      s.agent.alert(who, parsed.data);
+      return reply.status(204).send();
     },
   );
 }

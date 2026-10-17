@@ -91,3 +91,31 @@ describe('agent contract fixtures (protocol 1)', () => {
     expect(enrollAgentRequestSchema.safeParse({ protocol: 1, nonce: 'curto' }).success).toBe(false);
   });
 });
+
+describe('agent health (v1.6.0, ADR-059)', () => {
+  const health = () => fixture('checkin-health.json');
+
+  it('AC-603-01: health is optional; the fixture follows the contract; hubs announce it', () => {
+    expect(checkinRequestSchema.safeParse(request()).success).toBe(true); // no health: v1.5.0 shape
+    const withHealth = { ...request(), health: health() };
+    expect(checkinRequestSchema.safeParse(withHealth).success).toBe(true);
+    expect(checkinAnswerSchema.parse(answer()).features).toEqual(['health']);
+    const { features: _omit, ...older } = answer();
+    expect(checkinAnswerSchema.safeParse(older).success).toBe(true); // v1.5.0 answers
+  });
+
+  it('drops (never stores) fields a newer agent adds inside health; refuses bad values', () => {
+    const h = health() as {
+      update: Record<string, unknown>;
+      antivirus: { products: Record<string, unknown>[] };
+    };
+    h.update.futureField = 'x';
+    h.antivirus.products[0]!.user = 'aluno01';
+    const parsed = checkinRequestSchema.parse({ ...request(), health: h });
+    expect(parsed.health!.update).not.toHaveProperty('futureField');
+    expect(parsed.health!.antivirus!.products[0]).not.toHaveProperty('user');
+    const bad = health() as { update: { outcome: string } };
+    bad.update.outcome = 'apagou tudo';
+    expect(checkinRequestSchema.safeParse({ ...request(), health: bad }).success).toBe(false);
+  });
+});

@@ -1,9 +1,10 @@
-import type { AgentReport, WakeTarget } from '@uniwake/shared';
+import type { AgentHealth, AgentReport, WakeTarget } from '@uniwake/shared';
 import type {
   AgentSighting,
   AgentStatus,
   AgentStore,
   PendingOrder,
+  StoredHealth,
 } from '../../application/power/agent-service';
 import type {
   JobOrderRow,
@@ -262,6 +263,41 @@ export class SqlitePowerRepo implements AgentStore {
         s.userLoggedOn === null ? null : s.userLoggedOn ? 1 : 0,
         s.sessionCount,
       ],
+    );
+  }
+
+  /** v1.6.0 (ADR-059): machine-local health; `antivirus: null` keeps the stored one. */
+  saveHealth(deviceId: number, h: AgentHealth, at: number): StoredHealth | null {
+    const before = readHealth(this.db, deviceId);
+    this.db.run(
+      `INSERT INTO agent_health (device_id, received_at, install_level, update_json, repairs_json,
+         antivirus_json, antivirus_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (device_id) DO UPDATE SET received_at = excluded.received_at,
+         install_level = excluded.install_level, update_json = excluded.update_json,
+         repairs_json = excluded.repairs_json,
+         antivirus_json = COALESCE(excluded.antivirus_json, agent_health.antivirus_json),
+         antivirus_at = COALESCE(excluded.antivirus_at, agent_health.antivirus_at)`,
+      [
+        deviceId,
+        at,
+        h.installLevel,
+        h.update === null ? null : JSON.stringify(h.update),
+        JSON.stringify(h.repairs),
+        h.antivirus === null ? null : JSON.stringify(h.antivirus),
+        h.antivirus === null ? null : at,
+      ],
+    );
+    return before;
+  }
+
+  saveAlert(deviceId: number, file: string, at: number): void {
+    this.db.run(
+      `INSERT INTO agent_health (device_id, received_at, repairs_json, alert_file, alert_at)
+       VALUES (?, ?, '[]', ?, ?)
+       ON CONFLICT (device_id) DO UPDATE SET alert_file = excluded.alert_file,
+         alert_at = excluded.alert_at`,
+      [deviceId, at, file, at],
     );
   }
 
@@ -618,6 +654,39 @@ export function deviceExtras(db: Db, ids: readonly number[]): Map<number, Device
 }
 
 /** v1.6 (ADR-053): occurrences the hub pushed since `since` (job UUID = occurrence, with T). */
+/** v1.6.0 (ADR-059): what the hub keeps of a machine's health, or null. */
+export function readHealth(db: Db, deviceId: number): StoredHealth | null {
+  const r = db.get<{
+    received_at: number;
+    install_level: number | null;
+    update_json: string | null;
+    repairs_json: string | null;
+    antivirus_json: string | null;
+    antivirus_at: number | null;
+    alert_file: string | null;
+    alert_at: number | null;
+  }>('SELECT * FROM agent_health WHERE device_id = ?', [deviceId]);
+  if (!r) return null;
+  const parse = <T>(text: string | null, fallback: T): T => {
+    if (text === null) return fallback;
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      return fallback;
+    }
+  };
+  return {
+    installLevel: r.install_level,
+    update: parse<StoredHealth['update']>(r.update_json, null),
+    repairs: parse<StoredHealth['repairs']>(r.repairs_json, []),
+    antivirus: parse<StoredHealth['antivirus']>(r.antivirus_json, null),
+    antivirusAt: r.antivirus_at,
+    alert:
+      r.alert_file !== null && r.alert_at !== null ? { file: r.alert_file, at: r.alert_at } : null,
+    receivedAt: r.received_at,
+  };
+}
+
 export function pushedOccurrences(
   db: Db,
   since: number,

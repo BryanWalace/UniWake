@@ -12,6 +12,7 @@ import { sql as team } from './migrations/005_team';
 import { sql as power } from './migrations/006_power';
 import { sql as importBackup } from './migrations/007_import_backup';
 import { sql as fieldFixes } from './migrations/008_field_fixes';
+import { sql as agentHealth } from './migrations/009_agent_health';
 
 export interface Migration {
   version: number;
@@ -28,6 +29,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 6, name: 'power', sql: power },
   { version: 7, name: 'import_backup', sql: importBackup },
   { version: 8, name: 'field_fixes', sql: fieldFixes },
+  { version: 9, name: 'agent_health', sql: agentHealth },
 ];
 
 export interface MigrateOptions {

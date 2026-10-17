@@ -8,6 +8,8 @@
  */
 import {
   AGENT_SCRIPTS,
+  type AgentAlert,
+  type AgentHealth,
   CHECKIN_PER_IP_PER_MINUTE,
   CHECKIN_PER_TOKEN_PER_MINUTE,
   type AgentOrder,
@@ -90,6 +92,24 @@ export interface AgentStore {
    * served before (null the first time), so a change can be logged.
    */
   saveAgendaServed(deviceId: number, version: string, items: number, at: number): string | null;
+  /**
+   * v1.6.0 (ADR-059): the health this machine sent; `antivirus: null` keeps the stored one. Returns
+   * what was stored before (null the first time), so new events can be told apart.
+   */
+  saveHealth?(deviceId: number, h: AgentHealth, at: number): StoredHealth | null;
+  /** FR-603.4: the repair task could not restore the agent. */
+  saveAlert?(deviceId: number, file: string, at: number): void;
+}
+
+/** What the hub keeps of a machine's health (machine-local, migration 009). */
+export interface StoredHealth {
+  installLevel: number | null;
+  update: AgentHealth['update'];
+  repairs: AgentHealth['repairs'];
+  antivirus: NonNullable<AgentHealth['antivirus']> | null;
+  antivirusAt: number | null;
+  alert: { file: string; at: number } | null;
+  receivedAt: number;
 }
 
 export interface HubEntrySource {
@@ -117,6 +137,10 @@ export interface AgentServiceDeps {
   /** The hub version: the scripts ship with it. */
   version: string;
   logger?: Logger;
+  /** v1.6.0 (FR-604.2): what changed in a machine's health, for the dashboard notice. */
+  onHealth?: (deviceId: number, before: StoredHealth | null, now: AgentHealth, at: number) => void;
+  /** v1.6.0 (FR-603.4): an alert of the repair task. */
+  onAlert?: (deviceId: number, alert: AgentAlert) => void;
 }
 
 const COARSE_MS = 30 * 60_000;
@@ -257,6 +281,14 @@ export class AgentService {
         newToken: this.d.tokens.rotationDue(row) ? this.d.tokens.rotate(deviceId) : null,
       };
     });
+    if (req.health && this.d.store.saveHealth) {
+      const before = this.d.store.saveHealth(deviceId, req.health, now);
+      try {
+        this.d.onHealth?.(deviceId, before, req.health, now);
+      } catch (e) {
+        this.d.logger?.error({ err: e, deviceId }, 'agent health notice failed');
+      }
+    }
     const agenda = this.d.agenda.forDevice(deviceId);
     if (!agenda) throw new AppError('AGENT_TOKEN_INVALID'); // device deleted meanwhile
     const before = this.d.store.saveAgendaServed(
@@ -311,6 +343,17 @@ export class AgentService {
       scripts,
       ackReports,
       newToken,
+      features: ['health'],
     };
+  }
+
+  /** FR-603.4: the repair task of this machine could not restore its agent. */
+  alert(who: AgentIdentity, alert: AgentAlert): void {
+    this.d.store.saveAlert?.(who.deviceId, alert.file, alert.at);
+    this.d.logger?.warn(
+      { deviceId: who.deviceId, file: alert.file, at: alert.at },
+      'agent repair task could not restore the agent',
+    );
+    this.d.onAlert?.(who.deviceId, alert);
   }
 }
