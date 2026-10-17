@@ -662,3 +662,34 @@ describe('agent health on the device page (v1.6.0, FR-603.5, FR-604)', () => {
     expect(card).toHaveTextContent('Último relatório do agente:');
   });
 });
+
+describe('sleep and hibernation on the device page (v1.6.0, FR-605.1)', () => {
+  it('AC-605-01: shows the hibernation setting and the last absence without restarting', async () => {
+    deviceApi().on('GET', '/api/devices/5/agent', {
+      body: {
+        deviceId: 5,
+        readiness: 'ready',
+        agentVersion: '1.7.0',
+        lastCheckin: at(9),
+        health: {
+          installLevel: 2,
+          update: null,
+          repairs: [],
+          antivirus: null,
+          alert: null,
+          power: {
+            hibernateEnabled: true,
+            hibernateAfterMinutes: 180,
+            lastResume: { from: at(1), to: at(8), kind: 'hibernate' },
+            preventSleep: null,
+          },
+          receivedAt: at(9),
+        },
+      },
+    });
+    renderApp('/dispositivos/5');
+    const card = await screen.findByRole('region', { name: 'Desligamento remoto' });
+    expect(await within(card).findByText('após 180 minutos')).toBeInTheDocument();
+    expect(card).toHaveTextContent(/Hibernada de .* a .* — não desligou/);
+  });
+});

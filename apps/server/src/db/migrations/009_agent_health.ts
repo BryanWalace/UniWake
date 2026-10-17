@@ -13,6 +13,7 @@ CREATE TABLE agent_health (
   antivirus_json TEXT,
   antivirus_at   INTEGER,
   alert_file     TEXT,
-  alert_at       INTEGER
+  alert_at       INTEGER,
+  power_json     TEXT
 );
 `;

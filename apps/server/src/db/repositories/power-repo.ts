@@ -271,13 +271,14 @@ export class SqlitePowerRepo implements AgentStore {
     const before = readHealth(this.db, deviceId);
     this.db.run(
       `INSERT INTO agent_health (device_id, received_at, install_level, update_json, repairs_json,
-         antivirus_json, antivirus_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+         antivirus_json, antivirus_at, power_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (device_id) DO UPDATE SET received_at = excluded.received_at,
          install_level = excluded.install_level, update_json = excluded.update_json,
          repairs_json = excluded.repairs_json,
          antivirus_json = COALESCE(excluded.antivirus_json, agent_health.antivirus_json),
-         antivirus_at = COALESCE(excluded.antivirus_at, agent_health.antivirus_at)`,
+         antivirus_at = COALESCE(excluded.antivirus_at, agent_health.antivirus_at),
+         power_json = excluded.power_json`,
       [
         deviceId,
         at,
@@ -286,6 +287,7 @@ export class SqlitePowerRepo implements AgentStore {
         JSON.stringify(h.repairs),
         h.antivirus === null ? null : JSON.stringify(h.antivirus),
         h.antivirus === null ? null : at,
+        h.power ? JSON.stringify(h.power) : null,
       ],
     );
     return before;
@@ -664,6 +666,7 @@ interface HealthRow {
   antivirus_at: number | null;
   alert_file: string | null;
   alert_at: number | null;
+  power_json: string | null;
 }
 
 /** v1.6.0 (ADR-059): what the hub keeps of a machine's health, or null. */
@@ -696,6 +699,7 @@ function healthOf(r: HealthRow): StoredHealth {
     antivirusAt: r.antivirus_at,
     alert:
       r.alert_file !== null && r.alert_at !== null ? { file: r.alert_file, at: r.alert_at } : null,
+    power: parse<StoredHealth['power']>(r.power_json, null),
     receivedAt: r.received_at,
   };
 }

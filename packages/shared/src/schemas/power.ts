@@ -131,6 +131,8 @@ export interface AgentHealthView {
   antivirus: (NonNullable<AgentHealth['antivirus']> & { at: number }) | null;
   /** The repair task could not restore the agent and told the hub. */
   alert: { file: string; at: number } | null;
+  /** FR-605.1/605.3: sleep and hibernation facts (null: not reported). */
+  power: NonNullable<AgentHealth['power']> | null;
   receivedAt: number;
 }
 

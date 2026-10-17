@@ -232,6 +232,12 @@ describe('what the panel shows (FR-603.5, FR-604.2)', () => {
         installLevel: 2,
         update: { outcome: 'write_blocked', code: 225 },
         antivirus: { products: [{ name: 'Microsoft Defender Antivirus' }] },
+        // AC-605-01: the hibernation facts and the last resume reach the device page.
+        power: {
+          hibernateEnabled: true,
+          hibernateAfterMinutes: 180,
+          lastResume: { kind: 'hibernate' },
+        },
       },
     });
     const list = (await w.h.inject({ method: 'GET', url: '/api/power/agents', cookie })).json<

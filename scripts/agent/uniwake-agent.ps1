@@ -403,6 +403,64 @@ function ConvertTo-UwPowerInfo {
   return @{ sleepAfterMinutes = $minutes; wakeTimers = $wake }
 }
 
+# Hibernation facts (FR-605.1): whether it is on and the AC "hibernate after" minutes (0 = never).
+function Get-UwHibernateInfo {
+  [CmdletBinding()]
+  param()
+  Assert-UwRealSystem 'Get-UwHibernateInfo'
+  $enabled = $null
+  try {
+    $enabled = [int](Get-ItemPropertyValue -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\Power' -Name 'HibernateEnabled' -ErrorAction Stop) -eq 1
+  } catch { Write-Verbose "HibernateEnabled: $_" }
+  $idle = ConvertFrom-UwPowercfgOutput -Lines @(& powercfg.exe /QUERY SCHEME_CURRENT SUB_SLEEP HIBERNATEIDLE 2>$null)
+  $minutes = $null
+  if ($null -ne $idle) { $minutes = [int][Math]::Round($idle.Ac / 60) }
+  @{ enabled = $enabled; afterMinutes = $minutes }
+}
+
+<#
+  How the PC went away before it came back without restarting (FR-605.1): the newest Kernel-Power
+  event 42 since then. TargetState 5 = hibernation, 2..4 = sleep (SYSTEM_POWER_STATE; não verificado
+  on every model), anything else or no event: unknown.
+#>
+function Get-UwSleepKind {
+  [CmdletBinding()]
+  [OutputType([string])]
+  param([Parameter(Mandatory)][long]$SinceMs)
+  Assert-UwRealSystem 'Get-UwSleepKind'
+  try {
+    $since = [DateTimeOffset]::FromUnixTimeMilliseconds($SinceMs).LocalDateTime.AddMinutes(-1)
+    $e = Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Microsoft-Windows-Kernel-Power'; Id = 42; StartTime = $since } -MaxEvents 1 -ErrorAction Stop
+    $xml = [xml]$e.ToXml()
+    $state = @($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'TargetState' } | ForEach-Object { $_.'#text' }) | Select-Object -First 1
+    return ConvertTo-UwSleepKind -TargetState $state
+  } catch {
+    return 'unknown'
+  }
+}
+
+<#
+  FR-605.1: back after a gap (no heartbeat for more than 3 minutes) without restarting (boot before
+  the last heartbeat): the PC was suspended or hibernated in between. $null otherwise.
+#>
+function Get-UwResume {
+  [CmdletBinding()]
+  param($LastBeat, $Boot, [Parameter(Mandatory)][long]$Now)
+  if ($null -eq $LastBeat -or $null -eq $Boot) { return $null }
+  if ($Now - [long]$LastBeat -le $script:UwSleepGapMs -or [long]$Boot -ge [long]$LastBeat) { return $null }
+  [ordered]@{ from = [long]$LastBeat; to = $Now; kind = (Get-UwSleepKind -SinceMs ([long]$LastBeat)) }
+}
+
+function ConvertTo-UwSleepKind {
+  [CmdletBinding()]
+  [OutputType([string])]
+  param($TargetState)
+  $s = [string]$TargetState
+  if ($s -eq '5') { return 'hibernate' }
+  if ($s -in @('2', '3', '4')) { return 'sleep' }
+  return 'unknown'
+}
+
 function Invoke-UwShutdown {
   [CmdletBinding()]
   [OutputType([int])]
@@ -559,6 +617,9 @@ function Read-UwHealthState {
     avSentAt    = [long](Get-UwProp $raw 'avSentAt' 0)
     avCheckedAt = [long](Get-UwProp $raw 'avCheckedAt' 0)
     installTriedAt = [long](Get-UwProp $raw 'installTriedAt' 0)
+    lastResume     = Get-UwProp $raw 'lastResume'
+    preventSleep   = Get-UwProp $raw 'preventSleep'
+    sleepSaved     = Get-UwProp $raw 'sleepSaved'
   }
 }
 
@@ -575,6 +636,9 @@ function Save-UwHealthState {
       avSentAt    = $Health.avSentAt
       avCheckedAt = $Health.avCheckedAt
       installTriedAt = $Health.installTriedAt
+      lastResume     = $Health.lastResume
+      preventSleep   = $Health.preventSleep
+      sleepSaved     = $Health.sleepSaved
     })
 }
 
@@ -585,13 +649,24 @@ function Get-UwHealthReport {
     [Parameter(Mandatory)][hashtable]$Health,
     $Config,
     [AllowEmptyCollection()][object[]]$Repairs = @(),
-    $Antivirus = $null
+    $Antivirus = $null,
+    $Hibernate = $null
   )
+  $power = $null
+  if ($null -ne $Hibernate) {
+    $power = [ordered]@{
+      hibernateEnabled      = $Hibernate.enabled
+      hibernateAfterMinutes = $Hibernate.afterMinutes
+      lastResume            = $Health.lastResume
+      preventSleep          = $Health.preventSleep
+    }
+  }
   [ordered]@{
     installLevel = [int](Get-UwProp $Config 'installLevel' 1)
     update       = $Health.update
     repairs      = @($Repairs | Select-Object -Last 10)
     antivirus    = $Antivirus
+    power        = $power
   }
 }
 
@@ -1480,6 +1555,10 @@ function Invoke-UwRun {
     Health = (Read-UwHealthState $paths.Health); Antivirus = $null; AntivirusHash = $null
     Repairs = @(Read-UwRepairNote -Path (Join-Path $script:UwAgentDir 'repairs.log'))
   }
+  $resume = Get-UwResume -LastBeat $lastBeat -Boot $ctx.Boot -Now (Get-UwUtcNow)
+  if ($null -ne $resume) { $ctx.Health.lastResume = $resume }
+  $ctx.Hibernate = $null
+  try { $ctx.Hibernate = Get-UwHibernateInfo } catch { Write-Verbose "hibernação: $_" }
   try {
     $av = Get-UwAntivirusReport -Health $ctx.Health -Now (Get-UwUtcNow) -Force:(Test-UwAntivirusDue -Health $ctx.Health -Repairs $ctx.Repairs)
     if ($null -ne $av) { $ctx.Antivirus = $av.Report; $ctx.AntivirusHash = $av.Hash }
@@ -1541,7 +1620,9 @@ function Invoke-UwPoll {
   $report = $null
   if ($Context.ContainsKey('Health') -and $null -ne $Context.Health) {
     $health = $Context.Health
-    $report = Get-UwHealthReport -Health $health -Config $cfg -Repairs @($Context.Repairs) -Antivirus $Context.Antivirus
+    $hib = $null
+    if ($Context.ContainsKey('Hibernate')) { $hib = $Context.Hibernate }
+    $report = Get-UwHealthReport -Health $health -Config $cfg -Repairs @($Context.Repairs) -Antivirus $Context.Antivirus -Hibernate $hib
   }
   $features = @{}
   if ($null -ne $health) { $features = $health.hubFeatures }

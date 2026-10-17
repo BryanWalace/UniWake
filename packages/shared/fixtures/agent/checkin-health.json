@@ -31,5 +31,15 @@
         "action": "quarentena"
       }
     ]
+  },
+  "power": {
+    "hibernateEnabled": true,
+    "hibernateAfterMinutes": 180,
+    "lastResume": {
+      "from": 1791810000000,
+      "to": 1791846000000,
+      "kind": "hibernate"
+    },
+    "preventSleep": null
   }
 }

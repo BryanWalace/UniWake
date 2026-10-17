@@ -18,6 +18,7 @@ const stored = (h: Partial<StoredHealth> = {}): StoredHealth => ({
   antivirus: null,
   antivirusAt: null,
   alert: null,
+  power: null,
   receivedAt: NOW,
   ...h,
 });

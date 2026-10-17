@@ -109,6 +109,7 @@ export interface StoredHealth {
   antivirus: NonNullable<AgentHealth['antivirus']> | null;
   antivirusAt: number | null;
   alert: { file: string; at: number } | null;
+  power: NonNullable<AgentHealth['power']> | null;
   receivedAt: number;
 }
 

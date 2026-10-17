@@ -174,6 +174,27 @@ export const agentHealthSchema = z.object({
         .max(10),
     })
     .nullable(),
+  /** v1.6.0 (FR-605): sleep and hibernation facts; older 1.7 agents may omit it. */
+  power: z
+    .object({
+      hibernateEnabled: z.boolean().nullable(),
+      /** AC "hibernate after" in minutes; 0 = never; null = unknown. */
+      hibernateAfterMinutes: z.number().int().min(0).max(100_000).nullable(),
+      /** The last time the PC came back without restarting (suspended or hibernated). */
+      lastResume: z
+        .object({ from: instant, to: instant, kind: z.enum(['sleep', 'hibernate', 'unknown']) })
+        .nullable(),
+      /** FR-605.3: what the agent last did with "Impedir suspensão e hibernação". */
+      preventSleep: z
+        .object({
+          state: z.enum(['applied', 'restored', 'failed']),
+          at: instant,
+          detail: z.string().max(200).nullable(),
+        })
+        .nullable(),
+    })
+    .nullable()
+    .optional(),
 });
 export type AgentHealth = z.infer<typeof agentHealthSchema>;
 

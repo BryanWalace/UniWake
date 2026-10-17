@@ -25,6 +25,12 @@ const PRODUCTS: Record<string, string> = {
   shadow_defender: 'Shadow Defender',
 };
 
+const RESUME_KIND = {
+  sleep: 'Suspensa',
+  hibernate: 'Hibernada',
+  unknown: 'Suspensa ou hibernada',
+} as const;
+
 const WAKE_TIMERS: Record<string, string> = {
   enabled: 'ativados',
   disabled: 'desativados',
@@ -209,6 +215,25 @@ function AgentDetails({ agent: a }: { agent: DeviceAgentInfo }) {
             )
             .join(', '),
     ]);
+  }
+  if (h?.power) {
+    const p = h.power;
+    rows.push([
+      'Hibernação (na tomada)',
+      p.hibernateEnabled === null
+        ? 'desconhecida'
+        : !p.hibernateEnabled
+          ? 'desativada'
+          : p.hibernateAfterMinutes
+            ? `após ${plural(p.hibernateAfterMinutes, 'minuto', 'minutos')}`
+            : 'ativada (sem tempo automático)',
+    ]);
+    if (p.lastResume) {
+      rows.push([
+        'Última ausência sem reiniciar',
+        `${RESUME_KIND[p.lastResume.kind]} de ${formatDateTime(p.lastResume.from)} a ${formatDateTime(p.lastResume.to)} — não desligou`,
+      ]);
+    }
   }
   if (Math.abs(offsetMin) >= 2) {
     rows.push([
