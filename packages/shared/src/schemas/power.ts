@@ -1,6 +1,7 @@
 /** Manual shutdown and restart from the panel (FR-305, plan §15.4). */
 import { z } from 'zod';
 import type { PowerPolicy } from '../agent/checkin';
+import { idSchema, LIMITS } from './common';
 import { wakeTargetSchema } from './wake';
 
 /**
@@ -17,6 +18,13 @@ export const powerRequestSchema = z.object({
   confirm: z.object({ count: z.number().int().min(0) }).optional(),
   /** FR-305: also shut down machines flagged "Nunca desligar por agendamento". */
   confirmProtected: z.boolean().default(false),
+  /**
+   * v1.6 (FR-601.1): preview with a "Desligar" schedule's rules — machines flagged "Nunca desligar
+   * por agendamento" or carrying one of these tags are listed in `excluded`, not counted. Preview only.
+   */
+  schedule: z
+    .object({ excludeTagIds: z.array(idSchema).max(LIMITS.compactListMax).default([]) })
+    .optional(),
 });
 export type PowerRequest = z.input<typeof powerRequestSchema>;
 export type PowerRequestParams = z.output<typeof powerRequestSchema>;
@@ -46,8 +54,16 @@ export interface PowerPreview {
   protected: PowerDeviceRef[];
   /** v1.6 (FR-501.5): targeted machines that are the PC running this UniWake. */
   self: PowerDeviceRef[];
+  /** v1.6 (FR-601.1): with `schedule`, the ready machines the schedule skips and why. */
+  excluded: (PowerDeviceRef & { reason: ExcludedReason })[];
   policy: PowerPolicy;
 }
+
+export const EXCLUDED_REASON_LABEL = {
+  never_flag: 'Nunca desligar por agendamento',
+  excluded_tag: 'etiqueta excluída neste agendamento',
+} as const;
+export type ExcludedReason = keyof typeof EXCLUDED_REASON_LABEL;
 
 /**
  * Per-machine state of a manual job (pt-BR labels in the panel):

@@ -9,6 +9,7 @@ import {
   ORDER_EXPIRY_MINUTES,
   POWER_DEVICE_STATES,
   POSTPONE_MINUTES_MIN,
+  type ExcludedReason,
   type PowerDeviceRef,
   type PowerDeviceState,
   type PowerJob,
@@ -140,13 +141,39 @@ export class PowerOrdersService {
       else if (state === 'lost') lost.push(ref(dev));
       else ready.push(dev);
     }
+    if (req.schedule) {
+      // FR-601.1: a schedule skips these (startScheduled), so its reach must not count them.
+      const tags = new Set(req.schedule.excludeTagIds);
+      const excluded: (PowerDeviceRef & { reason: ExcludedReason })[] = [];
+      const reached = ready.filter((dev) => {
+        const reason: ExcludedReason | null = info.get(dev.id)?.neverScheduledShutdown
+          ? 'never_flag'
+          : dev.tagIds.some((t) => tags.has(t))
+            ? 'excluded_tag'
+            : null;
+        if (reason) excluded.push({ ...ref(dev), reason });
+        return reason === null;
+      });
+      return {
+        r,
+        info,
+        ready: reached,
+        needsPreparation,
+        revoked,
+        lost,
+        protectedDevs: [] as DeviceSnap[],
+        excluded,
+      };
+    }
     const protectedDevs = ready.filter((dev) => info.get(dev.id)?.neverScheduledShutdown);
-    return { r, info, ready, needsPreparation, revoked, lost, protectedDevs };
+    return { r, info, ready, needsPreparation, revoked, lost, protectedDevs, excluded: [] };
   }
 
   preview(req: PowerRequestParams, selfIds: ReadonlySet<number> = new Set()): PowerPreview {
-    const { r, info, ready, needsPreparation, revoked, lost, protectedDevs } = this.plan(req);
+    const { r, info, ready, needsPreparation, revoked, lost, protectedDevs, excluded } =
+      this.plan(req);
     return {
+      excluded,
       // FR-501.5: the PC running this hub is among the targets: say so, never skip it silently.
       self: r.devices.filter((dev) => selfIds.has(dev.id)).map(ref),
       lost,

@@ -168,6 +168,7 @@ describe('schedules page (FR-005.1, FR-005.8)', () => {
         offline: 0,
         protected: [],
         self: [{ deviceId: 9, name: 'PC-TI' }],
+        excluded: [],
         policy: { warningMinutes: 5, allowPostpone: true, postponeMax: 2, postponeMinutes: 15 },
       },
     });
@@ -182,6 +183,43 @@ describe('schedules page (FR-005.1, FR-005.8)', () => {
     expect(within(dialog).getByRole('alert')).toHaveTextContent(
       'Inclui este PC, que roda o UniWake (PC-TI)',
     );
+  });
+
+  it('AC-601-01: the reach follows the schedule — excluded machines are listed apart with the reason', async () => {
+    const calls = api([]).on('POST', '/api/power/preview', {
+      body: {
+        action: 'shutdown',
+        count: 0,
+        rooms: [],
+        needsConfirmation: false,
+        needsPreparation: [],
+        revoked: [],
+        lost: [],
+        withUser: 0,
+        offline: 0,
+        protected: [],
+        self: [],
+        excluded: [
+          { deviceId: 5, name: 'LAB3-PC05', reason: 'never_flag' },
+          { deviceId: 6, name: 'LAB3-PROF', reason: 'excluded_tag' },
+        ],
+        policy: { warningMinutes: 5, allowPostpone: true, postponeMax: 2, postponeMinutes: 15 },
+      },
+    });
+    const user = userEvent.setup();
+    renderApp('/agendamentos');
+    await user.click(await screen.findByRole('button', { name: 'Novo agendamento' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Novo agendamento' });
+    await user.click(within(dialog).getByRole('radio', { name: 'Desligar' }));
+    await user.click(await within(dialog).findByRole('checkbox', { name: /Lab 3/ }));
+    expect(await within(dialog).findByText(/0 máquinas prontas/)).toBeInTheDocument();
+    expect(within(dialog).getByRole('note')).toHaveTextContent(
+      '2 máquinas ficam fora deste agendamento: LAB3-PC05 (Nunca desligar por agendamento), LAB3-PROF (etiqueta excluída neste agendamento).',
+    );
+    const body = calls.calls.filter((c) => c.path === '/api/power/preview').at(-1)?.body as {
+      schedule?: { excludeTagIds: number[] };
+    };
+    expect(body.schedule).toEqual({ excludeTagIds: [] });
   });
 
   it('shows field errors from the server next to the fields', async () => {

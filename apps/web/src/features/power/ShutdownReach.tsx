@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import type { PowerDeviceRef, WakeTarget } from '@uniwake/shared';
+import { EXCLUDED_REASON_LABEL, type PowerDeviceRef, type WakeTarget } from '@uniwake/shared';
 import { plural } from '../../lib/format';
 import { previewPower } from './api';
 
@@ -18,10 +18,23 @@ const emptyTarget = (t: WakeTarget) =>
  * v1.6 (FR-501.5, FR-502): who a "Desligar" schedule reaches today — ready machines, the ones that
  * still need the preparation command and whether the PC running UniWake is among them.
  */
-export function ShutdownReach({ target }: { target: WakeTarget }) {
+export function ShutdownReach({
+  target,
+  excludeTagIds = [],
+}: {
+  target: WakeTarget;
+  /** FR-601.1: the schedule's excluded tags, so the reach follows the schedule's own rules. */
+  excludeTagIds?: readonly number[];
+}) {
   const q = useQuery({
-    queryKey: ['power', 'reach', target],
-    queryFn: () => previewPower({ action: 'shutdown', target, warning: 'standard' }),
+    queryKey: ['power', 'reach', target, excludeTagIds],
+    queryFn: () =>
+      previewPower({
+        action: 'shutdown',
+        target,
+        warning: 'standard',
+        schedule: { excludeTagIds: [...excludeTagIds] },
+      }),
     enabled: !emptyTarget(target),
   });
   if (emptyTarget(target)) return null;
@@ -42,6 +55,19 @@ export function ShutdownReach({ target }: { target: WakeTarget }) {
           </>
         )}
       </p>
+      {p.excluded.length > 0 && (
+        <p
+          role="note"
+          className="rounded-md border border-slate-300 bg-slate-50 p-2 text-slate-900"
+        >
+          {plural(p.excluded.length, 'máquina fica', 'máquinas ficam')} fora deste agendamento:{' '}
+          {p.excluded
+            .slice(0, 5)
+            .map((d) => `${d.name} (${EXCLUDED_REASON_LABEL[d.reason]})`)
+            .join(', ')}
+          {p.excluded.length > 5 ? ` e mais ${p.excluded.length - 5}` : ''}.
+        </p>
+      )}
       {p.self.length > 0 && (
         <p
           role="alert"

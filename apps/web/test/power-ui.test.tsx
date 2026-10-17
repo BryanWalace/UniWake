@@ -31,6 +31,7 @@ const PREVIEW: PowerPreview = {
   offline: 0,
   protected: [],
   self: [],
+  excluded: [],
   policy: { warningMinutes: 1, allowPostpone: false, postponeMax: 0, postponeMinutes: 5 },
 };
 
