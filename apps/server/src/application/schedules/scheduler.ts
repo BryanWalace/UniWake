@@ -281,9 +281,11 @@ export class Scheduler {
     for (const s of schedules) {
       const warning = s.warningMinutes ?? this.d.settings.get('power.defaultWarningMinutes');
       const leadMs = (warning + 1) * 60_000;
+      // ADR-058: an instant at or before the last save never fires (saving must not shut a lab
+      // down on the spot); one that passed while the hub was off keeps the 60-minute late rule.
       const due = occurrencesBetween(
         rule(s),
-        Math.max(now - SHUTDOWN_LATE_MS, s.createdAt),
+        Math.max(now - SHUTDOWN_LATE_MS, s.createdAt, s.updatedAt),
         now + leadMs,
       );
       for (const o of due) {

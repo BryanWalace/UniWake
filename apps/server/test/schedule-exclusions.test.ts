@@ -104,3 +104,54 @@ describe('excluded machines in the reconciliation and the history (FR-601.2)', (
     ]);
   });
 });
+
+describe('saving a schedule never shuts machines down at once (FR-602, ADR-058)', () => {
+  const create = (s: AgentWorld['h']['services'], roomId: number) =>
+    s.schedules.create(
+      {
+        name: 'Desligar Lab 3',
+        weekdays: 127,
+        timeLocal: '06:30',
+        target: { type: 'rooms', roomIds: [roomId] },
+        action: 'shutdown',
+      },
+      ACTOR,
+    );
+
+  it('AC-602-01: saved at 06:31 for 06:30 → no order and no agenda item today; tomorrow normal', async () => {
+    const { w, s, room, agents } = await lab();
+    w.h.clock.set(AT_0630 + MIN);
+    create(s, room.id);
+    s.scheduler.tick();
+    expect(s.db.all('SELECT id FROM power_jobs')).toEqual([]);
+    expect(s.db.all('SELECT id FROM schedule_runs')).toEqual([]);
+    await agents[0]!.checkin();
+    const items = agents[0]!.agenda!.items.map((i) => i.at);
+    expect(items).not.toContain(AT_0630);
+    expect(items[0]).toBe(AT_0630 + 86_400_000);
+    // Tomorrow's 06:30 is pushed as usual.
+    w.h.clock.set(AT_0630 + 86_400_000 - 6 * MIN);
+    s.scheduler.tick();
+    expect(s.db.all<{ uuid: string }>('SELECT uuid FROM power_jobs')).toHaveLength(1);
+  });
+
+  it('AC-602-01: an edit after T also leaves T out (it was handled before the edit)', async () => {
+    const { w, s, room, agents } = await lab();
+    const id = create(s, room.id).id;
+    w.h.clock.set(AT_0630 + 2 * MIN);
+    s.schedules.update(id, { name: 'Desligar Lab 3 (noite)' }, ACTOR);
+    await agents[0]!.checkin();
+    expect(agents[0]!.agenda!.items.map((i) => i.at)).not.toContain(AT_0630);
+  });
+
+  it('AC-602-02: saved before T with the hub off from T − 10 to T + 10 → pushed late, as before', async () => {
+    const { w, s, room } = await lab();
+    create(s, room.id); // saved at 06:00
+    w.h.clock.set(AT_0630 + 10 * MIN); // the hub comes back at 06:40
+    s.scheduler.tick();
+    expect(s.db.all('SELECT id FROM power_jobs')).toHaveLength(1);
+    expect(s.db.get<{ status: string }>('SELECT status FROM schedule_runs')!.status).toBe(
+      'atrasado',
+    );
+  });
+});
