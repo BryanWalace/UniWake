@@ -495,8 +495,9 @@ function Get-UwProp {
   [CmdletBinding()]
   param($Object, [string]$Name, $Default = $null)
   if ($null -eq $Object) { return $Default }
-  if ($Object -is [hashtable]) {
-    if ($Object.ContainsKey($Name)) { return $Object[$Name] }
+  # Hashtables and [ordered] dictionaries (built by the agent itself) as well as JSON objects.
+  if ($Object -is [System.Collections.IDictionary]) {
+    if ($Object.Contains($Name)) { return $Object[$Name] }
     return $Default
   }
   if ($Object.PSObject.Properties.Name -contains $Name) { return $Object.$Name }
@@ -1115,13 +1116,21 @@ function Sync-UwScript {
   [CmdletBinding()]
   param([Parameter(Mandatory)]$Scripts, [Parameter(Mandatory)][string]$HubUrl, [hashtable]$Health = $null)
   $last = $null
+  $all = $true
   foreach ($name in 'uniwake-agent.ps1', 'uniwake-aviso.ps1') {
     $want = [string](Get-UwProp (Get-UwProp $Scripts $name) 'sha256' '')
     if (-not $want) { continue }
     $path = Join-Path $script:UwAgentDir $name
     if ((Get-UwFileSha256 -Path $path) -eq $want) { continue }
     $last = Sync-UwScriptFile -Name $name -Path $path -Want $want -HubUrl $HubUrl
+    if ($last.outcome -ne 'updated') { $all = $false }
     if ($null -ne $Health) { $Health.update = $last }
+  }
+  # M29-R: every file matches the signed hashes again (restored by "UniWake Reparo", or the
+  # antivirus was fixed): a past failure is over, so the panel stops showing the agent as blocked.
+  if ($all -and $null -eq $last -and $null -ne $Health -and $null -ne $Health.update -and
+    [string](Get-UwProp $Health.update 'outcome') -ne 'updated') {
+    $Health.update = Format-UwUpdateOutcome 'updated' ([string](Get-UwProp $Health.update 'file')) $null 'conferido: igual ao do UniWake'
   }
   return $last
 }
@@ -1399,6 +1408,8 @@ function Invoke-UwSelfInstall {
   if ($Now - $last -lt 3600000L) { return }
   $Health.installTriedAt = $Now
   Register-UwRepairTask -Command (Get-UwRepairCommand -AgentDir $script:UwAgentDir)
+  # Only failures wait an hour: a frozen machine loses the task at every restart (M29-R).
+  $Health.installTriedAt = 0L
   $out = [ordered]@{}
   foreach ($p in $config.PSObject.Properties) { $out[$p.Name] = $p.Value }
   $out['installLevel'] = $script:UwInstallLevel

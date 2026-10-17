@@ -87,6 +87,15 @@ Describe 'Verified self-update (FR-603.2)' {
     Should -Invoke Invoke-UwHttp -Times 0
   }
 
+  It 'a past failure turns into "updated" once every file matches again (no endless "bloqueado")' {
+    $script:Health.update = [ordered]@{ outcome = 'write_blocked'; file = 'uniwake-aviso.ps1'; at = 1; code = 225; detail = $null }
+    [System.IO.File]::WriteAllBytes($script:Path, $script:Good) # restored by the repair task
+    Sync-UwScript -Scripts $script:Refs -HubUrl 'http://10.0.0.5:47101' -Health $script:Health | Should -BeNullOrEmpty
+    $script:Health.update.outcome | Should -Be 'updated'
+    $script:Health.update.file | Should -Be 'uniwake-aviso.ps1'
+    Should -Invoke Invoke-UwHttp -Times 0
+  }
+
   It 'reads the Windows error code inside wrapped exceptions' {
     $inner = [System.IO.IOException]::new('vírus', -2147024670)
     Get-UwWin32Code ([System.Exception]::new('fora', $inner)) | Should -Be 226

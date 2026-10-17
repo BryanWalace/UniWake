@@ -44,6 +44,15 @@ Describe 'Self-install of the newer steps (FR-603.3)' {
     $script:UwFake.RepairTask | Should -BeNullOrEmpty
   }
 
+  It 'a frozen machine that lost the task at restart registers it again at once (success is not throttled)' {
+    Invoke-UwSelfInstall -Scripts $script:Refs -Paths $script:Paths -Health $script:Health -Now $script:T0
+    # Restart of a frozen machine: the config goes back to level 1; health.json is in the kept folder.
+    Install-UwTestAgent -Hub (New-UwTestHub)
+    $script:UwFake.RepairTask = $null
+    Invoke-UwSelfInstall -Scripts $script:Refs -Paths $script:Paths -Health $script:Health -Now ($script:T0 + 5 * 60000)
+    $script:UwFake.RepairTask | Should -Not -BeNullOrEmpty
+  }
+
   It 'copies only files that match the signed hashes and keeps a still-valid older copy' {
     Invoke-UwSelfInstall -Scripts $script:Refs -Paths $script:Paths -Health $script:Health -Now $script:T0
     # The live script is changed (not by an update): it is not copied over the good copy.
