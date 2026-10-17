@@ -1189,6 +1189,114 @@ function Sync-UwScriptFile {
   return Format-UwUpdateOutcome 'updated' $Name
 }
 
+# ------------------------------------------------------------------ antivirus (FR-604, ADR-060)
+
+# How often the antivirus is read, and when an unchanged report is sent again anyway (another hub).
+$script:UwAvCheckMs = 15L * 60000
+$script:UwAvResendMs = 6L * 3600000
+
+<#
+  Raw antivirus facts: the products Windows Security Center knows and, when Microsoft Defender is
+  there, its detections. Third-party products have no common history API (ADR-060).
+#>
+function Get-UwAntivirusRaw {
+  [CmdletBinding()]
+  param()
+  Assert-UwRealSystem 'Get-UwAntivirusRaw'
+  $products = @()
+  try {
+    $products = @(Get-CimInstance -Namespace 'root/SecurityCenter2' -ClassName 'AntiVirusProduct' -ErrorAction Stop |
+        ForEach-Object { @{ name = [string]$_.displayName; state = [long]$_.productState } })
+  } catch { Write-Verbose "Central de Segurança: $_" } # Windows Server has no Security Center
+  $detections = @()
+  if (Get-Command -Name 'Get-MpThreatDetection' -ErrorAction SilentlyContinue) {
+    try {
+      $names = @{}
+      try { foreach ($t in @(Get-MpThreat -ErrorAction Stop)) { $names[[string]$t.ThreatID] = [string]$t.ThreatName } } catch { Write-Verbose "$_" }
+      $detections = @(Get-MpThreatDetection -ErrorAction Stop | ForEach-Object {
+          @{ at = $_.InitialDetectionTime; resources = @($_.Resources); threat = $names[[string]$_.ThreatID]; status = [int]$_.ThreatStatusID }
+        })
+    } catch { Write-Verbose "Defender: $_" }
+  }
+  @{ products = $products; detections = $detections }
+}
+
+# What Microsoft Defender did (ThreatStatusID), in the panel's words; unknown codes say nothing.
+$script:UwDefenderAction = @{ 2 = 'limpo'; 3 = 'quarentena'; 4 = 'removido'; 5 = 'permitido'; 6 = 'bloqueado' }
+
+<#
+  The contract's `antivirus` object (FR-604.1): product names with enabled/up-to-date decoded from
+  productState (unknown bits: null), and the detections of the last 14 days that touch UniWake —
+  file names only, newest first.
+#>
+function ConvertTo-UwAntivirusInfo {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)][hashtable]$Raw, [Parameter(Mandatory)][long]$Now)
+  $products = @(foreach ($p in @($Raw.products)) {
+      if (-not $p.name) { continue }
+      $hex = '{0:X6}' -f [long]$p.state
+      $enabled = $null
+      if ($hex.Length -eq 6) {
+        $on = $hex.Substring(2, 2)
+        if ($on -in @('10', '11')) { $enabled = $true } elseif ($on -in @('00', '01')) { $enabled = $false }
+        $sig = $hex.Substring(4, 2)
+        $upToDate = $null
+        if ($sig -eq '00') { $upToDate = $true } elseif ($sig -eq '10') { $upToDate = $false }
+      } else { $upToDate = $null }
+      [ordered]@{ name = ([string]$p.name).Substring(0, [Math]::Min(100, ([string]$p.name).Length)); enabled = $enabled; upToDate = $upToDate }
+    })
+  $since = $Now - 14L * 86400000
+  $found = foreach ($d in @($Raw.detections)) {
+    if ($null -eq $d.at) { continue }
+    $at = ([DateTimeOffset][datetime]$d.at).ToUnixTimeMilliseconds()
+    if ($at -lt $since) { continue }
+    $hit = @(@($d.resources) | Where-Object { [string]$_ -match '\\UniWake\\|uniwake-[a-z]+\.ps1' }) | Select-Object -First 1
+    if (-not $hit) { continue }
+    $file = [regex]::Match([string]$hit, 'uniwake-[a-z]+\.ps1', 'IgnoreCase').Value
+    if (-not $file) { $file = Split-Path -Leaf (([string]$hit) -replace '^[A-Za-z]+:_', '') }
+    $threat = [string]$d.threat
+    if (-not $threat) { $threat = 'desconhecida' }
+    $action = $null
+    if ($script:UwDefenderAction.ContainsKey([int]$d.status)) { $action = $script:UwDefenderAction[[int]$d.status] }
+    [ordered]@{
+      at = $at; threat = $threat.Substring(0, [Math]::Min(120, $threat.Length))
+      file = $file.Substring(0, [Math]::Min(80, $file.Length)); action = $action
+    }
+  }
+  [ordered]@{
+    products   = @($products | Select-Object -First 6)
+    detections = @(@($found) | Sort-Object { $_.at } -Descending | Select-Object -First 10)
+  }
+}
+
+<#
+  The antivirus part to send now, or $null when nothing changed (FR-604.1): read every 15 minutes, or
+  at once after a blocked update or a repair; sent when it changed or every 6 hours. Returns
+  @{ Report; Hash } so the caller marks it sent only once a hub took it.
+#>
+function Get-UwAntivirusReport {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)][hashtable]$Health, [Parameter(Mandatory)][long]$Now, [switch]$Force)
+  if (-not $Force -and $Now - $Health.avCheckedAt -lt $script:UwAvCheckMs) { return $null }
+  $Health.avCheckedAt = $Now
+  $av = ConvertTo-UwAntivirusInfo -Raw (Get-UwAntivirusRaw) -Now $Now
+  $hash = Get-UwSha256Hex -Bytes ([System.Text.Encoding]::UTF8.GetBytes((ConvertTo-Json $av -Depth 5 -Compress)))
+  if ($hash -eq $Health.avHash -and $Now - $Health.avSentAt -lt $script:UwAvResendMs) { return $null }
+  return @{ Report = $av; Hash = $hash }
+}
+
+# A blocked update or a repair note newer than the last antivirus reading: read it again now.
+function Test-UwAntivirusDue {
+  [CmdletBinding()]
+  [OutputType([bool])]
+  param([Parameter(Mandatory)][hashtable]$Health, [AllowEmptyCollection()][object[]]$Repairs = @())
+  $u = $Health.update
+  if ($null -ne $u -and [string](Get-UwProp $u 'outcome') -in @('write_blocked', 'removed_after_write') -and
+    [long](Get-UwProp $u 'at' 0) -gt $Health.avCheckedAt) { return $true }
+  foreach ($r in @($Repairs)) { if ([long]$r.at -gt $Health.avCheckedAt) { return $true } }
+  return $false
+}
+
 # ------------------------------------------------------------------ self-install and repair (ADR-059)
 
 <#
@@ -1358,9 +1466,13 @@ function Invoke-UwRun {
   $ctx = @{
     Paths = $paths; Config = $config; State = $state; Last = $null
     Boot = (Get-UwBootTime); Freeze = (Get-UwFreezeInfo); Power = (Get-UwPowerInfo); Session = (Get-UwSessionInfo)
-    Health = (Read-UwHealthState $paths.Health); Antivirus = $null
+    Health = (Read-UwHealthState $paths.Health); Antivirus = $null; AntivirusHash = $null
     Repairs = @(Read-UwRepairNote -Path (Join-Path $script:UwAgentDir 'repairs.log'))
   }
+  try {
+    $av = Get-UwAntivirusReport -Health $ctx.Health -Now (Get-UwUtcNow) -Force:(Test-UwAntivirusDue -Health $ctx.Health -Repairs $ctx.Repairs)
+    if ($null -ne $av) { $ctx.Antivirus = $av.Report; $ctx.AntivirusHash = $av.Hash }
+  } catch { Write-Verbose "antivirus: $_" }
   # FR-308.4: data kept in a folder that survives freezing (ThawSpace, UWF exclusion) when configured.
   $persistent = Get-UwProp $config 'persistentPath'
   $ctx.Freeze = @{ product = $ctx.Freeze.product; state = $ctx.Freeze.state; persistent = [bool]$persistent }
@@ -1427,6 +1539,12 @@ function Invoke-UwPoll {
   if ($null -ne $health) {
     # What this hub accepts from now on (a hub without the list accepts no health).
     $health.hubFeatures[[string]$result.Hub.keyId] = @($result.Features)
+    if ($result.SentHealth -and $null -ne $Context.Antivirus -and $Context.ContainsKey('AntivirusHash')) {
+      # A hub took it: unchanged readings are not sent again for a while.
+      $health.avHash = $Context.AntivirusHash
+      $health.avSentAt = [long]$result.Answer.serverTime
+      $Context.Antivirus = $null
+    }
     Save-UwHealthState $paths.Health $health
   }
   $extra = Invoke-UwAnswer -Result $result -State $Context.State -Paths $paths -Config $cfg -SentAcks ([string[]]$acks)

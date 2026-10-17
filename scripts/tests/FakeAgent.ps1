@@ -7,7 +7,7 @@
 $script:UwAgentSystemFunctions = @(
   'Get-UwUtcNow', 'Wait-UwSecond', 'Get-UwBootTime', 'Invoke-UwHttp', 'Get-UwSessionInfo',
   'Get-UwFreezeInfo', 'Get-UwPowerInfo', 'Invoke-UwShutdown', 'Register-UwWakeTask',
-  'Start-UwWarningTask', 'Test-UwAgentFolder', 'Register-UwRepairTask'
+  'Start-UwWarningTask', 'Test-UwAgentFolder', 'Register-UwRepairTask', 'Get-UwAntivirusRaw'
 )
 
 # Fake clock (UTC ms) shared by the mocks; Wait-UwSecond advances it instantly.
@@ -32,6 +32,7 @@ function Register-UwFakeAgent {
   Mock Start-UwWarningTask { $script:UwFake.WarningStarted++ }
   $script:UwFake.RepairTask = $null
   Mock Register-UwRepairTask { $script:UwFake.RepairTask = $Command }
+  Mock Get-UwAntivirusRaw { @{ products = @(); detections = @() } }
   if ($Root) {
     $script:UwAgentDir = Join-Path $Root 'agent'
     $script:UwDataDir = Join-Path $Root 'agent\data'

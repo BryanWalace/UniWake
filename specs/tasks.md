@@ -499,7 +499,7 @@ Owner request 2026-10-16 after the v1.5.0 field log; Phase 15.
 | [x] M29-T01 | Contract: answer `features`, optional request `health` (update, repairs, antivirus, power), `/agent/v1/alert`; hub stores health (migration 009). | FR-603.1, FR-603.5; ADR-059 | AC-603-01 | — |
 | [x] M29-T02 | Agent: verified self-update with outcomes; health sent only to hubs with the feature. | FR-603.2 | AC-603-02 (Pester) | — |
 | [x] M29-T03 | Agent: self-install (tasks, verified copy, repair task) and the repair command. | FR-603.3, FR-603.4; ADR-059 | AC-603-03, AC-603-04 (Pester) | — |
-| [ ] M29-T04 | Agent: antivirus products and Defender detections. | FR-604.1; ADR-060 | AC-604-01 (Pester) | — |
+| [x] M29-T04 | Agent: antivirus products and Defender detections. | FR-604.1; ADR-060 | AC-604-01 (Pester) | — |
 | [ ] M29-T05 | Hub: notices, device page, list marks, outdated count, "perdido" causes. | FR-603.5, FR-604.2, FR-604.3 | AC-603-05, AC-604-01, AC-604-02 | — |
 | [ ] M29-R | Review → `specs/reviews/M29-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
 

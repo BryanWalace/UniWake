@@ -1335,9 +1335,9 @@ compares its SHA-256. Outcome per update attempt: `updated`, `download_failed`, 
 `removed_after_write` (gone or changed right after writing: antivirus probable). The last outcome,
 the file and the time go in `health.update`.
 **FR-603.3** Self-install: when the running script's install level is newer than the one recorded on
-the machine, the agent itself re-registers its scheduled tasks with the current definitions, keeps a
-verified copy of its scripts and registers the repair task. Machines whose agent runs never need
-"Preparar máquinas" again for agent changes.
+the machine, the agent itself applies the install steps of each newer level (level 2, v1.6.0: the
+verified copy of its scripts and the repair task; later levels add their own, e.g. new task
+definitions). Machines whose agent runs never need "Preparar máquinas" again for agent changes.
 **FR-603.4** Repair task "UniWake Reparo" (SYSTEM, at start-up and every 30 min; an inline command, no
 script file of its own): when an agent script is missing or differs from the verified copy, it restores
 the copy and leaves a note; the agent reports the note at its next check-in (`health.repairs`). When it

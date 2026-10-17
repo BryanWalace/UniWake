@@ -110,6 +110,19 @@ Describe 'Health only for hubs that announce it (FR-603.1)' {
     }
   }
 
+  It 'the antivirus part counts as sent only once a hub that announces health took it' {
+    Use-TestHub $script:Hub { New-TestAnswer }
+    $script:Ctx.Antivirus = [ordered]@{ products = @(); detections = @() }
+    $script:Ctx.AntivirusHash = 'abc'
+    [void](Invoke-UwPoll -Context $script:Ctx) # the hub's features are not known yet: no health
+    $script:Ctx.Health.avHash | Should -Be ''
+    $script:Ctx.Antivirus | Should -Not -BeNullOrEmpty
+    [void](Invoke-UwPoll -Context $script:Ctx)
+    $script:LastRequests[1].Body.health.antivirus | Should -Not -BeNullOrEmpty
+    $script:Ctx.Health.avHash | Should -Be 'abc'
+    $script:Ctx.Antivirus | Should -BeNullOrEmpty
+  }
+
   It 'AC-603-01: no health until the hub announces it; then it goes; a hub that stops announcing gets none' {
     $script:Plain = $false
     Use-TestHub $script:Hub { New-TestAnswer -WithoutFeatures:$script:Plain }
