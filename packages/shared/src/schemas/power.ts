@@ -145,6 +145,8 @@ export const SHUTDOWN_RESULTS = [
   'no_agent',
   'stale_agenda',
   'no_answer',
+  // v1.6.0 (FR-601.2): targeted but skipped by the schedule's own rules.
+  'excluded',
 ] as const;
 export type ShutdownResult = (typeof SHUTDOWN_RESULTS)[number];
 
@@ -163,6 +165,7 @@ export const SHUTDOWN_RESULT_LABEL: Record<ShutdownResult, string> = {
   no_agent: 'Sem agente (precisa do preparo)',
   stale_agenda: 'Agenda desatualizada (a última agenda entregue não tinha este horário)',
   no_answer: 'Sem resposta (não consultou o UniWake desde antes do aviso)',
+  excluded: 'Excluída do agendamento',
 };
 
 /** FR-502.1: why a shutdown schedule does (not) reach a machine. */
@@ -231,6 +234,8 @@ export interface PowerOccurrenceDevice extends PowerDeviceRef {
   lateMinutes: number | null;
   nativeWarning: boolean;
   userLoggedOn: boolean | null;
+  /** v1.6.0 (FR-601.2): why an `excluded` machine was skipped. */
+  excludedReason?: ExcludedReason;
 }
 
 /** One scheduled shutdown aggregated over the machines' reports (AC-307-01). */

@@ -1,4 +1,5 @@
 import {
+  EXCLUDED_REASON_LABEL,
   type PowerJob,
   type PowerOccurrence,
   type PowerOccurrenceDevice,
@@ -16,8 +17,10 @@ const PATH_LABEL = { agenda: 'pela agenda', order: 'por ordem direta' } as const
 export function occurrenceSummary(o: PowerOccurrence): string {
   const c = o.counts;
   const n = (k: number, one: string, many: string) => (k > 0 ? [plural(k, one, many)] : []);
+  // FR-601.2: excluded machines are not part of the "x/y desligaram" the schedule aimed at.
+  const reached = o.devices.length - c.excluded;
   return [
-    `${c.done}/${o.devices.length} ${c.done === 1 ? 'desligou' : 'desligaram'}`,
+    `${c.done}/${reached} ${c.done === 1 ? 'desligou' : 'desligaram'}`,
     ...(c.postponed > 0
       ? [`${c.postponed} ${c.postponed === 1 ? 'adiou' : 'adiaram'} até ${o.maxPostpones}×`]
       : []),
@@ -37,6 +40,7 @@ export function occurrenceSummary(o: PowerOccurrence): string {
     ...n(c.cancelled, 'cancelado', 'cancelados'),
     ...n(c.failed, 'falhou', 'falharam'),
     ...n(c.no_report, 'sem relatório', 'sem relatório'),
+    ...n(c.excluded, 'excluída do agendamento', 'excluídas do agendamento'),
   ].join(', ');
 }
 
@@ -46,6 +50,9 @@ function deviceDetail(d: PowerOccurrenceDevice): string {
     parts[0] = `Pulado: acordou ${d.lateMinutes} min após o horário`;
   }
   if (d.result === 'done' && d.path) parts[0] = `${parts[0]} ${PATH_LABEL[d.path]}`;
+  if (d.result === 'excluded' && d.excludedReason) {
+    parts[0] = `${parts[0]} (${EXCLUDED_REASON_LABEL[d.excludedReason]})`;
+  }
   if (d.postpones > 0) parts.push(`adiou ${d.postpones}×`);
   if (d.wasAsleep) parts.push('estava em suspensão');
   if (d.nativeWarning) parts.push('aviso do Windows');

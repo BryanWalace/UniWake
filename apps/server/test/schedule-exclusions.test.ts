@@ -3,10 +3,14 @@
  * "Desligar" schedule never shuts machines down at once. Fake agents only: nothing is shut down.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import type { PowerPreview } from '@uniwake/shared';
+import type { PowerHistory, PowerPreview } from '@uniwake/shared';
+import { T0 } from './helpers/db';
 import { agentWorld, type AgentWorld } from './helpers/fake-agent';
 
 const ACTOR = { id: null, label: 'teste' };
+const MIN = 60_000;
+/** T0 is 06:00 in São Paulo: a 06:30 shutdown is 30 minutes ahead. */
+const AT_0630 = T0 + 30 * MIN;
 const worlds: AgentWorld[] = [];
 afterEach(async () => {
   for (const w of worlds.splice(0)) await w.close();
@@ -58,5 +62,45 @@ describe('excluded machines are listed with the reason (FR-601)', () => {
     expect(manual.count).toBe(3);
     expect(manual.excluded).toEqual([]);
     expect(manual.protected.map((d) => d.name)).toEqual(['LAB3-PC02']);
+  });
+});
+
+describe('excluded machines in the reconciliation and the history (FR-601.2)', () => {
+  it('AC-601-02: the run detail and the history list them as excluded, with the reason', async () => {
+    const { w, s, room, prof, agents, cookie } = await lab();
+    s.schedules.create(
+      {
+        name: 'Desligar Lab 3',
+        weekdays: 127,
+        timeLocal: '06:30',
+        target: { type: 'rooms', roomIds: [room.id] },
+        action: 'shutdown',
+        excludeTagIds: [prof.id],
+      },
+      ACTOR,
+    );
+    w.h.clock.set(AT_0630 - 6 * MIN);
+    s.scheduler.tick();
+    for (const a of agents) await a.checkin();
+    agents[0]!.step(w.h.clock.now());
+    await agents[0]!.checkin();
+    w.h.clock.set(AT_0630 + 10 * MIN);
+    s.scheduler.tick();
+    const run = s.db.get<{ detail: string }>('SELECT detail FROM schedule_runs');
+    expect(run!.detail).toContain('2 excluída(s)'); // the push line, as before
+    expect(run!.detail).toContain(
+      'conferência às T+10: 1 desligou, 2 excluídas do agendamento (1 nunca desligar por agendamento, 1 etiqueta excluída neste agendamento)',
+    );
+    expect(run!.detail).not.toContain('nenhuma máquina no alvo');
+    const history = (
+      await w.h.inject({ method: 'GET', url: '/api/power/history', cookie })
+    ).json<PowerHistory>();
+    const o = history.occurrences[0]!;
+    expect(o.counts).toMatchObject({ done: 1, excluded: 2 });
+    expect(o.devices.map((d) => [d.name, d.result, d.excludedReason ?? null])).toEqual([
+      ['LAB3-PC01', 'done', null],
+      ['LAB3-PC02', 'excluded', 'never_flag'],
+      ['LAB3-PROF', 'excluded', 'excluded_tag'],
+    ]);
   });
 });

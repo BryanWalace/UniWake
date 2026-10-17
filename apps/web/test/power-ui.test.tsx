@@ -189,6 +189,7 @@ describe('Histórico: shutdowns next to wakes (M19-T04, FR-307)', () => {
       no_agent: 0,
       stale_agenda: 0,
       no_answer: 0,
+      excluded: 0,
       postponed: 1,
     },
     maxPostpones: 2,
@@ -296,5 +297,51 @@ describe('Histórico: shutdowns next to wakes (M19-T04, FR-307)', () => {
     renderApp('/historico');
     const section = await screen.findByRole('region', { name: 'Desligamentos e reinícios' });
     expect(await within(section).findByText('Erro interno inesperado.')).toBeInTheDocument();
+  });
+});
+
+describe('history summary with excluded machines (v1.6.0, FR-601.2)', () => {
+  it('AC-601-02: excluded machines are named apart and not in the "x/y desligaram"', async () => {
+    const { occurrenceSummary } = await import('../src/features/power/PowerHistorySection');
+    const dev = (deviceId: number, result: 'done' | 'excluded') => ({
+      deviceId,
+      name: `PC-0${deviceId}`,
+      path: null,
+      result,
+      postpones: 0,
+      wasAsleep: false,
+      lateMinutes: null,
+      nativeWarning: false,
+      userLoggedOn: null,
+    });
+    const counts = Object.fromEntries(
+      [
+        'done',
+        'was_off',
+        'late_wake',
+        'cancelled',
+        'failed',
+        'probably_done',
+        'no_report',
+        'off_no_report',
+        'postponed_active',
+        'still_on',
+        'no_agent',
+        'stale_agenda',
+        'no_answer',
+        'excluded',
+        'postponed',
+      ].map((k) => [k, 0]),
+    ) as PowerOccurrence['counts'];
+    const o: PowerOccurrence = {
+      occurrence: 'x',
+      scheduleId: 1,
+      scheduleName: 'Desligar',
+      plannedAt: 0,
+      counts: { ...counts, done: 1, excluded: 2 },
+      maxPostpones: 0,
+      devices: [dev(1, 'done'), dev(2, 'excluded'), dev(3, 'excluded')],
+    };
+    expect(occurrenceSummary(o)).toBe('1/1 desligou, 2 excluídas do agendamento');
   });
 });

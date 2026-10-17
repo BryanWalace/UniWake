@@ -314,8 +314,27 @@ export class PowerStatusService {
     for (const dev of targeted) {
       const a = agents.get(dev.id);
       const x = extras.get(dev.id);
-      if (a?.neverScheduledShutdown) continue;
-      if (x?.tagUuids.some((t) => exclude.has(t))) continue;
+      // FR-601.2: skipped by the schedule's own rules, but never hidden.
+      const excludedReason = a?.neverScheduledShutdown
+        ? ('never_flag' as const)
+        : x?.tagUuids.some((t) => exclude.has(t))
+          ? ('excluded_tag' as const)
+          : null;
+      if (excludedReason) {
+        out.push({
+          deviceId: dev.id,
+          name: dev.name,
+          result: 'excluded',
+          excludedReason,
+          path: null,
+          postpones: 0,
+          wasAsleep: false,
+          lateMinutes: null,
+          nativeWarning: false,
+          userLoggedOn: null,
+        });
+        continue;
+      }
       const o = orders.get(dev.id);
       out.push({
         deviceId: dev.id,
