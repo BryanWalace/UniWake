@@ -525,7 +525,7 @@ WoL real por modelo de PC, reinício sem ninguém logado, VLANs, HTTPS na rede) 
   `perf/migration.perf.test.ts`, web `migration-page.test.tsx`, `e2e/migration.spec.ts`.
 - Architect assumptions A-1..A-5 (ADR-049..052) are open to the owner's change.
 - Remote shutdown (v1.3): `application/power/*`, `scripts/agent/*`, `scripts/prepare-target.ps1` step 8.
-- CI on `dev` uploads `UniWake-Setup-dev` (`DEV_VERSION_BASE` 1.5.0, ADR-041).
+- CI on `dev` uploads `UniWake-Setup-dev` (`DEV_VERSION_BASE` 1.6.0, ADR-041).
 
 ### Next steps
 0. v1.5 field fixes: act on the owner's lab-PC results (tests first). If a schedule still misses a
