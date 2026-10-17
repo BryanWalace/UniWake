@@ -288,3 +288,53 @@ In pt-BR in `specs/handoff/NEXT.md` ("Como testar as correções da v1.6 num PC 
 ## Verdict
 No open CRITICAL/MAJOR. v1.6 is validated on `dev`. Not merged, not tagged: waiting for the owner's
 lab-PC test and an explicit "pode subir a dev para a main".
+
+# Validation v1.7 (spec revision; product version 1.6.0) — Machines that update themselves and report (M28–M30)
+
+Date: 2026-10-17 · Lead: Debug & Problem Solver · Branch `dev` (not released).
+
+## V7-T01 Acceptance criteria
+`validation-acs.md` (regenerated): **227 criteria, 226 automated, 1 manual (V-T05), 0 without
+evidence**. All 14 §6e criteria (AC-601-01 … AC-605-03) are automated:
+
+| Area | Evidence |
+|---|---|
+| Excluded machines (FR-601) | `schedule-exclusions` AC-601-01 (reach with the schedule's rules; manual preview unchanged) and AC-601-02 (run detail, history); web `schedules-page`, `power-ui` |
+| Saving never shuts down (FR-602) | `schedule-exclusions` AC-602-01 (save after T, edit after T) and AC-602-02 (late push after a hub outage) |
+| Contract and storage (FR-603.1/603.5) | `agent-contract` (optional health, unknown inner fields dropped, v1.5.0 answers), `agent-health` (stored, `antivirus: null` keeps, alert route) |
+| Verified self-update (FR-603.2) | Pester `agent-update` (updated, 225 → write_blocked, removed after write, download/hash failures, past failure cleared, health only to announcing hubs) |
+| Self-install and repair (FR-603.3/603.4) | Pester `agent-repair` (copy + task + level once; failure retried hourly, success never throttled; the real repair command run in a temporary folder; CI-only real task registration) |
+| Antivirus (FR-604) | Pester `agent-antivirus`; `agent-health` AC-604-01 (one notice, deduplicated), AC-603-05 (device page, list marks, health warnings); `agent-health-unit`; web `device-page` AC-604-02, `dashboard-page`, `devices-page`, `help-pages` |
+| Sleep and hibernation (FR-605) | Pester `agent-sleep` (resume kind, report, prevent on/off/re-apply/failure); `sleeping-machines` AC-605-02 (manual, pushed, setting off, restart); web `device-page` AC-605-01/03, `power-ui` |
+
+Runs on the validation commit: `npm run verify` green (Vitest 1033 tests, coverage thresholds,
+perf, deps, trace), Pester 113/113 (1 CI-only skipped locally), Playwright 26/26.
+
+**Package smoke (staged bundle, loopback, dry-run): 27/27.** Real Windows PowerShell 5.1 agent code
+against the packaged hub: the answer announces `health` and `power.preventSleep`; a health report
+built by the agent's own `Get-UwHealthReport` / `ConvertTo-UwAntivirusInfo` (one item per list —
+the PowerShell serialization case) passes the hub's contract and is stored; the device page shows it
+and the "Antivírus bloqueou o UniWake" notice appears; the schedule reach lists the "Nunca desligar"
+machine apart. No "probe helper missed its deadline", no warning or error in the hub log.
+
+## Failure modes found in the v1.6.0 reviews
+| Finding | Handling | Evidence |
+|---|---|---|
+| Schedule form counted a "Nunca desligar" machine as reached (manual preview reused) — the v1.5.0 field test | Reach with the schedule's own rules | AC-601-01 |
+| Saving a time that had just passed shut the room down at once | ADR-058 save rule on push and agenda | AC-602-01 |
+| A machine restored after an antivirus fix stayed "Agente bloqueado" forever | Past failure cleared when every file matches again | Pester `agent-update` |
+| Frozen machines would miss the repair task up to 1 h after each restart | Only failures throttled | Pester `agent-repair` |
+| `Get-UwProp` ignored `[ordered]` dictionaries | Reads any `IDictionary` | Pester |
+| **Process (smoke test):** the first v1.6.0 package smoke ran with real sending and its manual "Desligar" woke the test machine through the real sender — one real magic packet to the fictitious MAC `02:00:00:00:AB:01` on the owner's LAN (nothing woke) | Smoke scripts turn on `wake.dryRun` first and check `dry_run = 1` | second smoke run, owner informed |
+
+## Not verified (field)
+- Kernel-Power event 42 `TargetState` values on every model (hibernation vs. sleep naming).
+- Wake from hibernation (S4) by magic packet or wake timer on the owner's hardware.
+- Third-party antivirus behaviour (only the effect is detected; Defender is named precisely).
+- Whether an antivirus flags the repair task's inline command itself.
+
+## V7-T02 Owner checklist
+In pt-BR in `specs/handoff/NEXT.md` ("Como testar a v1.6.0").
+
+## Verdict
+No open CRITICAL/MAJOR. v1.6.0 is validated on `dev`. Not merged, not tagged.

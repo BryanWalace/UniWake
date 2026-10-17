@@ -514,5 +514,5 @@ Owner request 2026-10-16 after the v1.5.0 field log; Phase 15.
 ## Phase 16 — Validate v1.6.0
 | ID | Task | Refs | Evidence |
 |---|---|---|---|
-| [ ] V7-T01 | Walk the §6e ACs; package smoke with the real PowerShell agent; `validation.md` §v1.7. | FR-601..605 | validation |
+| [x] V7-T01 | Walk the §6e ACs; package smoke with the real PowerShell agent; `validation.md` §v1.7. | FR-601..605 | validation |
 | [ ] V7-T02 | Owner checklist (pt-BR, NEXT.md): exclusions, update/repair, antivirus, hibernation. | — | checklist |
