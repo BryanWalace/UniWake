@@ -92,9 +92,13 @@ export interface PowerOrdersDeps {
   clock: Clock;
   transaction: <T>(fn: () => T) => T;
   newUuid: () => string;
+  /** v1.6.0 (FR-605.2): sends the magic packet to these machines (absent in older tests). */
+  wakeAsleep?: (deviceIds: number[], label: string) => void;
 }
 
 const MINUTE = 60_000;
+/** FR-605.2: a machine heard from this recently that does not answer is probably asleep. */
+const ASLEEP_SEEN_MS = 12 * 60 * MINUTE;
 /** A shutdown still answering ping/TCP this long after it ran is "não confirmou" (AC-305-02). */
 export const CONFIRM_SHUTDOWN_MS = 5 * MINUTE;
 /** A restart that has not come back online after this long is "não confirmou". */
@@ -122,6 +126,36 @@ export class PowerOrdersService {
       postponeMax: max,
       postponeMinutes: this.d.settings.get('power.postponeMinutes'),
     };
+  }
+
+  /**
+   * FR-605.2 (ADR-061): a magic packet for the ready targets that do not answer but checked in
+   * during the last 12 hours (probably suspended or hibernated); their order runs when they wake.
+   */
+  private wakeAsleep(
+    ready: readonly DeviceSnap[],
+    info: Map<number, PowerDeviceInfo>,
+    now: number,
+    label: string,
+  ): number {
+    if (!this.d.wakeAsleep) return 0;
+    const ids = this.asleepIds(ready, info, now);
+    if (ids.length > 0) this.d.wakeAsleep(ids, label);
+    return ids.length;
+  }
+
+  private asleepIds(
+    ready: readonly DeviceSnap[],
+    info: Map<number, PowerDeviceInfo>,
+    now: number,
+  ): number[] {
+    if (!this.d.settings.get('power.wakeForShutdown')) return [];
+    return ready
+      .filter((dev) => {
+        const seen = info.get(dev.id)?.lastCheckin ?? null;
+        return dev.status !== 'online' && seen !== null && now - seen <= ASLEEP_SEEN_MS;
+      })
+      .map((dev) => dev.id);
   }
 
   private plan(req: PowerRequestParams) {
@@ -186,6 +220,8 @@ export class PowerOrdersService {
       revoked,
       withUser: ready.filter((dev) => info.get(dev.id)?.userLoggedOn === true).length,
       offline: ready.filter((dev) => dev.status !== 'online').length,
+      asleep:
+        req.action === 'shutdown' ? this.asleepIds(ready, info, this.d.clock.now()).length : 0,
       protected: protectedDevs.map(ref),
       policy: this.policy(req.warning),
     };
@@ -193,7 +229,7 @@ export class PowerOrdersService {
 
   /** Creates the job and one order per ready machine (AC-305-01, AC-305-04). */
   start(req: PowerRequestParams, actor: Actor): { jobId: number; count: number } {
-    const { r, ready, protectedDevs } = this.plan(req);
+    const { r, info, ready, protectedDevs } = this.plan(req);
     if (r.devices.length === 0) throw new AppError('POWER_TARGET_EMPTY');
     if (ready.length === 0) throw new AppError('POWER_NOT_READY');
     if (protectedDevs.length > 0 && !req.confirmProtected) {
@@ -243,6 +279,8 @@ export class PowerOrdersService {
       return id;
     });
     this.d.events.publish({ type: 'power.job', jobId });
+    if (req.action === 'shutdown')
+      this.wakeAsleep(ready, info, now, `acordar para desligar (${r.label})`);
     return { jobId, count: ready.length };
   }
 
@@ -311,6 +349,7 @@ export class PowerOrdersService {
       return id;
     });
     this.d.events.publish({ type: 'power.job', jobId });
+    this.wakeAsleep(ready, info, now, `acordar para desligar (${label})`);
     return { jobId, count: ready.length, notReady, excluded, existing: false };
   }
 

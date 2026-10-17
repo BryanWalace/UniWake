@@ -11,6 +11,7 @@ import { ImportService } from './application/migration/import-service';
 import { AutoExportService } from './application/migration/auto-export';
 import { ShutdownReconciler } from './application/power/reconcile';
 import { SelfDeviceService } from './application/power/self-device';
+import { AppError } from './application/errors';
 import { ShutdownDiagnosticsService } from './application/power/diagnostics';
 import { ShutdownTestService } from './application/power/shutdown-test';
 import { agentVersionOf, healthEvents, productFor } from './application/power/agent-health';
@@ -688,6 +689,28 @@ export function createServices(
     clock,
     transaction: tx,
     newUuid: () => randomUUID(),
+    // v1.6.0 (FR-605.2, ADR-061): the same wake path as "Ligar"; a machine already being woken or
+    // seen online meanwhile is simply skipped.
+    wakeAsleep: (deviceIds, label) => {
+      try {
+        wake.start(
+          { target: { type: 'devices', deviceIds }, onlyOffline: true },
+          { id: null, label },
+          { source: 'manual', preConfirmed: true },
+        );
+        ports.logger.info({ deviceIds, label }, 'woke sleeping machines to shut them down');
+      } catch (e) {
+        if (
+          e instanceof AppError &&
+          (e.code === 'WAKE_ALREADY_RUNNING' || e.code === 'WAKE_TARGET_EMPTY')
+        )
+          return;
+        ports.logger.warn(
+          { err: e, deviceIds },
+          'could not wake sleeping machines to shut them down',
+        );
+      }
+    },
   }));
   const powerStatus = new PowerStatusService({
     agents: (ids) => agentRows(db, ids),

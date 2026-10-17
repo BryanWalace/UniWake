@@ -168,6 +168,10 @@ function PowerDialogBody({
               <li>
                 {plural(preview.offline, 'máquina parece desligada', 'máquinas parecem desligadas')}
                 : a ordem espera até 2 h pela consulta dela.
+                {(preview.asleep ?? 0) > 0 &&
+                  ` ${plural(preview.asleep ?? 0, 'consultou', 'consultaram')} o UniWake nas últimas 12 horas e ${
+                    preview.asleep === 1 ? 'vai receber' : 'vão receber'
+                  } o pacote de ligar para acordar (se estiver suspensa ou hibernada) e desligar.`}
               </li>
             )}
           </ul>

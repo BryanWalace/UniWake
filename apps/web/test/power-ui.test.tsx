@@ -345,3 +345,18 @@ describe('history summary with excluded machines (v1.6.0, FR-601.2)', () => {
     expect(occurrenceSummary(o)).toBe('1/1 desligou, 2 excluídas do agendamento');
   });
 });
+
+describe('waking sleeping machines to shut them down (v1.6.0, FR-605.2)', () => {
+  it('AC-605-02: the dialog says which offline machines get the magic packet', async () => {
+    roomApi().on('POST', '/api/power/preview', { body: { ...PREVIEW, offline: 2, asleep: 1 } });
+    const user = userEvent.setup();
+    renderApp('/salas/3');
+    await user.click(await screen.findByRole('button', { name: 'Desligar' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Desligar sala Lab 3' });
+    expect(
+      await within(dialog).findByText(/2 máquinas parecem desligadas: a ordem espera até 2 h/),
+    ).toHaveTextContent(
+      '1 consultou o UniWake nas últimas 12 horas e vai receber o pacote de ligar para acordar (se estiver suspensa ou hibernada) e desligar.',
+    );
+  });
+});

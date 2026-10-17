@@ -50,6 +50,8 @@ export interface PowerPreview {
   withUser: number;
   /** Ready machines the monitor sees offline: their order waits until they check in (≤ 2 h). */
   offline: number;
+  /** v1.6.0 (FR-605.2): of those, the ones that get a magic packet ("Acordar para desligar"). */
+  asleep?: number;
   /** Flagged "Nunca desligar por agendamento": included only with an extra confirmation. */
   protected: PowerDeviceRef[];
   /** v1.6 (FR-501.5): targeted machines that are the PC running this UniWake. */

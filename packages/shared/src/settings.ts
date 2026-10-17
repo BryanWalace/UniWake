@@ -423,6 +423,14 @@ export const SETTING_DEFS = {
       input: 'text',
     },
   ),
+  // v1.6.0 (FR-605.2, ADR-061): sleeping and hibernated machines.
+  'power.wakeForShutdown': def(z.boolean(), true, {
+    group: 'power',
+    scope: 'shared',
+    label: 'Acordar máquinas suspensas ou hibernadas para desligar',
+    help: 'Quando um desligamento é enviado, as máquinas prontas que não respondem e consultaram o UniWake nas últimas 12 horas recebem o pacote de ligar e desligam ao acordar. Uma máquina que estava desligada de verdade liga, recebe a ordem e desliga de novo.',
+    input: 'boolean',
+  }),
   // Enrollment
   'enrollment.tokenExpiryHours': def(int(1, 168), 8, {
     group: 'enrollment',
