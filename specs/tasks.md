@@ -491,7 +491,7 @@ Owner request 2026-10-16 after the v1.5.0 field log; Phase 15.
 | [x] M28-T01 | Schedule reach preview with the schedule's exclusions (never flag, excluded tags) and the excluded list with reasons. | FR-601.1 | AC-601-01 | — |
 | [x] M28-T02 | Reconciliation/history: excluded targeted machines counted with the reason. | FR-601.2 | AC-601-02 | — |
 | [x] M28-T03 | No push and no agenda item for occurrences not after the schedule's last save. | FR-602.1; ADR-058 | AC-602-01, AC-602-02 | — |
-| [ ] M28-R | Review → `specs/reviews/M28-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+| [x] M28-R | Review → `specs/reviews/M28-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
 
 ## M29 — Agent update that works and tells; antivirus
 | ID | Task | Refs | Tests | Done when |
