@@ -18,7 +18,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$script:UwAgentVersion = '1.6.0'
+$script:UwAgentVersion = '1.7.0'
+# Install steps this script applies on the machine itself (FR-603.3, ADR-059): Invoke-UwSelfInstall.
+$script:UwInstallLevel = 2
+# Windows error codes of a write refused by the antivirus (ERROR_VIRUS_INFECTED, ERROR_VIRUS_DELETED).
+$script:UwVirusCodes = @(225, 226)
 $script:UwProtocol = 1
 $script:UwRoot = Join-Path $env:ProgramData 'UniWake'
 $script:UwAgentDir = Join-Path $script:UwRoot 'agent'
@@ -483,6 +487,7 @@ function Get-UwPathSet {
     State     = Join-Path $data 'state.json'
     Reports   = Join-Path $data 'reports.json'
     Heartbeat = Join-Path $data 'heartbeat.json'
+    Health    = Join-Path $data 'health.json'
   }
 }
 
@@ -530,6 +535,61 @@ function Save-UwState {
       orders        = @($State.orders)
       acked         = @($State.acked)
     })
+}
+
+<#
+  What the agent keeps for its health report (FR-603/604, ADR-059): the features each hub announced
+  (by key id), the last self-update outcome and what it last sent about the antivirus.
+#>
+function Read-UwHealthState {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)][string]$Path)
+  $raw = Read-UwJson $Path $null
+  $features = @{}
+  $f = Get-UwProp $raw 'hubFeatures'
+  if ($f) {
+    foreach ($p in $f.PSObject.Properties) { $features[$p.Name] = @(@($p.Value) | ForEach-Object { [string]$_ }) }
+  }
+  return @{
+    hubFeatures = $features
+    update      = Get-UwProp $raw 'update'
+    av          = Get-UwProp $raw 'av'
+    avHash      = [string](Get-UwProp $raw 'avHash' '')
+    avSentAt    = [long](Get-UwProp $raw 'avSentAt' 0)
+    avCheckedAt = [long](Get-UwProp $raw 'avCheckedAt' 0)
+  }
+}
+
+function Save-UwHealthState {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][hashtable]$Health)
+  $features = [ordered]@{}
+  foreach ($k in $Health.hubFeatures.Keys) { $features[$k] = @($Health.hubFeatures[$k]) }
+  Save-UwJson $Path ([ordered]@{
+      hubFeatures = $features
+      update      = $Health.update
+      av          = $Health.av
+      avHash      = $Health.avHash
+      avSentAt    = $Health.avSentAt
+      avCheckedAt = $Health.avCheckedAt
+    })
+}
+
+# The `health` part of the check-in (FR-603, FR-604); Invoke-UwCheckin sends it only to hubs that announce it.
+function Get-UwHealthReport {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][hashtable]$Health,
+    $Config,
+    [AllowEmptyCollection()][object[]]$Repairs = @(),
+    $Antivirus = $null
+  )
+  [ordered]@{
+    installLevel = [int](Get-UwProp $Config 'installLevel' 1)
+    update       = $Health.update
+    repairs      = @($Repairs | Select-Object -Last 10)
+    antivirus    = $Antivirus
+  }
 }
 
 function Read-UwReportQueue {
@@ -601,9 +661,11 @@ function Format-UwCheckinRequest {
     [Parameter(Mandatory)][hashtable]$Power,
     [Parameter(Mandatory)][hashtable]$Session,
     [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Reports,
-    [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$AckedOrders
+    [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$AckedOrders,
+    # v1.6.0 (ADR-059): only for a hub that announced `health`; the key is left out otherwise.
+    $Health = $null
   )
-  [ordered]@{
+  $request = [ordered]@{
     protocol     = $script:UwProtocol
     nonce        = $Nonce
     agentVersion = $script:UwAgentVersion
@@ -615,6 +677,8 @@ function Format-UwCheckinRequest {
     reports      = @($Reports | Select-Object -First $script:UwMaxReportsPerCheckin)
     ackedOrders  = @($AckedOrders | Select-Object -First $script:UwMaxReportsPerCheckin)
   }
+  if ($null -ne $Health) { $request['health'] = $Health }
+  $request
 }
 
 # Keys this PC trusts: the ones in its hub list (the first came pinned by -HubKeyId).
@@ -640,7 +704,10 @@ function Invoke-UwCheckin {
     [Parameter(Mandatory)]$Config,
     [Parameter(Mandatory)][string]$Token,
     # Everything of the request but the nonce and the clock (Format-UwCheckinRequest parameters).
-    [Parameter(Mandatory)][hashtable]$Request
+    [Parameter(Mandatory)][hashtable]$Request,
+    # v1.6.0 (ADR-059): the health report and, per hub key id, the features that hub announced.
+    $Health = $null,
+    [hashtable]$Features = @{}
   )
   $unauthorized = $false
   $attempts = 0
@@ -650,8 +717,11 @@ function Invoke-UwCheckin {
       $attempts++
       $nonce = Get-UwNonce
       $sentAt = Get-UwUtcNow
+      # A v1.5.0 hub refuses unknown fields: health only goes to hubs that announced it.
+      $h = $null
+      if ($null -ne $Health -and @($Features[[string]$hub.keyId]) -contains 'health') { $h = $Health }
       $body = [System.Text.Encoding]::UTF8.GetBytes(
-        (ConvertTo-Json -InputObject (Format-UwCheckinRequest -Nonce $nonce -Clock $sentAt @Request) -Depth 10 -Compress))
+        (ConvertTo-Json -InputObject (Format-UwCheckinRequest -Nonce $nonce -Clock $sentAt -Health $h @Request) -Depth 10 -Compress))
       try {
         $r = Invoke-UwHttp -Method 'POST' -Url "$url/agent/v1/checkin" -Body $body -Headers @{
           'Authorization' = "Bearer $Token"
@@ -675,7 +745,10 @@ function Invoke-UwCheckin {
         continue
       }
       if ((Get-UwProp $answer 'protocol') -ne $script:UwProtocol) { continue }
-      return @{ Answer = $answer; Hub = $hub; Url = $url; SentAt = $sentAt; ReceivedAt = (Get-UwUtcNow) }
+      return @{
+        Answer = $answer; Hub = $hub; Url = $url; SentAt = $sentAt; ReceivedAt = (Get-UwUtcNow)
+        Features = @(@(Get-UwProp $answer 'features' @()) | ForEach-Object { [string]$_ }); SentHealth = ($null -ne $h)
+      }
     }
   }
   if ($unauthorized) { return @{ Unauthorized = $true } }
@@ -1032,27 +1105,86 @@ function Format-UwUiRequest {
 
 <#
   Replaces an agent script whose SHA-256 differs from the one in the signed answer, after checking
-  the downloaded bytes against it (write temp, verify, move). A mismatch changes nothing.
+  the downloaded bytes against it (write temp, verify, move). A mismatch changes nothing. v1.6.0
+  (FR-603.2): the written file is read back a moment later, and every attempt has an outcome that
+  goes in `$Health.update` for the hub — "the antivirus removed it" is no longer silent.
 #>
 function Sync-UwScript {
   [CmdletBinding()]
-  param([Parameter(Mandatory)]$Scripts, [Parameter(Mandatory)][string]$HubUrl)
+  param([Parameter(Mandatory)]$Scripts, [Parameter(Mandatory)][string]$HubUrl, [hashtable]$Health = $null)
+  $last = $null
   foreach ($name in 'uniwake-agent.ps1', 'uniwake-aviso.ps1') {
     $want = [string](Get-UwProp (Get-UwProp $Scripts $name) 'sha256' '')
     if (-not $want) { continue }
     $path = Join-Path $script:UwAgentDir $name
-    if (Test-Path -LiteralPath $path) {
-      if ((Get-UwSha256Hex -Bytes ([System.IO.File]::ReadAllBytes($path))) -eq $want) { continue }
-    }
-    try {
-      $r = Invoke-UwHttp -Method 'GET' -Url "$HubUrl/agent/v1/scripts/$name"
-    } catch {
-      continue
-    }
-    if ($r.Status -ne 200 -or (Get-UwSha256Hex -Bytes $r.Body) -ne $want) { continue }
-    [System.IO.File]::WriteAllBytes("$path.tmp", $r.Body)
-    Move-Item -LiteralPath "$path.tmp" -Destination $path -Force
+    if ((Get-UwFileSha256 -Path $path) -eq $want) { continue }
+    $last = Sync-UwScriptFile -Name $name -Path $path -Want $want -HubUrl $HubUrl
+    if ($null -ne $Health) { $Health.update = $last }
   }
+  return $last
+}
+
+# SHA-256 of a file, '' when it does not exist or cannot be read.
+function Get-UwFileSha256 {
+  [CmdletBinding()]
+  [OutputType([string])]
+  param([Parameter(Mandatory)][string]$Path)
+  if (-not (Test-Path -LiteralPath $Path)) { return '' }
+  try { return Get-UwSha256Hex -Bytes ([System.IO.File]::ReadAllBytes($Path)) } catch { return '' }
+}
+
+function Format-UwUpdateOutcome {
+  [CmdletBinding()]
+  param([string]$Outcome, [string]$Name, $Code = $null, [string]$Detail = '')
+  $d = $null
+  if ($Detail) { $d = $Detail.Substring(0, [Math]::Min(200, $Detail.Length)) }
+  [ordered]@{ outcome = $Outcome; file = $Name; at = (Get-UwUtcNow); code = $Code; detail = $d }
+}
+
+# The Windows error code inside an exception (225 = the antivirus refused the file), or $null.
+function Get-UwWin32Code {
+  [CmdletBinding()]
+  param($Exception)
+  $e = $Exception
+  while ($null -ne $e) {
+    $h = [int]$e.HResult
+    if (($h -band 0xFFFF0000) -eq [int]0x80070000) { return ($h -band 0xFFFF) }
+    $e = $e.InnerException
+  }
+  return $null
+}
+
+# Writes the bytes next to the file and moves them over it (a reader never sees half a script).
+function Save-UwScriptContent {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][byte[]]$Bytes)
+  [System.IO.File]::WriteAllBytes("$Path.tmp", $Bytes)
+  Move-Item -LiteralPath "$Path.tmp" -Destination $Path -Force
+}
+
+function Sync-UwScriptFile {
+  [CmdletBinding()]
+  param([string]$Name, [string]$Path, [string]$Want, [string]$HubUrl)
+  try {
+    $r = Invoke-UwHttp -Method 'GET' -Url "$HubUrl/agent/v1/scripts/$Name"
+  } catch {
+    return Format-UwUpdateOutcome 'download_failed' $Name $null "$_"
+  }
+  if ($r.Status -ne 200) { return Format-UwUpdateOutcome 'download_failed' $Name $null "HTTP $($r.Status)" }
+  if ((Get-UwSha256Hex -Bytes $r.Body) -ne $Want) { return Format-UwUpdateOutcome 'hash_mismatch' $Name }
+  try {
+    Save-UwScriptContent -Path $Path -Bytes $r.Body
+  } catch {
+    Remove-Item -LiteralPath "$Path.tmp" -Force -ErrorAction SilentlyContinue
+    $code = Get-UwWin32Code $_.Exception
+    return Format-UwUpdateOutcome 'write_blocked' $Name $code $_.Exception.Message
+  }
+  # On-access scanners act right after the write: look again a moment later.
+  Wait-UwSecond -Seconds 2
+  if ((Get-UwFileSha256 -Path $Path) -ne $Want) {
+    return Format-UwUpdateOutcome 'removed_after_write' $Name $null 'o arquivo sumiu ou mudou logo depois de gravado'
+  }
+  return Format-UwUpdateOutcome 'updated' $Name
 }
 
 # ------------------------------------------------------------------ one run
@@ -1097,6 +1229,7 @@ function Invoke-UwRun {
   $ctx = @{
     Paths = $paths; Config = $config; State = $state; Last = $null
     Boot = (Get-UwBootTime); Freeze = (Get-UwFreezeInfo); Power = (Get-UwPowerInfo); Session = (Get-UwSessionInfo)
+    Health = (Read-UwHealthState $paths.Health); Repairs = @(); Antivirus = $null
   }
   # FR-308.4: data kept in a folder that survives freezing (ThawSpace, UWF exclusion) when configured.
   $persistent = Get-UwProp $config 'persistentPath'
@@ -1108,7 +1241,10 @@ function Invoke-UwRun {
   $first = & $poll
   if ($null -ne $first -and $first.ContainsKey('Unauthorized')) { return 4 }
   if ($null -ne $ctx.Last) {
-    try { Sync-UwScript -Scripts $ctx.Last.Answer.scripts -HubUrl $ctx.Last.Url } catch { Write-Verbose "update: $_" }
+    try {
+      [void](Sync-UwScript -Scripts $ctx.Last.Answer.scripts -HubUrl $ctx.Last.Url -Health $ctx.Health)
+    } catch { Write-Verbose "update: $_" }
+    Save-UwHealthState $paths.Health $ctx.Health
   }
   $messages = $script:UwDefaultMessages
   if ($null -ne $ctx.Last) { $messages = $ctx.Last.Answer.message }
@@ -1145,8 +1281,21 @@ function Invoke-UwPoll {
     BootTime = $Context.Boot; Freeze = $Context.Freeze; Power = $Context.Power; Session = $Context.Session
     Reports = $queue; AckedOrders = $acks
   }
-  $result = Invoke-UwCheckin -Config $cfg -Token $token -Request $request
+  $health = $null
+  $report = $null
+  if ($Context.ContainsKey('Health') -and $null -ne $Context.Health) {
+    $health = $Context.Health
+    $report = Get-UwHealthReport -Health $health -Config $cfg -Repairs @($Context.Repairs) -Antivirus $Context.Antivirus
+  }
+  $features = @{}
+  if ($null -ne $health) { $features = $health.hubFeatures }
+  $result = Invoke-UwCheckin -Config $cfg -Token $token -Request $request -Health $report -Features $features
   if ($null -eq $result -or $result.ContainsKey('Unauthorized')) { return $result }
+  if ($null -ne $health) {
+    # What this hub accepts from now on (a hub without the list accepts no health).
+    $health.hubFeatures[[string]$result.Hub.keyId] = @($result.Features)
+    Save-UwHealthState $paths.Health $health
+  }
   $extra = Invoke-UwAnswer -Result $result -State $Context.State -Paths $paths -Config $cfg -SentAcks ([string[]]$acks)
   foreach ($r in $extra) { Add-UwReport $paths.Reports $r }
   $Context.Last = $result
