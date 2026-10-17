@@ -557,6 +557,7 @@ function Read-UwHealthState {
     avHash      = [string](Get-UwProp $raw 'avHash' '')
     avSentAt    = [long](Get-UwProp $raw 'avSentAt' 0)
     avCheckedAt = [long](Get-UwProp $raw 'avCheckedAt' 0)
+    installTriedAt = [long](Get-UwProp $raw 'installTriedAt' 0)
   }
 }
 
@@ -572,6 +573,7 @@ function Save-UwHealthState {
       avHash      = $Health.avHash
       avSentAt    = $Health.avSentAt
       avCheckedAt = $Health.avCheckedAt
+      installTriedAt = $Health.installTriedAt
     })
 }
 
@@ -1187,6 +1189,133 @@ function Sync-UwScriptFile {
   return Format-UwUpdateOutcome 'updated' $Name
 }
 
+# ------------------------------------------------------------------ self-install and repair (ADR-059)
+
+<#
+  The repair task's command (FR-603.4): inline, so a quarantined script file cannot disable it. When
+  a script is missing or differs from the verified copy, it restores the copy and appends a note to
+  repairs.log (the agent reports it); when it cannot, it tells the hubs (POST /agent/v1/alert with
+  the device token). It runs nothing it receives. Single quotes only: it sits inside -Command "...".
+#>
+function Get-UwRepairCommand {
+  [CmdletBinding()]
+  [OutputType([string])]
+  param([Parameter(Mandatory)][string]$AgentDir)
+  $d = $AgentDir.Replace("'", "''")
+  @(
+    "`$ErrorActionPreference='Stop';`$d='$d';`$c=Join-Path `$d 'copia';`$m=Join-Path `$c 'manifest.json'"
+    "if(-not(Test-Path -LiteralPath `$m)){exit 0}"
+    "`$h={param(`$x) if(Test-Path -LiteralPath `$x){(Get-FileHash -LiteralPath `$x -Algorithm SHA256).Hash}else{''}}"
+    "`$man=Get-Content -Raw -LiteralPath `$m|ConvertFrom-Json"
+    "foreach(`$p in `$man.PSObject.Properties){`$f=Join-Path `$d `$p.Name;if((& `$h `$f) -eq `$p.Value){continue}"
+    "`$why='missing';if(Test-Path -LiteralPath `$f){`$why='changed'};`$out='not_restored';`$s=Join-Path `$c `$p.Name"
+    "try{if((& `$h `$s) -eq `$p.Value){Copy-Item -LiteralPath `$s -Destination `$f -Force;if((& `$h `$f) -eq `$p.Value){`$out='restored'}}}catch{}"
+    "`$at=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()"
+    "Add-Content -LiteralPath (Join-Path `$d 'repairs.log') -Value (@{at=`$at;file=`$p.Name;reason=`$why;outcome=`$out}|ConvertTo-Json -Compress)"
+    "if(`$out -ne 'restored'){try{`$cfg=Get-Content -Raw -LiteralPath (Join-Path `$d 'config.json')|ConvertFrom-Json"
+    "`$t=(Get-Content -Raw -LiteralPath (Join-Path `$d 'token.txt')).Trim()"
+    "`$b=@{protocol=1;kind='agent_missing';file=`$p.Name;at=`$at}|ConvertTo-Json -Compress"
+    "foreach(`$hub in @(`$cfg.hubs)){foreach(`$u in @(`$hub.urls)){try{Invoke-WebRequest -UseBasicParsing -Method Post -Uri (`$u+'/agent/v1/alert') -Headers @{Authorization=('Bearer '+`$t)} -ContentType 'application/json' -Body `$b -TimeoutSec 10|Out-Null;break}catch{}}}}catch{}}}"
+  ) -join ';'
+}
+
+# Registers "UniWake Reparo" (SYSTEM, at start-up and every 30 minutes).
+function Register-UwRepairTask {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param([Parameter(Mandatory)][string]$Command)
+  Assert-UwRealSystem 'Register-UwRepairTask'
+  if (-not $PSCmdlet.ShouldProcess('UniWake Reparo', 'Registrar tarefa agendada')) { return }
+  $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
+    -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command `"$Command`""
+  $triggers = @(
+    (New-ScheduledTaskTrigger -AtStartup),
+    (New-ScheduledTaskTrigger -Once -At ([DateTime]::Now.AddMinutes(5)) -RepetitionInterval (New-TimeSpan -Minutes 30))
+  )
+  $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `
+    -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
+  $principal = New-ScheduledTaskPrincipal -UserId 'S-1-5-18' -RunLevel Highest
+  Register-ScheduledTask -TaskName 'UniWake Reparo' -Action $action -Trigger $triggers `
+    -Settings $settings -Principal $principal -Force | Out-Null
+}
+
+<#
+  Keeps agent\copia\ in step with the scripts whose bytes match the signed hashes (FR-603.3): only a
+  file verified against a signed answer is copied, so the repair task never restores anything else.
+#>
+function Update-UwVerifiedCopy {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param([Parameter(Mandatory)]$Scripts)
+  $dir = Join-Path $script:UwAgentDir 'copia'
+  $manifestPath = Join-Path $dir 'manifest.json'
+  $old = Read-UwJson $manifestPath $null
+  $manifest = [ordered]@{}
+  $changed = $false
+  foreach ($name in 'uniwake-agent.ps1', 'uniwake-aviso.ps1') {
+    $want = [string](Get-UwProp (Get-UwProp $Scripts $name) 'sha256' '')
+    $source = Join-Path $script:UwAgentDir $name
+    $copy = Join-Path $dir $name
+    if (-not $want -or (Get-UwFileSha256 -Path $source) -ne $want) {
+      # Not verified now: keep what the copy already had.
+      $kept = [string](Get-UwProp $old $name '')
+      if ($kept -and (Get-UwFileSha256 -Path $copy) -eq $kept) { $manifest[$name] = $kept }
+      continue
+    }
+    if ((Get-UwFileSha256 -Path $copy) -ne $want) {
+      if (-not $PSCmdlet.ShouldProcess($copy, 'Atualizar cópia conferida')) { continue }
+      New-Item -ItemType Directory -Force -Path $dir | Out-Null
+      Copy-Item -LiteralPath $source -Destination $copy -Force
+      $changed = $true
+    }
+    $manifest[$name] = $want
+  }
+  if ($changed -or $null -eq $old -or (ConvertTo-Json $manifest -Compress) -ne (ConvertTo-Json $old -Compress)) {
+    Save-UwJson $manifestPath $manifest
+  }
+}
+
+<#
+  FR-603.3: applies the install steps newer than the machine's level, so prepared machines take agent
+  changes without "Preparar máquinas". Level 2 (v1.6.0): the verified copy and the repair task.
+  Failures are retried at most hourly and never stop the run.
+#>
+function Invoke-UwSelfInstall {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)]$Scripts, [Parameter(Mandatory)][hashtable]$Paths, [Parameter(Mandatory)][hashtable]$Health, [long]$Now)
+  Update-UwVerifiedCopy -Scripts $Scripts
+  $config = Read-UwJson $Paths.Config $null
+  if ($null -eq $config) { return }
+  $level = [int](Get-UwProp $config 'installLevel' 1)
+  if ($level -ge $script:UwInstallLevel) { return }
+  $last = [long](Get-UwProp $Health 'installTriedAt' 0)
+  if ($Health.ContainsKey('installTriedAt')) { $last = [long]$Health.installTriedAt }
+  if ($Now - $last -lt 3600000L) { return }
+  $Health.installTriedAt = $Now
+  Register-UwRepairTask -Command (Get-UwRepairCommand -AgentDir $script:UwAgentDir)
+  $out = [ordered]@{}
+  foreach ($p in $config.PSObject.Properties) { $out[$p.Name] = $p.Value }
+  $out['installLevel'] = $script:UwInstallLevel
+  Save-UwJson $Paths.Config $out
+}
+
+# The repair task's notes (repairs.log), newest last; the file is trimmed to the last 20.
+function Read-UwRepairNote {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)][string]$Path)
+  if (-not (Test-Path -LiteralPath $Path)) { return }
+  $lines = @(Get-Content -LiteralPath $Path -ErrorAction SilentlyContinue | Where-Object { $_ })
+  if ($lines.Count -gt 50) { Set-Content -LiteralPath $Path -Value ($lines | Select-Object -Last 20) -Encoding UTF8 }
+  foreach ($l in @($lines | Select-Object -Last 10)) {
+    try {
+      $n = $l | ConvertFrom-Json
+      if ([string]$n.outcome -in @('restored', 'not_restored') -and [string]$n.reason -in @('missing', 'changed')) {
+        [ordered]@{ at = [long]$n.at; file = [string]$n.file; reason = [string]$n.reason; outcome = [string]$n.outcome }
+      }
+    } catch {
+      Write-Verbose "nota de reparo ilegível: $l"
+    }
+  }
+}
+
 # ------------------------------------------------------------------ one run
 
 <#
@@ -1229,7 +1358,8 @@ function Invoke-UwRun {
   $ctx = @{
     Paths = $paths; Config = $config; State = $state; Last = $null
     Boot = (Get-UwBootTime); Freeze = (Get-UwFreezeInfo); Power = (Get-UwPowerInfo); Session = (Get-UwSessionInfo)
-    Health = (Read-UwHealthState $paths.Health); Repairs = @(); Antivirus = $null
+    Health = (Read-UwHealthState $paths.Health); Antivirus = $null
+    Repairs = @(Read-UwRepairNote -Path (Join-Path $script:UwAgentDir 'repairs.log'))
   }
   # FR-308.4: data kept in a folder that survives freezing (ThawSpace, UWF exclusion) when configured.
   $persistent = Get-UwProp $config 'persistentPath'
@@ -1244,6 +1374,9 @@ function Invoke-UwRun {
     try {
       [void](Sync-UwScript -Scripts $ctx.Last.Answer.scripts -HubUrl $ctx.Last.Url -Health $ctx.Health)
     } catch { Write-Verbose "update: $_" }
+    try {
+      Invoke-UwSelfInstall -Scripts $ctx.Last.Answer.scripts -Paths $paths -Health $ctx.Health -Now (Get-UwUtcNow)
+    } catch { Write-Verbose "self-install: $_" }
     Save-UwHealthState $paths.Health $ctx.Health
   }
   $messages = $script:UwDefaultMessages
