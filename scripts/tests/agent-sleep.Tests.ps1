@@ -48,3 +48,53 @@ Describe 'Back without restarting (FR-605.1)' {
     (Get-UwHealthReport -Health $health -Config $null).power | Should -BeNullOrEmpty
   }
 }
+
+Describe '"Impedir suspensão e hibernação" (FR-605.3)' {
+  BeforeEach {
+    Register-UwFakeAgent -Root (Join-Path $TestDrive ([guid]::NewGuid()))
+    $script:Health = Read-UwHealthState (Join-Path $script:UwDataDir 'health.json')
+    $script:Plan = @{ sleepAfterMinutes = 30; wakeTimers = 'enabled' }
+    $script:Hib = @{ enabled = $true; afterMinutes = 180 }
+  }
+
+  It 'AC-605-03: on keeps the old values once and sets never / hibernation off; again only when undone' {
+    Invoke-UwSleepPolicy -Prevent $true -Health $script:Health -Now 1000 -Power $script:Plan -Hibernate $script:Hib
+    @($script:UwFake.SleepCalls).Count | Should -Be 1
+    $script:UwFake.SleepCalls[0].standby | Should -Be 0
+    $script:UwFake.SleepCalls[0].hibernate | Should -Be 0
+    $script:UwFake.SleepCalls[0].hibernation | Should -BeFalse
+    $script:Health.preventSleep.state | Should -Be 'applied'
+    $script:Health.sleepSaved.standby | Should -Be 30
+    $script:Health.sleepSaved.hibernate | Should -Be 180
+    $script:Health.sleepSaved.hibernateEnabled | Should -BeTrue
+    # Already applied and still so: nothing to do.
+    Invoke-UwSleepPolicy -Prevent $true -Health $script:Health -Now 2000 -Power @{ sleepAfterMinutes = 0 } -Hibernate @{ enabled = $false; afterMinutes = 0 }
+    @($script:UwFake.SleepCalls).Count | Should -Be 1
+    # A frozen machine restarted with the old plan: applied again, the kept values stay the originals.
+    Invoke-UwSleepPolicy -Prevent $true -Health $script:Health -Now 3000 -Power $script:Plan -Hibernate $script:Hib
+    @($script:UwFake.SleepCalls).Count | Should -Be 2
+    $script:Health.sleepSaved.standby | Should -Be 30
+  }
+
+  It 'AC-605-03: off puts back what was kept, once; never applied means nothing to undo' {
+    Invoke-UwSleepPolicy -Prevent $false -Health $script:Health -Now 1000 -Power $script:Plan -Hibernate $script:Hib
+    @($script:UwFake.SleepCalls).Count | Should -Be 0
+    Invoke-UwSleepPolicy -Prevent $true -Health $script:Health -Now 1000 -Power $script:Plan -Hibernate $script:Hib
+    Invoke-UwSleepPolicy -Prevent $false -Health $script:Health -Now 5000 -Power @{ sleepAfterMinutes = 0 } -Hibernate @{ enabled = $false; afterMinutes = 0 }
+    $back = $script:UwFake.SleepCalls[1]
+    $back.standby | Should -Be 30
+    $back.hibernate | Should -Be 180
+    $back.hibernation | Should -BeTrue
+    $script:Health.preventSleep.state | Should -Be 'restored'
+    $script:Health.sleepSaved | Should -BeNullOrEmpty
+    Invoke-UwSleepPolicy -Prevent $false -Health $script:Health -Now 6000 -Power $script:Plan -Hibernate $script:Hib
+    @($script:UwFake.SleepCalls).Count | Should -Be 2
+  }
+
+  It 'a powercfg failure is reported, not hidden' {
+    Mock Set-UwSleepTimeout { throw 'powercfg /hibernate off terminou com código 1' }
+    Invoke-UwSleepPolicy -Prevent $true -Health $script:Health -Now 1000 -Power $script:Plan -Hibernate $script:Hib
+    $script:Health.preventSleep.state | Should -Be 'failed'
+    $script:Health.preventSleep.detail | Should -Match 'hibernate off'
+  }
+}

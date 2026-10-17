@@ -431,6 +431,13 @@ export const SETTING_DEFS = {
     help: 'Quando um desligamento é enviado, as máquinas prontas que não respondem e consultaram o UniWake nas últimas 12 horas recebem o pacote de ligar e desligam ao acordar. Uma máquina que estava desligada de verdade liga, recebe a ordem e desliga de novo.',
     input: 'boolean',
   }),
+  'power.preventSleep': def(z.boolean(), false, {
+    group: 'power',
+    scope: 'shared',
+    label: 'Impedir suspensão e hibernação nas máquinas',
+    help: 'O agente desliga a suspensão e a hibernação automáticas (na tomada) e a hibernação do Windows, o que também desliga a Inicialização rápida. Ao desmarcar, os valores de antes voltam.',
+    input: 'boolean',
+  }),
   // Enrollment
   'enrollment.tokenExpiryHours': def(int(1, 168), 8, {
     group: 'enrollment',

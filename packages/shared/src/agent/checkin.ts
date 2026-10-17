@@ -330,6 +330,8 @@ export const checkinAnswerSchema = z
     newToken: b64url(43, 43).nullable(),
     /** v1.6.0 (ADR-059): what this hub accepts; older hubs omit it. */
     features: z.array(z.enum(AGENT_FEATURES)).max(8).optional(),
+    /** v1.6.0 (FR-605.3, ADR-061): power plan choices for the machine; older agents ignore it. */
+    power: z.object({ preventSleep: z.boolean() }).strict().optional(),
   })
   .strict();
 export type CheckinAnswer = z.infer<typeof checkinAnswerSchema>;

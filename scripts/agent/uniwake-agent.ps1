@@ -461,6 +461,59 @@ function ConvertTo-UwSleepKind {
   return 'unknown'
 }
 
+# FR-605.3: AC sleep and hibernate timeouts (minutes, 0 = never) and hibernation on/off ($null: keep).
+function Set-UwSleepTimeout {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param($StandbyMinutes = $null, $HibernateMinutes = $null, $Hibernation = $null)
+  Assert-UwRealSystem 'Set-UwSleepTimeout'
+  if (-not $PSCmdlet.ShouldProcess('Plano de energia', 'Mudar suspensão e hibernação')) { return }
+  $calls = @()
+  if ($null -ne $StandbyMinutes) { $calls += , @('/change', 'standby-timeout-ac', [string][int]$StandbyMinutes) }
+  if ($null -ne $HibernateMinutes) { $calls += , @('/change', 'hibernate-timeout-ac', [string][int]$HibernateMinutes) }
+  if ($null -ne $Hibernation) { $calls += , @('/hibernate', $(if ($Hibernation) { 'on' } else { 'off' })) }
+  foreach ($a in $calls) {
+    & powercfg.exe @a 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "powercfg $($a -join ' ') terminou com código $LASTEXITCODE" }
+  }
+}
+
+<#
+  FR-605.3 (ADR-061): "Impedir suspensão e hibernação". On: keep the current values once, then set
+  AC sleep/hibernate to never and hibernation off — again whenever the machine undid it (freezing
+  restores the power plan at restart). Off: put back what was kept. The outcome goes in the health.
+#>
+function Invoke-UwSleepPolicy {
+  [CmdletBinding()]
+  param([bool]$Prevent, [Parameter(Mandatory)][hashtable]$Health, [long]$Now, $Power = $null, $Hibernate = $null)
+  $state = [string](Get-UwProp $Health.preventSleep 'state' '')
+  $standby = Get-UwProp $Power 'sleepAfterMinutes'
+  $hibMinutes = Get-UwProp $Hibernate 'afterMinutes'
+  $hibOn = Get-UwProp $Hibernate 'enabled'
+  if ($Prevent) {
+    $done = $state -eq 'applied' -and $standby -eq 0 -and $hibOn -ne $true -and ($null -eq $hibMinutes -or $hibMinutes -eq 0)
+    if ($done) { return }
+    if ($null -eq $Health.sleepSaved) {
+      $Health.sleepSaved = [ordered]@{ standby = $standby; hibernate = $hibMinutes; hibernateEnabled = $hibOn }
+    }
+    try {
+      Set-UwSleepTimeout -StandbyMinutes 0 -HibernateMinutes 0 -Hibernation $false
+      $Health.preventSleep = [ordered]@{ state = 'applied'; at = $Now; detail = $null }
+    } catch {
+      $Health.preventSleep = [ordered]@{ state = 'failed'; at = $Now; detail = ([string]$_).Substring(0, [Math]::Min(200, ([string]$_).Length)) }
+    }
+    return
+  }
+  if ($state -ne 'applied' -or $null -eq $Health.sleepSaved) { return }
+  $saved = $Health.sleepSaved
+  try {
+    Set-UwSleepTimeout -StandbyMinutes (Get-UwProp $saved 'standby') -HibernateMinutes (Get-UwProp $saved 'hibernate') -Hibernation (Get-UwProp $saved 'hibernateEnabled')
+    $Health.preventSleep = [ordered]@{ state = 'restored'; at = $Now; detail = $null }
+    $Health.sleepSaved = $null
+  } catch {
+    $Health.preventSleep = [ordered]@{ state = 'failed'; at = $Now; detail = ([string]$_).Substring(0, [Math]::Min(200, ([string]$_).Length)) }
+  }
+}
+
 function Invoke-UwShutdown {
   [CmdletBinding()]
   [OutputType([int])]
@@ -1579,6 +1632,10 @@ function Invoke-UwRun {
     try {
       Invoke-UwSelfInstall -Scripts $ctx.Last.Answer.scripts -Paths $paths -Health $ctx.Health -Now (Get-UwUtcNow)
     } catch { Write-Verbose "self-install: $_" }
+    try {
+      $prevent = [bool](Get-UwProp (Get-UwProp $ctx.Last.Answer 'power') 'preventSleep' $false)
+      Invoke-UwSleepPolicy -Prevent $prevent -Health $ctx.Health -Now (Get-UwUtcNow) -Power $ctx.Power -Hibernate $ctx.Hibernate
+    } catch { Write-Verbose "energia: $_" }
     Save-UwHealthState $paths.Health $ctx.Health
   }
   $messages = $script:UwDefaultMessages

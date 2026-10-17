@@ -693,3 +693,34 @@ describe('sleep and hibernation on the device page (v1.6.0, FR-605.1)', () => {
     expect(card).toHaveTextContent(/Hibernada de .* a .* — não desligou/);
   });
 });
+
+describe('"Impedir suspensão e hibernação" on the device page (v1.6.0, FR-605.3)', () => {
+  it('AC-605-03: shows what the agent did and when', async () => {
+    deviceApi().on('GET', '/api/devices/5/agent', {
+      body: {
+        deviceId: 5,
+        readiness: 'ready',
+        agentVersion: '1.7.0',
+        lastCheckin: at(9),
+        health: {
+          installLevel: 2,
+          update: null,
+          repairs: [],
+          antivirus: null,
+          alert: null,
+          power: {
+            hibernateEnabled: false,
+            hibernateAfterMinutes: 0,
+            lastResume: null,
+            preventSleep: { state: 'applied', at: at(8), detail: null },
+          },
+          receivedAt: at(9),
+        },
+      },
+    });
+    renderApp('/dispositivos/5');
+    const card = await screen.findByRole('region', { name: 'Desligamento remoto' });
+    expect(await within(card).findByText(/^aplicado em /)).toBeInTheDocument();
+    expect(card).toHaveTextContent('Hibernação (na tomada)desativada');
+  });
+});

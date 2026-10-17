@@ -345,6 +345,7 @@ export class AgentService {
       ackReports,
       newToken,
       features: ['health'],
+      power: { preventSleep: this.d.settings.get('power.preventSleep') },
     };
   }
 

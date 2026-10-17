@@ -25,6 +25,12 @@ const PRODUCTS: Record<string, string> = {
   shadow_defender: 'Shadow Defender',
 };
 
+const PREVENT_STATE = {
+  applied: 'aplicado',
+  restored: 'desfeito (valores de antes)',
+  failed: 'falhou',
+} as const;
+
 const RESUME_KIND = {
   sleep: 'Suspensa',
   hibernate: 'Hibernada',
@@ -228,6 +234,12 @@ function AgentDetails({ agent: a }: { agent: DeviceAgentInfo }) {
             ? `após ${plural(p.hibernateAfterMinutes, 'minuto', 'minutos')}`
             : 'ativada (sem tempo automático)',
     ]);
+    if (p.preventSleep) {
+      rows.push([
+        'Impedir suspensão e hibernação',
+        `${PREVENT_STATE[p.preventSleep.state]} em ${formatDateTime(p.preventSleep.at)}${p.preventSleep.detail ? ` (${p.preventSleep.detail})` : ''}`,
+      ]);
+    }
     if (p.lastResume) {
       rows.push([
         'Última ausência sem reiniciar',

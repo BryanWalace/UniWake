@@ -508,7 +508,7 @@ Owner request 2026-10-16 after the v1.5.0 field log; Phase 15.
 |---|---|---|---|---|
 | [x] M30-T01 | Agent reports resumes and hibernation settings; device page. | FR-605.1 | AC-605-01 | — |
 | [x] M30-T02 | "Acordar para desligar" on pushed and manual shutdowns. | FR-605.2; ADR-061 | AC-605-02 | — |
-| [ ] M30-T03 | "Impedir suspensão e hibernação" setting applied and restored by the agent. | FR-605.3; ADR-061 | AC-605-03 (Pester) | — |
+| [x] M30-T03 | "Impedir suspensão e hibernação" setting applied and restored by the agent. | FR-605.3; ADR-061 | AC-605-03 (Pester) | — |
 | [ ] M30-R | Review → `specs/reviews/M30-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
 
 ## Phase 16 — Validate v1.6.0
