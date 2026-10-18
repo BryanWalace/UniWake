@@ -44,6 +44,8 @@ export interface PendingOrder extends PowerPolicy {
   occurrence?: string;
   /** v1.6: T of a pushed schedule occurrence (reported back for the schedule's history). */
   plannedAt?: number;
+  /** v1.6.0: when the order was created (a PC started after that skips it). */
+  issuedAt?: number;
 }
 
 /** What the last check-in said about the machine (machine-local, plan §15.3). */

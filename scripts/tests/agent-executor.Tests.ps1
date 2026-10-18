@@ -204,6 +204,49 @@ Describe 'Orders and cancel (FR-304.4, FR-305)' {
     @($script:UwFake.KeepAwake) | Should -Be @($true, $false)
   }
 
+  It 'field test 2026-10-18: a PC turned off early and started after T skips the pushed order (no surprise shutdown)' {
+    $paths = Get-UwPathSet
+    $state = Read-UwState $paths.State
+    $t = Get-SpTime 12 10
+    [void]$state.orders.Add([pscustomobject]@{ uuid = 'c1b2c3d4-0000-4000-8000-000000000011'; action = 'shutdown'; occurrence = 'd1b2c3d4-0000-4000-8000-000000000011'; plannedAt = $t; issuedAt = $t - 360000; warningMinutes = 5; allowPostpone = $true; postponeMax = 2; postponeMinutes = 15 })
+    Save-UwState $paths.State $state $script:UwFake.Now
+    Mock Get-UwBootTime { (Get-SpTime 12 15) } # someone turned it on at 12:15, after 12:10
+    Set-TestHeartbeat ($script:UwFake.Now - 60000)
+    [void](Invoke-UwRun)
+    @($script:Calls).Count | Should -Be 0
+    $r = @(Get-TestQueue)[0]
+    $r.outcome | Should -Be 'skipped'
+    $r.reason | Should -Be 'was_off'
+    $r.order | Should -Be 'c1b2c3d4-0000-4000-8000-000000000011'
+    $r.occurrence | Should -Be 'd1b2c3d4-0000-4000-8000-000000000011'
+    $after = Read-UwState $paths.State
+    @($after.orders).Count | Should -Be 0
+  }
+
+  It 'the same order still runs on a PC started before T (or back from sleep: same boot)' {
+    $paths = Get-UwPathSet
+    $state = Read-UwState $paths.State
+    $t = Get-SpTime 12 20
+    [void]$state.orders.Add([pscustomobject]@{ uuid = 'c1b2c3d4-0000-4000-8000-000000000012'; action = 'shutdown'; occurrence = 'd1b2c3d4-0000-4000-8000-000000000012'; plannedAt = $t; issuedAt = $t - 360000; warningMinutes = 1; allowPostpone = $false; postponeMax = 0; postponeMinutes = 5 })
+    Save-UwState $paths.State $state $script:UwFake.Now
+    Mock Get-UwBootTime { (Get-SpTime 8 0) }
+    Set-TestHeartbeat ($script:UwFake.Now - 60000)
+    [void](Invoke-UwRun)
+    @($script:Calls).Count | Should -Be 1
+  }
+
+  It 'a manual order given while the PC was off is skipped when it is started later' {
+    $paths = Get-UwPathSet
+    $state = Read-UwState $paths.State
+    [void]$state.orders.Add([pscustomobject]@{ uuid = 'c1b2c3d4-0000-4000-8000-000000000013'; action = 'restart'; issuedAt = (Get-SpTime 12 0); warningMinutes = 1; allowPostpone = $false; postponeMax = 0; postponeMinutes = 5 })
+    Save-UwState $paths.State $state $script:UwFake.Now
+    Mock Get-UwBootTime { (Get-SpTime 12 5) }
+    Set-TestHeartbeat ($script:UwFake.Now - 60000)
+    [void](Invoke-UwRun)
+    @($script:Calls).Count | Should -Be 0
+    (@(Get-TestQueue)[0]).reason | Should -Be 'was_off'
+  }
+
   It 'a failing shutdown.exe is reported as failed with its exit code' {
     Mock Invoke-UwShutdown { 1190 }
     $state = Read-UwState (Get-UwPathSet).State

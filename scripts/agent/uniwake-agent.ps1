@@ -1838,6 +1838,8 @@ function Get-UwNextJob {
     [Parameter(Mandatory)][hashtable]$Session,
     [Parameter(Mandatory)][hashtable]$Freeze
   )
+  $hubBoot = $null
+  if ($null -ne $Boot) { $hubBoot = [long]$Boot + $State.offsetMs }
   $order = @($State.orders | Select-Object -First 1)
   if ($order.Count -gt 0) {
     $o = $order[0]
@@ -1850,6 +1852,24 @@ function Get-UwNextJob {
     } else { $occ = $null }
     $planned = Get-UwProp $o 'plannedAt' $null
     if ($null -ne $planned) { $planned = [long]$planned }
+    # Field test 2026-10-18 (owner): someone may turn a lab PC off before the scheduled time. Started
+    # after T (or, for a manual order, after it was given), the PC was off then: as for agenda items
+    # (AC-303-05) it is not shut down — whoever turned it on is using it. A resume from sleep or
+    # hibernation keeps the boot time, so those still shut down.
+    $ref = $planned
+    if ($null -eq $ref) {
+      $issued = Get-UwProp $o 'issuedAt' $null
+      if ($null -ne $issued) { $ref = [long]$issued }
+    }
+    if ($null -ne $ref -and $null -ne $hubBoot -and $hubBoot -gt $ref) {
+      $State.doneIds[[string]$o.uuid] = $Now
+      [void]$State.orders.Remove($o)
+      Add-UwReport $Paths.Reports (Format-UwReport -Occurrence $occ -Order ([string]$o.uuid) -Action ([string]$o.action) `
+          -Outcome 'skipped' -Reason 'was_off' -PlannedAt $planned -Session $Session -FreezeState $Freeze.state `
+          -Detail 'máquina estava desligada e foi ligada depois')
+      Save-UwState $Paths.State $State $Now
+      return $null
+    }
     return @{
       Kind = 'order'; Order = [string]$o.uuid; Occurrence = $occ; Action = [string]$o.action
       At = $Now + [long]$o.warningMinutes * $script:UwMinute; PlannedAt = $planned

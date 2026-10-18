@@ -283,10 +283,17 @@ export const agentOrderSchema = z.discriminatedUnion('action', [
       action: powerActionSchema.extract(['shutdown']),
       occurrence: uuid.optional(),
       plannedAt: instant.optional(),
+      /** When the hub created the order: a PC started after it was off then and skips it. */
+      issuedAt: instant.optional(),
     })
     .strict(),
   powerPolicySchema
-    .extend({ uuid, action: powerActionSchema.extract(['restart']), occurrence: uuid.optional() })
+    .extend({
+      uuid,
+      action: powerActionSchema.extract(['restart']),
+      occurrence: uuid.optional(),
+      issuedAt: instant.optional(),
+    })
     .strict(),
   z.object({ uuid, action: z.literal('cancel'), cancels: uuid }).strict(),
 ]);
