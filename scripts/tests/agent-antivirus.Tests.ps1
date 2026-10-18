@@ -70,6 +70,17 @@ Describe 'Read every 15 minutes, sent when it changes (FR-604.1)' {
     (Get-UwAntivirusReport -Health $script:Health -Now ($script:T0 + 60000) -Force).Report | Should -Not -BeNullOrEmpty
   }
 
+  It 'a reading no hub took yet is offered again on the next run without reading again' {
+    $first = Get-UwAntivirusReport -Health $script:Health -Now $script:T0
+    # Not marked sent (the check-in carried no health): the next run, 1 minute later, offers it.
+    $again = Get-UwAntivirusReport -Health $script:Health -Now ($script:T0 + 60000)
+    $again.Hash | Should -Be $first.Hash
+    $again.Report | Should -Not -BeNullOrEmpty
+    Should -Invoke Get-UwAntivirusRaw -Times 1 -Exactly
+    $script:Health.avHash = $first.Hash # now a hub took it
+    Get-UwAntivirusReport -Health $script:Health -Now ($script:T0 + 120000) | Should -BeNullOrEmpty
+  }
+
   It 'a blocked update or a repair note newer than the last reading asks for a reading now' {
     $script:Health.avCheckedAt = $script:T0
     Test-UwAntivirusDue -Health $script:Health | Should -BeFalse

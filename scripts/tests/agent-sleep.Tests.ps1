@@ -31,6 +31,12 @@ Describe 'Back without restarting (FR-605.1)' {
     Get-UwResume -LastBeat $null -Boot 1 -Now $script:T0 | Should -BeNullOrEmpty
   }
 
+  It 'hibernation on/off: HibernateEnabled, else the factory HibernateEnabledDefault, else unknown' {
+    ConvertTo-UwHibernateEnabled -Enabled 0 -Default 1 | Should -BeFalse
+    ConvertTo-UwHibernateEnabled -Enabled $null -Default 1 | Should -BeTrue # the field notebook
+    ConvertTo-UwHibernateEnabled | Should -BeNullOrEmpty
+  }
+
   It 'event 42 TargetState: 5 is hibernation, 2..4 sleep, anything else unknown' {
     ConvertTo-UwSleepKind -TargetState 5 | Should -Be 'hibernate'
     ConvertTo-UwSleepKind -TargetState '4' | Should -Be 'sleep'

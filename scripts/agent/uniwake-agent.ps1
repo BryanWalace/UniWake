@@ -408,14 +408,27 @@ function Get-UwHibernateInfo {
   [CmdletBinding()]
   param()
   Assert-UwRealSystem 'Get-UwHibernateInfo'
-  $enabled = $null
+  $props = $null
   try {
-    $enabled = [int](Get-ItemPropertyValue -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\Power' -Name 'HibernateEnabled' -ErrorAction Stop) -eq 1
-  } catch { Write-Verbose "HibernateEnabled: $_" }
+    $props = Get-ItemProperty -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\Power' -ErrorAction Stop
+  } catch { Write-Verbose "Power: $_" }
+  $enabled = ConvertTo-UwHibernateEnabled -Enabled (Get-UwProp $props 'HibernateEnabled') -Default (Get-UwProp $props 'HibernateEnabledDefault')
   $idle = ConvertFrom-UwPowercfgOutput -Lines @(& powercfg.exe /QUERY SCHEME_CURRENT SUB_SLEEP HIBERNATEIDLE 2>$null)
   $minutes = $null
   if ($null -ne $idle) { $minutes = [int][Math]::Round($idle.Ac / 60) }
   @{ enabled = $enabled; afterMinutes = $minutes }
+}
+
+<#
+  Field test 2026-10-17: Windows leaves HibernateEnabled unset until someone changes it; then the
+  factory value HibernateEnabledDefault says whether hibernation is on. Neither: unknown.
+#>
+function ConvertTo-UwHibernateEnabled {
+  [CmdletBinding()]
+  param($Enabled = $null, $Default = $null)
+  if ($null -ne $Enabled) { return ([int]$Enabled -eq 1) }
+  if ($null -ne $Default) { return ([int]$Default -eq 1) }
+  return $null
 }
 
 <#
@@ -667,6 +680,7 @@ function Read-UwHealthState {
     update      = Get-UwProp $raw 'update'
     av          = Get-UwProp $raw 'av'
     avHash      = [string](Get-UwProp $raw 'avHash' '')
+    avPendingHash = [string](Get-UwProp $raw 'avPendingHash' '')
     avSentAt    = [long](Get-UwProp $raw 'avSentAt' 0)
     avCheckedAt = [long](Get-UwProp $raw 'avCheckedAt' 0)
     installTriedAt = [long](Get-UwProp $raw 'installTriedAt' 0)
@@ -686,6 +700,7 @@ function Save-UwHealthState {
       update      = $Health.update
       av          = $Health.av
       avHash      = $Health.avHash
+      avPendingHash = $Health.avPendingHash
       avSentAt    = $Health.avSentAt
       avCheckedAt = $Health.avCheckedAt
       installTriedAt = $Health.installTriedAt
@@ -1414,10 +1429,19 @@ function ConvertTo-UwAntivirusInfo {
 function Get-UwAntivirusReport {
   [CmdletBinding()]
   param([Parameter(Mandatory)][hashtable]$Health, [Parameter(Mandatory)][long]$Now, [switch]$Force)
-  if (-not $Force -and $Now - $Health.avCheckedAt -lt $script:UwAvCheckMs) { return $null }
+  if (-not $Force -and $Now - $Health.avCheckedAt -lt $script:UwAvCheckMs) {
+    # Field test 2026-10-17: the first reading happens before the hub announced health, so no hub
+    # took it; offer it again instead of waiting 15 minutes for the next reading.
+    if ($null -ne $Health.av -and $Health.avPendingHash -and $Health.avPendingHash -ne $Health.avHash) {
+      return @{ Report = $Health.av; Hash = $Health.avPendingHash }
+    }
+    return $null
+  }
   $Health.avCheckedAt = $Now
   $av = ConvertTo-UwAntivirusInfo -Raw (Get-UwAntivirusRaw) -Now $Now
   $hash = Get-UwSha256Hex -Bytes ([System.Text.Encoding]::UTF8.GetBytes((ConvertTo-Json $av -Depth 5 -Compress)))
+  $Health.av = $av
+  $Health.avPendingHash = $hash
   if ($hash -eq $Health.avHash -and $Now - $Health.avSentAt -lt $script:UwAvResendMs) { return $null }
   return @{ Report = $av; Hash = $hash }
 }
