@@ -15,7 +15,7 @@ afterEach(async () => {
   for (const w of worlds.splice(0)) await w.close();
 });
 
-async function lab() {
+async function lab(wakeForShutdown = true) {
   const w = await agentWorld();
   worlds.push(w);
   const s = w.h.services;
@@ -44,10 +44,24 @@ async function lab() {
         "SELECT d.device_id FROM wake_job_devices d JOIN wake_jobs j ON j.id = d.job_id WHERE j.source = 'manual' ORDER BY d.device_id",
       )
       .map((r) => r.device_id);
+  // Opt-in since 2026-10-18 (owner): it also turns on machines that were really off.
+  if (wakeForShutdown) s.settings.update({ 'power.wakeForShutdown': true }, null);
   return { w, s, room, on, asleep, silent, woken, cookie: await w.h.as('operator') };
 }
 
 describe('"Acordar para desligar" (FR-605.2)', () => {
+  it('off by default (owner, 2026-10-18): a shutdown never turns machines on', async () => {
+    const { w, s, room, woken, cookie } = await lab(false);
+    expect(s.settings.get('power.wakeForShutdown')).toBe(false);
+    await w.h.inject({
+      method: 'POST',
+      url: '/api/power/jobs',
+      cookie,
+      payload: { action: 'shutdown', target: { type: 'rooms', roomIds: [room.id] } },
+    });
+    expect(woken()).toEqual([]);
+  });
+
   it('AC-605-02: a manual "Desligar" wakes only the ready machine that is probably asleep', async () => {
     const { w, room, asleep, woken, cookie } = await lab();
     const preview = await w.h.inject({

@@ -1044,7 +1044,10 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
   wakes the PC with "UniWake Despertar" for agenda items (ADR-045), but not for orders, and only when
   the firmware honours wake timers.
 - **Decision:**
-  - `power.wakeForShutdown` (default on): pushed and manual shutdowns send one magic packet to the
+  - `power.wakeForShutdown` (**default off** — amended 2026-10-18 by the owner: only suspended or
+    hibernated machines may be woken to shut down, never ones that are really off; that is what
+    "UniWake Despertar" does, since wake timers cannot start a PC that is off and the preparation
+    turns Fast Startup off): when turned on, pushed and manual shutdowns send one magic packet to the
     ready targets that do not answer and checked in during the last 12 h. A machine that was really
     off boots, gets the order and shuts down again — accepted, stated in the help.
   - `power.preventSleep` (default off, owner 2026-10-17): the agent sets the AC standby and hibernate

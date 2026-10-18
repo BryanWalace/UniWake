@@ -424,11 +424,14 @@ export const SETTING_DEFS = {
     },
   ),
   // v1.6.0 (FR-605.2, ADR-061): sleeping and hibernated machines.
-  'power.wakeForShutdown': def(z.boolean(), true, {
+  // Off by default (owner, 2026-10-18): it also turns on machines that were really off. Suspended or
+  // hibernated machines are already woken by "UniWake Despertar" (wake timers cannot start a PC that
+  // is off, and the preparation turns Fast Startup off).
+  'power.wakeForShutdown': def(z.boolean(), false, {
     group: 'power',
     scope: 'shared',
-    label: 'Acordar máquinas suspensas ou hibernadas para desligar',
-    help: 'Quando um desligamento é enviado, as máquinas prontas que não respondem e consultaram o UniWake nas últimas 12 horas recebem o pacote de ligar e desligam ao acordar. Uma máquina que estava desligada de verdade liga, recebe a ordem e desliga de novo.',
+    label: 'Mandar o pacote de ligar para as máquinas que não respondem, ao desligar',
+    help: 'Use só se o despertador do Windows não acordar suas máquinas suspensas ou hibernadas. Ao enviar um desligamento, as máquinas prontas que não respondem e consultaram o UniWake nas últimas 12 horas recebem o pacote de ligar: uma máquina que estava desligada de verdade liga e desliga de novo.',
     input: 'boolean',
   }),
   'power.preventSleep': def(z.boolean(), false, {

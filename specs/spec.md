@@ -1363,7 +1363,7 @@ last health it sent.
 **FR-605.1** The agent reports how it came back after a gap (same boot = suspended or hibernated,
 `Kernel-Power` event 42 tells which when readable) and its hibernation settings; the device page shows
 the last one ("estava hibernada de … a … — não desligou").
-**FR-605.2** "Acordar para desligar" (setting `power.wakeForShutdown`, default on): when a scheduled
+**FR-605.2** "Acordar para desligar" (setting `power.wakeForShutdown`, default **off** since the owner's field test of 2026-10-18 — it also turns on machines that were really off; suspended and hibernated machines are woken by "UniWake Despertar" instead): when a scheduled
 shutdown is pushed or a manual "Desligar" is sent, ready targeted machines that do not answer but whose
 agent checked in during the last 12 hours get one magic packet; the queued order runs when they wake.
 **FR-605.3** "Impedir suspensão e hibernação" (setting `power.preventSleep`, default **off**): the agent
