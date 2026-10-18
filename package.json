@@ -34,22 +34,22 @@
     "check:docs": "node scripts/check-docs.ts"
   },
   "devDependencies": {
-    "@axe-core/playwright": "4.13.0",
+    "@axe-core/playwright": "4.14.0",
     "@eslint/js": "10.0.1",
-    "@playwright/test": "1.63.0",
-    "@types/node": "24.19.1",
-    "@vitest/coverage-v8": "5.0.3",
-    "concurrently": "10.0.5",
+    "@playwright/test": "1.64.1",
+    "@types/node": "24.19.2",
+    "@vitest/coverage-v8": "5.0.5",
+    "concurrently": "10.0.6",
     "esbuild": "0.28.2",
     "eslint": "10.12.0",
     "eslint-plugin-react-hooks": "7.1.1",
     "fast-check": "4.10.2",
     "globals": "17.13.0",
-    "prettier": "3.9.9",
+    "prettier": "3.9.10",
     "tsx": "4.23.15",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.71.0",
-    "vitest": "5.0.3",
+    "typescript-eslint": "8.71.2",
+    "vitest": "5.0.5",
     "yaml": "2.9.1"
   }
 }
