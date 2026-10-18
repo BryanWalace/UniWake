@@ -16,6 +16,6 @@
     "fastify-type-provider-zod": "7.0.0",
     "pino": "10.4.0",
     "rotating-file-stream": "3.2.10",
-    "zod": "4.6.5"
+    "zod": "4.6.7"
   }
 }
