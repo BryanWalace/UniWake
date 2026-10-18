@@ -20,6 +20,11 @@ Windows PCs, organized by rooms and tags.
 - Code, specs, commits in English. UI and README in pt-BR. Talk to me in pt-BR.
 - Never send real magic packets, real shutdown commands, or scan real networks from tests.
 - Before ending a session, update `specs/handoff/NEXT.md` with exact next steps.
+- Public documents on every update (owner rule, ADR-062): README, CHANGELOG, LICENSE (MIT),
+  CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, issue/PR templates and `specs/releases/`. Any user-visible
+  change updates them in the same task; before every merge to `main` and every tag, review all of them
+  (roadmap, news box, features, FAQ, troubleshooting, security scope and supported versions) and add
+  or change what is needed. `npm run check:docs` (in `verify` and in the release workflow) must pass.
 
 ## Stop points
 - After v1.0 is validated on `dev`: STOP and explain in pt-BR, step by step, how I test it

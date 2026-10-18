@@ -24,16 +24,29 @@ Exemplos do que queremos saber:
 
 - acesso ao painel ou à API sem login, ou um operador fazendo o que só administradores podem;
 - execução de comandos no PC do UniWake ou nos computadores preparados com `prepare-target.ps1`;
+- **desligamento remoto**: fazer uma máquina desligar, reiniciar ou rodar algo sem uma resposta
+  assinada pelo UniWake, reaproveitar o token de uma máquina em outra, ou um usuário comum dos
+  laboratórios ganhando privilégios de sistema pelas tarefas ou pastas do agente
+  (`C:\ProgramData\UniWake`, tarefas "UniWake", "UniWake Aviso", "UniWake Reparo");
+- **atualização e reparo do agente**: a máquina aceitar um script que não confere com o hash
+  assinado pelo UniWake;
 - falhas no cadastro das máquinas (porta 47101) ou no Modo equipe (porta 47102): pareamento sem o
   código, sincronização sem a chave da equipe, PC removido que continua recebendo dados;
 - atualização automática instalando algo que não veio das versões oficiais;
-- vazamento de senhas, chaves da equipe, códigos de cadastro ou dados em logs e backups.
+- vazamento de senhas, chaves da equipe, códigos de cadastro ou dados em logs e backups (inclusive
+  no arquivo `.uniwake` de backup e migração).
 
 Não são vulnerabilidades: Wake-on-LAN em si (o protocolo não tem autenticação, por definição),
-alguém com acesso de administrador ao Windows do PC do UniWake, ou problemas que exigem desligar
-recursos de segurança do próprio UniWake.
+alguém com acesso de administrador ao Windows do PC do UniWake ou das máquinas, um antivírus que
+bloqueia o agente (é um aviso esperado; o UniWake nunca cria exceções no antivírus), ou problemas
+que exigem desligar recursos de segurança do próprio UniWake.
 
 ## Versões com correções
+
+| Versão | Recebe correções de segurança |
+|---|---|
+| 1.6.x (mais recente) | ✅ |
+| 1.5.x e anteriores | ❌ — atualize para a mais recente |
 
 Correções de segurança saem na versão mais recente publicada em
 [Releases](https://github.com/BryanWalace/UniWake/releases). O UniWake se atualiza sozinho dentro da

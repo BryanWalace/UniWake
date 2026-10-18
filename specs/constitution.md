@@ -256,6 +256,11 @@ specs/            SDD documents
 6. No `TODO` without task ID; no lint warnings.
 7. Task marked `[x]` in `specs/tasks.md`; committed with `Refs:` trailer; pushed.
 8. At milestone end: `specs/reviews/M<n>-review.md` with no open CRITICAL/MAJOR.
+9. Public documents kept current (ADR-062): any user-visible change updates README (pt-BR), the
+   CHANGELOG "Não publicado" section and, when affected, CONTRIBUTING/SECURITY/CODE_OF_CONDUCT/issue
+   and PR templates. Before every merge to `main` and every tag, review all of them (roadmap, news box,
+   features, FAQ, troubleshooting, security scope and supported versions) and add or change what is
+   needed; `npm run check:docs` must pass.
 
 ### 9.1 CI quality gates
 Every push to `dev` (and to `main`, which only receives owner-approved merges of `dev`): `npm ci` → lint + format check → typecheck → unit/integration tests with
