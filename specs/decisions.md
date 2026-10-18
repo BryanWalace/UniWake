@@ -1056,3 +1056,23 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
   - Resumes are reported by the agent (same boot after a gap; event 42 for sleep vs. hibernate).
 - **Consequences:** wake-on-LAN must work from S4 for the first one (`powercfg /deviceenablewake`
   done by the preparation); not verified on the owner's hardware.
+
+## ADR-062 — Public documents are part of every version
+- **Date:** 2026-10-18 · **Status:** Accepted (owner request)
+- **Context:** after v1.6.0 the README roadmap still stopped at 1.4, and the "news" box, features list
+  and SECURITY scope did not mention what 1.5 and 1.6 added. The repository had no CHANGELOG, code of
+  conduct or pull request template, and a stray empty file (`cancel`) had been committed.
+- **Decision:**
+  - Public documents: `README.md`, `LICENSE` (MIT), `CONTRIBUTING.md`, `SECURITY.md`,
+    `CODE_OF_CONDUCT.md`, `CHANGELOG.md` (Keep a Changelog, pt-BR), `.github/pull_request_template.md`,
+    issue forms and `specs/releases/vX.Y.Z.md`.
+  - Every change that users see updates them in the same task (constitution §9 item 9); before each
+    merge to `main` and each tag, the lead reviews all of them (roadmap, news box, features, FAQ,
+    troubleshooting, requirements, security scope and supported versions, contributing workflow,
+    labels) and records the review.
+  - `npm run check:docs` (part of `verify`) fails when a document is missing, the license is not MIT,
+    the README does not link to them, or the newest release notes version is absent from the README
+    roadmap, the CHANGELOG or the SECURITY supported-versions table. The release workflow runs it
+    with the tag's version before building.
+- **Consequences:** a version cannot be published with stale documents; prose quality still needs the
+  human review step, which the check cannot judge.

@@ -6,7 +6,7 @@
 
 Wake-on-LAN por sala, etiqueta ou máquina · Desligar e reiniciar com aviso na tela · Painel em
 tempo real · Agendamentos com feriados · Cadastro automático das máquinas · Descoberta na rede ·
-Modo equipe · Backup e migração · Atualização automática
+Modo equipe · Backup e migração · Atualização automática · Agente que se atualiza e avisa
 
 [![Baixar para Windows](https://img.shields.io/badge/Baixar%20para%20Windows-vers%C3%A3o%20mais%20recente-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/BryanWalace/UniWake/releases/latest/download/UniWake-Setup.exe)
 
@@ -17,6 +17,7 @@ Modo equipe · Backup e migração · Atualização automática
 [![Licença MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-555555?style=flat-square)](LICENSE)
 
 [Todas as versões](https://github.com/BryanWalace/UniWake/releases) ·
+[Novidades](CHANGELOG.md) ·
 [Instalação](#instalação) ·
 [Modo equipe](#modo-equipe-dois-ou-mais-pcs-da-ti) ·
 [Solução de problemas](#solução-de-problemas) ·
@@ -72,7 +73,8 @@ cadastro, sincronizando pela rede local.
 - **Ligar pela rede**: Wake-on-LAN por sala, etiqueta ou máquina, com resumo antes de enviar e acompanhamento ao vivo de quem acordou.
 - **Painel em tempo real**: salas com máquinas ligadas, desligadas e desconhecidas; histórico e disponibilidade por dia.
 - **Agendamentos**: dias da semana e horário, feriados, pausa para férias e o "Resultado da manhã".
-- **Desligar e reiniciar**: pela sala, pela máquina ou por agendamento, com aviso na tela para quem está usando e opção de adiar; funciona mesmo com o PC da TI desligado no horário.
+- **Desligar e reiniciar**: pela sala, pela máquina ou por agendamento, com aviso na tela para quem está usando e opção de adiar; funciona mesmo com o PC da TI desligado no horário, com máquinas suspensas ou hibernadas, e não desliga quem ligou a máquina depois do horário.
+- **Agente que se cuida**: o agente das máquinas se atualiza e se conserta sozinho, avisa quando o antivírus o bloqueia (lendo o Microsoft Defender) e aparece como "Agente bloqueado" ou "Agente desatualizado".
 - **Preparar máquinas**: um comando, conferido por SHA-256, ajusta a placa de rede, desliga a Inicialização Rápida, libera o ping e cadastra a máquina na sala.
 - **Descobrir na rede**: encontra os computadores da rede e cadastra vários de uma vez, com o fabricante de cada placa.
 - **Modo equipe**: dois ou mais PCs da TI pareados por um código de 6 dígitos mantêm o mesmo cadastro; cada agendamento roda em um só PC ligado.
@@ -84,10 +86,11 @@ cadastro, sincronizando pela rede local.
 - **Modo demonstração**: uma rede de laboratórios simulada para conhecer o sistema sem enviar nada.
 
 > [!NOTE]
-> O **Modo equipe** chegou na versão **1.2.0**; **Desligar computadores** e **Backup e migração**
-> chegaram na **1.4.0**.
-> Quem já tem o UniWake instalado recebe a atualização sozinho, na janela de manutenção; para
-> desligar uma máquina, rode nela o comando atualizado de **Preparar máquinas**.
+> **Novo na 1.6.0:** o agente das máquinas se atualiza e se conserta sozinho, o painel avisa quando o
+> antivírus bloqueia o UniWake, máquinas hibernadas desligam no horário e o agendamento mostra quem
+> fica de fora. Veja o [histórico de versões](CHANGELOG.md).
+> Quem já tem o UniWake instalado recebe a atualização sozinho, na janela de manutenção; as máquinas
+> já preparadas pegam o agente novo sozinhas.
 
 ## Como funciona
 
@@ -471,6 +474,11 @@ banco, se preciso) e avisa no painel. Uma tarefa de segurança restaura a versã
 atualização for interrompida (por exemplo, por falta de energia). No Modo equipe, cada PC se
 atualiza sozinho, na própria janela de manutenção.
 
+**Máquinas dos laboratórios:** a partir da 1.6.0, o agente de cada máquina preparada se atualiza
+sozinho na consulta seguinte, confere cada arquivo pelo SHA-256 e guarda uma cópia conferida; a
+tarefa **UniWake Reparo** restaura um arquivo apagado (por exemplo, por um antivírus) e avisa o
+painel. A página da máquina mostra a versão e o resultado da última atualização.
+
 ## Backups e restauração
 
 - Backup automático **diário às 02:30**; os últimos **14** são mantidos (configurável).
@@ -554,6 +562,8 @@ senha incorreta ou arquivo danificado.
   ofuscação, em uma pasta que só Administradores e o sistema alteram.
 - Modo equipe: pareamento por código que não trafega (SPAKE2), sincronização TLS 1.3 com a chave da
   equipe, chave guardada com DPAPI, PCs removidos ficam de fora.
+- O UniWake **nunca cria exceções no antivírus** sozinho: ele avisa no painel e liberar a pasta é
+  decisão da TI.
 - **Auditoria** de todas as ações, com exportação CSV protegida contra fórmulas.
 - Nenhum dado sai da rede: o UniWake só acessa o GitHub para procurar atualizações.
 - Encontrou uma falha? Veja o [SECURITY.md](SECURITY.md) (não abra issue pública).
@@ -575,7 +585,10 @@ senha incorreta ou arquivo danificado.
 | **"Precisa do novo preparo"** | A máquina foi preparada antes da 1.3: rode nela o comando atualizado de **Preparar máquinas**. |
 | **Não desliga quando estava em suspensão** | Os **temporizadores de ativação** precisam estar ativados (o preparo ativa na tomada; veja na página da máquina). Em notebooks na bateria eles podem não funcionar. |
 | **Desligou fora do horário ou atrasado** | O relógio da máquina estava muito errado: o UniWake corrige a diferença a cada consulta (veja "Relógio da máquina" na página dela), mas acerte a sincronização de horário do Windows. |
-| **Antivírus bloqueou** | Algumas políticas bloqueiam o PowerShell em tarefas agendadas: libere `C:\ProgramData\UniWake\agent` (scripts `uniwake-agent.ps1` e `uniwake-aviso.ps1`). |
+| **"Antivírus bloqueou o UniWake"** / **"Agente bloqueado"** | O painel mostra a máquina, o arquivo e o antivírus. Algumas políticas bloqueiam o PowerShell em tarefas agendadas: libere `C:\ProgramData\UniWake\agent` (scripts `uniwake-agent.ps1` e `uniwake-aviso.ps1` e a pasta `copia`). Veja **Ajuda → Antivírus e o agente do UniWake**. |
+| **"Agente desatualizado"** | A máquina ainda não pegou o agente novo: deixe-a ligada alguns minutos e veja "Última atualização do agente" na página dela. Se o agente nem consulta ("Desligamento remoto perdido"), prepare a máquina uma última vez. |
+| **O aviso aparece sem o botão "Adiar"** | É o aviso do Windows, usado quando a janela do UniWake não abre. Na 1.6.0 o agente corrige sozinho a permissão do arquivo da janela; confira se a máquina está na versão do agente mais recente. |
+| **Hibernada não desligou** | Os temporizadores de ativação precisam estar ativados (veja na página da máquina). A opção "Mandar o pacote de ligar… ao desligar" vem desligada por padrão porque também liga as máquinas desligadas. |
 | **"Este UniWake está em espera"** | Depois de importar um arquivo, o PC fica parado até alguém conferir: em **Backup e migração**, clique em **Ativar este UniWake** (desligue antes o PC antigo). |
 | **Exportação automática falhou** | Veja o motivo em **Saúde do sistema**. Pasta da rede: a conta do computador precisa de permissão de escrita; a pasta precisa existir. |
 | **Deep Freeze / máquina congelada** | Veja [Laboratórios com Deep Freeze ou similar](#laboratórios-com-deep-freeze-ou-similar). |
@@ -604,7 +617,12 @@ também na rede dessas máquinas, ou informar o **"Broadcast dirigido"** da sala
 | 1.2 | **Modo equipe** (sincronização entre PCs da TI) | publicada (1.2.0) |
 | 1.3 | **Desligar e reiniciar** pelo painel ou por agendamento, aviso na tela com adiamento, laboratórios com Deep Freeze | publicada (incluída na 1.4.0) |
 | 1.4 | **Backup e migração** em arquivo `.uniwake` (exportar/importar com prévia e senha, em espera até ativar, exportação automática, linha de comando) | publicada (1.4.0) |
+| 1.5 | Desligamento agendado confiável (ordem direta + agenda, conferência 10 min depois), status Ligada/Desligada por vários sinais | publicada (1.5.0) |
+| 1.6 | **Agente que se atualiza e se conserta**, aviso de antivírus, exclusões visíveis no agendamento, máquinas suspensas ou hibernadas, quem desliga antes da hora | publicada (1.6.0) |
 | — | Reinício agendado, agente por VLAN, notificações (e-mail/Telegram), ferramentas de BIOS dos fabricantes, permissões por sala | ideias |
+
+O que mudou em cada versão está no [CHANGELOG.md](CHANGELOG.md). Sugestões de funções são bem-vindas
+(veja abaixo).
 
 ## Relatar problemas e sugerir funções
 
@@ -614,7 +632,8 @@ também na rede dessas máquinas, ou informar o **"Broadcast dirigido"** da sala
   **problema**, **sugestão** e **dúvida**.
 - **Não publique** IPs, MACs, nomes de computadores, senhas ou tokens reais da instituição.
 - **Vulnerabilidades** vão pelo relato privado do GitHub: veja o [SECURITY.md](SECURITY.md).
-- Quer contribuir com código? Veja o [CONTRIBUTING.md](CONTRIBUTING.md).
+- Quer contribuir com código? Veja o [CONTRIBUTING.md](CONTRIBUTING.md) e o
+  [código de conduta](CODE_OF_CONDUCT.md).
 
 ## Desinstalar
 
@@ -714,6 +733,8 @@ npm run stage        # monta build/stage (bundle, painel, node.exe e WinSW confe
 | [`specs/decisions.md`](specs/decisions.md) | Decisões (ADRs) |
 | [`specs/validation.md`](specs/validation.md) | Validação das versões |
 | [`specs/handoff/NEXT.md`](specs/handoff/NEXT.md) | Estado atual e próximos passos |
+| [`CHANGELOG.md`](CHANGELOG.md) e [`specs/releases/`](specs/releases/) | Histórico e notas de cada versão |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`SECURITY.md`](SECURITY.md) · [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | Como contribuir, relatar falhas e conduta |
 
 </details>
 

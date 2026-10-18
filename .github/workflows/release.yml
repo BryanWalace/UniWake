@@ -41,6 +41,8 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - name: Public documents cite this version (constitution §9 item 9)
+        run: node scripts/check-docs.ts '${{ github.ref_name }}'
       - run: npm run verify
       - run: npm audit --omit=dev --audit-level=high
       - name: Secret scan

@@ -20,7 +20,7 @@ painel, acordar da hibernação pelo despertador e o caso de quem desliga antes 
    aparece "estava desligada" (não "Falhou"). Hibernada continua desligando no horário.
 6. Menos arquivos temporários durante o aviso; `-RemoveAgent` também remove a tarefa "UniWake Reparo".
 
-**Limpeza feita:** no notebook saíram as 4 tarefas, `C:ProgramDataUniWake`, o script baixado, a regra de ping,
+**Limpeza feita:** no notebook saíram as 4 tarefas, `C:\ProgramData\UniWake`, o script baixado, a regra de ping,
 o servidor SSH, a chave e a regra de firewall do SSH; o plano de energia voltou ao que era. **Ficou** a
 Inicialização Rápida desligada e os despertadores do Windows ligados (feitos pelo preparo; o valor original
 não foi anotado). Neste PC saíram o UniWake de teste, os dados dele e a chave SSH. Nenhum dado do notebook
@@ -31,7 +31,10 @@ testar num notebook Wi-Fi, o ajuste vai só na cópia de `build/stage` e some co
 fumaça do pacote: ligar `wake.dryRun` antes de tudo.
 
 ## Próximo passo
-- Conferir a release v1.6.0 publicada (Actions → Release) e, no dia seguinte, a Saúde do sistema: `1.6.0`.
+- Release v1.6.0 publicada (18/10, instalador + SHA-256). No dia seguinte, confira a Saúde do sistema: `1.6.0`.
+- **Documentos públicos (ADR-062, regra sua de 18/10):** README, CHANGELOG, CONTRIBUTING, SECURITY,
+  CODE_OF_CONDUCT, LICENSE e modelos de issue/PR revisados a cada atualização; `npm run check:docs` confere
+  no `verify` e na release. Falta você criar no GitHub o rótulo **`shutdown`** (Issues → Labels → New label).
 - Depois: o roteiro abaixo ("Como testar a v1.6.0") vale para conferir no laboratório.
 
 ## v1.6.0 — exclusões visíveis, agente que se atualiza e avisa, hibernação (na `dev`, aguardando seu teste)
