@@ -8,7 +8,7 @@ $script:UwAgentSystemFunctions = @(
   'Get-UwUtcNow', 'Wait-UwSecond', 'Get-UwBootTime', 'Invoke-UwHttp', 'Get-UwSessionInfo',
   'Get-UwFreezeInfo', 'Get-UwPowerInfo', 'Invoke-UwShutdown', 'Register-UwWakeTask',
   'Start-UwWarningTask', 'Test-UwAgentFolder', 'Register-UwRepairTask', 'Get-UwAntivirusRaw',
-  'Get-UwHibernateInfo', 'Get-UwSleepKind', 'Set-UwSleepTimeout'
+  'Get-UwHibernateInfo', 'Get-UwSleepKind', 'Set-UwSleepTimeout', 'Set-UwKeepAwake'
 )
 
 # Fake clock (UTC ms) shared by the mocks; Wait-UwSecond advances it instantly.
@@ -37,6 +37,8 @@ function Register-UwFakeAgent {
   Mock Get-UwHibernateInfo { @{ enabled = $false; afterMinutes = 0 } }
   Mock Get-UwSleepKind { 'unknown' }
   $script:UwFake.SleepCalls = New-Object System.Collections.ArrayList
+  $script:UwFake.KeepAwake = New-Object System.Collections.ArrayList
+  Mock Set-UwKeepAwake { [void]$script:UwFake.KeepAwake.Add([bool]$On) }
   Mock Set-UwSleepTimeout { [void]$script:UwFake.SleepCalls.Add(@{ standby = $StandbyMinutes; hibernate = $HibernateMinutes; hibernation = $Hibernation }) }
   if ($Root) {
     $script:UwAgentDir = Join-Path $Root 'agent'

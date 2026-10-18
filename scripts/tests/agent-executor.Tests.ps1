@@ -188,6 +188,22 @@ Describe 'Orders and cancel (FR-304.4, FR-305)' {
     @(Get-TestQueue)[0].order | Should -Be 'c1b2c3d4-0000-4000-8000-000000000002'
   }
 
+  It 'field test 2026-10-18: keeps the computer awake during the warning and lets it sleep again after' {
+    $state = Read-UwState (Get-UwPathSet).State
+    $job = @{
+      Kind = 'order'; Order = 'c1b2c3d4-0000-4000-8000-000000000004'; Occurrence = $null; Action = 'shutdown'; At = (Get-SpTime 12 18 1); PlannedAt = $null
+      Policy = [pscustomobject]@{ warningMinutes = 1; allowPostpone = $false; postponeMax = 0; postponeMinutes = 5 }
+      WasAsleep = $false; LateMinutes = $null
+    }
+    [void](Invoke-UwExecution -Job $job -State $state -Messages $script:UwDefaultMessages -Poll {} -Freeze @{ state = 'none' })
+    @($script:UwFake.KeepAwake) | Should -Be @($true, $false)
+    # Also when the run fails midway.
+    $script:UwFake.KeepAwake.Clear()
+    Mock Invoke-UwShutdown { throw 'falhou' }
+    { Invoke-UwExecution -Job $job -State $state -Messages $script:UwDefaultMessages -Poll {} -Freeze @{ state = 'none' } } | Should -Throw
+    @($script:UwFake.KeepAwake) | Should -Be @($true, $false)
+  }
+
   It 'a failing shutdown.exe is reported as failed with its exit code' {
     Mock Invoke-UwShutdown { 1190 }
     $state = Read-UwState (Get-UwPathSet).State

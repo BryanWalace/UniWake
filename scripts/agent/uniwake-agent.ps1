@@ -1122,12 +1122,48 @@ function Write-UwUiRequest {
 }
 
 <#
+  Asks Windows to keep the computer awake (on) or lets it sleep again (off). Field test 2026-10-18:
+  a PC woken from hibernation by "UniWake Despertar" with nobody at it went back to sleep after
+  about 2 minutes (unattended wake), in the middle of the warning, before shutting down.
+#>
+function Set-UwKeepAwake {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param([bool]$On)
+  Assert-UwRealSystem 'Set-UwKeepAwake'
+  if (-not $PSCmdlet.ShouldProcess('Windows', 'Manter o computador acordado')) { return }
+  if (-not ('UniWake.Power' -as [type])) {
+    Add-Type -Namespace UniWake -Name Power -MemberDefinition '[System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint esFlags);'
+  }
+  # ES_CONTINUOUS (+ ES_SYSTEM_REQUIRED while on).
+  $flags = [uint32]2147483648
+  if ($On) { $flags = [uint32]2147483649 }
+  [void][UniWake.Power]::SetThreadExecutionState($flags)
+}
+
+<#
   Runs one shutdown/restart (an agenda item or an order): the warning (window with "Adiar" when a
   user is logged on, the native warning as the fallback), cancel checks, then shutdown.exe. Returns
   the report, or $null when the job was cancelled through a check-in (that path already reported).
-  -Poll is a check-in; cancels arrive through $State.doneIds.
+  -Poll is a check-in; cancels arrive through $State.doneIds. The computer is kept awake meanwhile.
 #>
 function Invoke-UwExecution {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][hashtable]$Job,
+    [Parameter(Mandatory)][hashtable]$State,
+    [Parameter(Mandatory)]$Messages,
+    [Parameter(Mandatory)][scriptblock]$Poll,
+    [Parameter(Mandatory)][hashtable]$Freeze
+  )
+  try { Set-UwKeepAwake -On $true } catch { Write-Verbose "manter acordado: $_" }
+  try {
+    return Invoke-UwExecutionStep @PSBoundParameters
+  } finally {
+    try { Set-UwKeepAwake -On $false } catch { Write-Verbose "manter acordado: $_" }
+  }
+}
+
+function Invoke-UwExecutionStep {
   [CmdletBinding()]
   param(
     [Parameter(Mandatory)][hashtable]$Job,
