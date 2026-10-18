@@ -96,6 +96,25 @@ Describe 'Verified self-update (FR-603.2)' {
     Should -Invoke Invoke-UwHttp -Times 0
   }
 
+  It 'field test 2026-10-18: the warning script stays readable by users after it is written again' {
+    # Only the current user, as an update or a repair copy leaves it (no "Users" entry).
+    $item = Get-Item -LiteralPath $script:Path
+    $acl = $item.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access)
+    $acl.SetAccessRuleProtection($true, $false)
+    foreach ($a in @($acl.Access)) { [void]$acl.RemoveAccessRule($a) }
+    $me = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+    $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($me, 'FullControl', 'Allow')))
+    $item.SetAccessControl($acl)
+    Repair-UwWarningAccess -Path $script:Path | Should -BeTrue
+    $users = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-545')
+    $granted = @((Get-Acl -LiteralPath $script:Path).Access | Where-Object {
+        $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]) -eq $users
+      })
+    $granted.Count | Should -BeGreaterThan 0
+    Repair-UwWarningAccess -Path $script:Path | Should -BeFalse # already readable: nothing to do
+    Repair-UwWarningAccess -Path (Join-Path $TestDrive 'nao-existe.ps1') | Should -BeFalse
+  }
+
   It 'reads the Windows error code inside wrapped exceptions' {
     $inner = [System.IO.IOException]::new('vírus', -2147024670)
     Get-UwWin32Code ([System.Exception]::new('fora', $inner)) | Should -Be 226

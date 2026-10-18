@@ -1587,6 +1587,34 @@ function Read-UwRepairNote {
   }
 }
 
+<#
+  ADR-046: the "UniWake Aviso" task runs as the logged-on user, who must be able to read the warning
+  script. Writing it again (self-update since v1.3, the repair task's copy) left only the folder's
+  inherited rights (SYSTEM, Administrators): the warning window could not start and Windows showed
+  its own notice, without "Adiar" (field test 2026-10-18). Checked every run, put back when missing.
+  Returns $true when it had to put it back.
+#>
+function Repair-UwWarningAccess {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  [OutputType([bool])]
+  param([string]$Path = (Join-Path $script:UwAgentDir 'uniwake-aviso.ps1'))
+  if (-not (Test-Path -LiteralPath $Path)) { return $false }
+  # Only the access part: writing the audit part (SACL) needs a privilege we do not ask for.
+  $item = Get-Item -LiteralPath $Path
+  $acl = $item.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access)
+  $users = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-545')
+  $rx = [System.Security.AccessControl.FileSystemRights]::ReadAndExecute
+  foreach ($ace in $acl.Access) {
+    if ($ace.AccessControlType -ne 'Allow') { continue }
+    try { $sid = $ace.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]) } catch { continue }
+    if ($sid -eq $users -and ($ace.FileSystemRights -band $rx) -eq $rx) { return $false }
+  }
+  if (-not $PSCmdlet.ShouldProcess($Path, 'Permitir leitura pelos usuários')) { return $false }
+  $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($users, 'ReadAndExecute', 'Allow')))
+  $item.SetAccessControl($acl)
+  return $true
+}
+
 # ------------------------------------------------------------------ one run
 
 <#
@@ -1662,6 +1690,10 @@ function Invoke-UwRun {
     } catch { Write-Verbose "energia: $_" }
     Save-UwHealthState $paths.Health $ctx.Health
   }
+  # Also with the hub unreachable: a copy restored by "UniWake Reparo" needs it as well.
+  try {
+    if (Repair-UwWarningAccess) { Write-Verbose 'aviso: leitura pelos usuários restaurada' }
+  } catch { Write-Verbose "aviso: $_" }
   $messages = $script:UwDefaultMessages
   if ($null -ne $ctx.Last) { $messages = $ctx.Last.Answer.message }
 
