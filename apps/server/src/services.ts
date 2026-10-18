@@ -11,8 +11,10 @@ import { ImportService } from './application/migration/import-service';
 import { AutoExportService } from './application/migration/auto-export';
 import { ShutdownReconciler } from './application/power/reconcile';
 import { SelfDeviceService } from './application/power/self-device';
+import { AppError } from './application/errors';
 import { ShutdownDiagnosticsService } from './application/power/diagnostics';
 import { ShutdownTestService } from './application/power/shutdown-test';
+import { agentVersionOf, healthEvents, productFor } from './application/power/agent-health';
 import { nodeExportFolder } from './adapters/export-folder';
 import { SqliteMigrationStateRepo } from './db/repositories/migration-repo';
 import { applyImport, hasPreparedMachines, previewImport } from './db/sync/import';
@@ -106,6 +108,8 @@ import {
   deviceExtras,
   occurrenceOrders,
   pushedOccurrences,
+  readAllHealth,
+  readHealth,
   SqliteReconcileStore,
   SqliteDiagnosticsStore,
   SqliteShutdownTestsStore,
@@ -524,6 +528,7 @@ export function createServices(
     lastAutoExport: () => migrationState.lastAutoExport(),
     powerCounts: () =>
       late.powerStatus?.counts() ?? { ready: 0, needs_preparation: 0, revoked: 0, lost: 0 },
+    agentAlerts: () => late.powerStatus?.agentAlerts() ?? { blocked: [], outdated: [] },
     clock,
     logger: ports.logger.child({ module: 'health' }),
     version: opts.version ?? '0.0.0-dev',
@@ -684,6 +689,28 @@ export function createServices(
     clock,
     transaction: tx,
     newUuid: () => randomUUID(),
+    // v1.6.0 (FR-605.2, ADR-061): the same wake path as "Ligar"; a machine already being woken or
+    // seen online meanwhile is simply skipped.
+    wakeAsleep: (deviceIds, label) => {
+      try {
+        wake.start(
+          { target: { type: 'devices', deviceIds }, onlyOffline: true },
+          { id: null, label },
+          { source: 'manual', preConfirmed: true },
+        );
+        ports.logger.info({ deviceIds, label }, 'woke sleeping machines to shut them down');
+      } catch (e) {
+        if (
+          e instanceof AppError &&
+          (e.code === 'WAKE_ALREADY_RUNNING' || e.code === 'WAKE_TARGET_EMPTY')
+        )
+          return;
+        ports.logger.warn(
+          { err: e, deviceIds },
+          'could not wake sleeping machines to shut them down',
+        );
+      }
+    },
   }));
   const powerStatus = new PowerStatusService({
     agents: (ids) => agentRows(db, ids),
@@ -697,6 +724,9 @@ export function createServices(
     resolve: (target) => wake.resolveForPower(target),
     occurrenceId: scheduleRunUuid,
     recentJobIds: (limit) => recentPowerJobIds(db, limit),
+    health: (id) => readHealth(db, id),
+    healthAll: () => readAllHealth(db),
+    latestAgentVersion: () => latestAgentVersion(),
     orders: power,
     clock,
   });
@@ -744,6 +774,12 @@ export function createServices(
     clock,
     logger: ports.logger.child({ module: 'power-test' }),
   }));
+  const deviceNameOf = (id: number) =>
+    db.get<{ name: string }>('SELECT name FROM devices WHERE id = ?', [id])?.name ?? String(id);
+  // The agent version this hub ships, read once from the bundled script (FR-603.5).
+  let shipped: { v: string | null } | null = null;
+  const latestAgentVersion = () =>
+    (shipped ??= { v: agentVersionOf(opts.agentScripts?.get('uniwake-agent.ps1')?.bytes) }).v;
   const agentPort = opts.running?.agentPort ?? 47101;
   const agent = new AgentService({
     tokens: agentTokens,
@@ -789,6 +825,31 @@ export function createServices(
     cancelId: (orderUuid) => uuidV5(`power-cancel:${orderUuid}`),
     version: opts.version ?? '0.0.0-dev',
     logger: ports.logger.child({ module: 'agent' }),
+    // v1.6.0 (FR-604.2): what changed in a machine's health becomes one dashboard notice.
+    onHealth: (deviceId, before, now, at) => {
+      const events = healthEvents(before, now);
+      if (events.length === 0) return;
+      const stored = readHealth(db, deviceId);
+      const deviceName = deviceNameOf(deviceId);
+      notices.agentBlocked(
+        events.map((e) => ({ ...e, deviceId, deviceName, product: productFor(stored, e.kind) })),
+        at,
+      );
+    },
+    onAlert: (deviceId, a) =>
+      notices.agentBlocked(
+        [
+          {
+            kind: 'agent_missing',
+            file: a.file,
+            at: a.at,
+            deviceId,
+            deviceName: deviceNameOf(deviceId),
+            product: productFor(readHealth(db, deviceId), 'agent_missing'),
+          },
+        ],
+        clock.now(),
+      ),
   });
 
   const exporter = new ExportService({

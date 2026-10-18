@@ -2,6 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PowerJob, PowerOccurrence, PowerPreview } from '@uniwake/shared';
+import { powerStateLabel } from '../src/features/power/api';
 import { type FakeApi, loggedInApi, renderApp } from './helpers';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -31,6 +32,7 @@ const PREVIEW: PowerPreview = {
   offline: 0,
   protected: [],
   self: [],
+  excluded: [],
   policy: { warningMinutes: 1, allowPostpone: false, postponeMax: 0, postponeMinutes: 5 },
 };
 
@@ -51,6 +53,7 @@ const JOB: PowerJob = {
     cancelled: 0,
     expired: 0,
     failed: 0,
+    was_off: 0,
   },
   devices: [
     { deviceId: 1, name: 'PC-01', state: 'done', postpones: 2, detail: null },
@@ -188,6 +191,7 @@ describe('Histórico: shutdowns next to wakes (M19-T04, FR-307)', () => {
       no_agent: 0,
       stale_agenda: 0,
       no_answer: 0,
+      excluded: 0,
       postponed: 1,
     },
     maxPostpones: 2,
@@ -295,5 +299,75 @@ describe('Histórico: shutdowns next to wakes (M19-T04, FR-307)', () => {
     renderApp('/historico');
     const section = await screen.findByRole('region', { name: 'Desligamentos e reinícios' });
     expect(await within(section).findByText('Erro interno inesperado.')).toBeInTheDocument();
+  });
+});
+
+describe('history summary with excluded machines (v1.6.0, FR-601.2)', () => {
+  it('AC-601-02: excluded machines are named apart and not in the "x/y desligaram"', async () => {
+    const { occurrenceSummary } = await import('../src/features/power/PowerHistorySection');
+    const dev = (deviceId: number, result: 'done' | 'excluded') => ({
+      deviceId,
+      name: `PC-0${deviceId}`,
+      path: null,
+      result,
+      postpones: 0,
+      wasAsleep: false,
+      lateMinutes: null,
+      nativeWarning: false,
+      userLoggedOn: null,
+    });
+    const counts = Object.fromEntries(
+      [
+        'done',
+        'was_off',
+        'late_wake',
+        'cancelled',
+        'failed',
+        'probably_done',
+        'no_report',
+        'off_no_report',
+        'postponed_active',
+        'still_on',
+        'no_agent',
+        'stale_agenda',
+        'no_answer',
+        'excluded',
+        'postponed',
+      ].map((k) => [k, 0]),
+    ) as PowerOccurrence['counts'];
+    const o: PowerOccurrence = {
+      occurrence: 'x',
+      scheduleId: 1,
+      scheduleName: 'Desligar',
+      plannedAt: 0,
+      counts: { ...counts, done: 1, excluded: 2 },
+      maxPostpones: 0,
+      devices: [dev(1, 'done'), dev(2, 'excluded'), dev(3, 'excluded')],
+    };
+    expect(occurrenceSummary(o)).toBe('1/1 desligou, 2 excluídas do agendamento');
+  });
+});
+
+describe('waking sleeping machines to shut them down (v1.6.0, FR-605.2)', () => {
+  it('AC-605-02: the dialog says which offline machines get the magic packet', async () => {
+    roomApi().on('POST', '/api/power/preview', { body: { ...PREVIEW, offline: 2, asleep: 1 } });
+    const user = userEvent.setup();
+    renderApp('/salas/3');
+    await user.click(await screen.findByRole('button', { name: 'Desligar' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Desligar sala Lab 3' });
+    expect(
+      await within(dialog).findByText(/2 máquinas parecem desligadas: a ordem espera até 2 h/),
+    ).toHaveTextContent(
+      '1 consultou o UniWake nas últimas 12 horas e vai receber o pacote de ligar para acordar (se estiver suspensa ou hibernada) e desligar.',
+    );
+  });
+});
+
+describe('job states (v1.6.0)', () => {
+  it('a machine that was off when the order was given is not shown as failed', () => {
+    expect(powerStateLabel('was_off', 'shutdown')).toBe(
+      'Não executou: estava desligada e foi ligada depois',
+    );
+    expect(powerStateLabel('failed', 'shutdown')).toBe('Falhou');
   });
 });

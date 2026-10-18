@@ -24,6 +24,9 @@ const b64url = (min: number, max: number) =>
 const instant = z.number().int().min(0);
 const sha256Hex = z.string().regex(/^[0-9a-f]{64}$/);
 
+export const AGENT_SCRIPTS = ['uniwake-agent.ps1', 'uniwake-aviso.ps1'] as const;
+const agentScriptName = z.enum(AGENT_SCRIPTS);
+
 /** 16 random bytes from the PC, base64url (22 chars); answers are signed over it (ADR-044). */
 export const agentNonceSchema = b64url(16, 64);
 
@@ -99,6 +102,113 @@ export const agentReportSchema = z
   });
 export type AgentReport = z.infer<typeof agentReportSchema>;
 
+// ------------------------------------------------------------------ health (v1.6.0, ADR-059/060)
+/** What a hub announces in its answers; an agent sends `health` only to hubs that list it. */
+export const AGENT_FEATURES = ['health'] as const;
+export type AgentFeature = (typeof AGENT_FEATURES)[number];
+
+/**
+ * Self-update outcomes (FR-603.2). `write_blocked`: Windows refused the write (error 225/226 =
+ * antivirus); `removed_after_write`: the file was gone or changed right after writing.
+ */
+export const UPDATE_OUTCOMES = [
+  'updated',
+  'download_failed',
+  'hash_mismatch',
+  'write_blocked',
+  'removed_after_write',
+] as const;
+export type UpdateOutcome = (typeof UPDATE_OUTCOMES)[number];
+
+/**
+ * The optional `health` part of a check-in (FR-603, FR-604). Unlike the rest of the contract its
+ * objects drop (never store) fields they do not name instead of refusing them, so a newer agent
+ * still checks in with an older hub that announced `health`. File names only, never paths.
+ */
+export const agentHealthSchema = z.object({
+  /** Install steps applied on the machine (FR-603.3). */
+  installLevel: z.number().int().min(0).max(1000),
+  /** The last self-update attempt (null: none yet). */
+  update: z
+    .object({
+      outcome: z.enum(UPDATE_OUTCOMES),
+      file: agentScriptName,
+      at: instant,
+      /** Windows error code when known (225 = ERROR_VIRUS_INFECTED, 226 = ERROR_VIRUS_DELETED). */
+      code: z.number().int().nullable(),
+      detail: z.string().max(200).nullable(),
+    })
+    .nullable(),
+  /** Notes of the repair task (FR-603.4), newest last. */
+  repairs: z
+    .array(
+      z.object({
+        at: instant,
+        file: agentScriptName,
+        reason: z.enum(['missing', 'changed']),
+        outcome: z.enum(['restored', 'not_restored']),
+      }),
+    )
+    .max(10),
+  /** FR-604.1; null when unchanged since the last time it was sent. */
+  antivirus: z
+    .object({
+      products: z
+        .array(
+          z.object({
+            name: z.string().min(1).max(100),
+            enabled: z.boolean().nullable(),
+            upToDate: z.boolean().nullable(),
+          }),
+        )
+        .max(6),
+      detections: z
+        .array(
+          z.object({
+            at: instant,
+            threat: z.string().min(1).max(120),
+            file: z.string().min(1).max(80),
+            action: z.string().max(40).nullable(),
+          }),
+        )
+        .max(10),
+    })
+    .nullable(),
+  /** v1.6.0 (FR-605): sleep and hibernation facts; older 1.7 agents may omit it. */
+  power: z
+    .object({
+      hibernateEnabled: z.boolean().nullable(),
+      /** AC "hibernate after" in minutes; 0 = never; null = unknown. */
+      hibernateAfterMinutes: z.number().int().min(0).max(100_000).nullable(),
+      /** The last time the PC came back without restarting (suspended or hibernated). */
+      lastResume: z
+        .object({ from: instant, to: instant, kind: z.enum(['sleep', 'hibernate', 'unknown']) })
+        .nullable(),
+      /** FR-605.3: what the agent last did with "Impedir suspensão e hibernação". */
+      preventSleep: z
+        .object({
+          state: z.enum(['applied', 'restored', 'failed']),
+          at: instant,
+          detail: z.string().max(200).nullable(),
+        })
+        .nullable(),
+    })
+    .nullable()
+    .optional(),
+});
+export type AgentHealth = z.infer<typeof agentHealthSchema>;
+
+/** `POST /agent/v1/alert` from the repair task when it cannot restore the agent (FR-603.4). */
+export const agentAlertSchema = z
+  .object({
+    protocol: z.literal(AGENT_PROTOCOL),
+    kind: z.literal('agent_missing'),
+    file: agentScriptName,
+    at: instant,
+  })
+  .strict();
+export type AgentAlert = z.infer<typeof agentAlertSchema>;
+
 // ------------------------------------------------------------------ check-in request
 export const checkinRequestSchema = z
   .object({
@@ -131,6 +241,8 @@ export const checkinRequestSchema = z
       .strict(),
     reports: z.array(agentReportSchema).max(CHECKIN_MAX_REPORTS),
     ackedOrders: z.array(uuid).max(CHECKIN_MAX_REPORTS),
+    /** v1.6.0: only to hubs whose answers list `health` in `features` (ADR-059). */
+    health: agentHealthSchema.optional(),
   })
   .strict();
 export type CheckinRequest = z.infer<typeof checkinRequestSchema>;
@@ -171,10 +283,17 @@ export const agentOrderSchema = z.discriminatedUnion('action', [
       action: powerActionSchema.extract(['shutdown']),
       occurrence: uuid.optional(),
       plannedAt: instant.optional(),
+      /** When the hub created the order: a PC started after it was off then and skips it. */
+      issuedAt: instant.optional(),
     })
     .strict(),
   powerPolicySchema
-    .extend({ uuid, action: powerActionSchema.extract(['restart']), occurrence: uuid.optional() })
+    .extend({
+      uuid,
+      action: powerActionSchema.extract(['restart']),
+      occurrence: uuid.optional(),
+      issuedAt: instant.optional(),
+    })
     .strict(),
   z.object({ uuid, action: z.literal('cancel'), cancels: uuid }).strict(),
 ]);
@@ -194,7 +313,6 @@ export const hubEntrySchema = z
   })
   .strict();
 
-export const AGENT_SCRIPTS = ['uniwake-agent.ps1', 'uniwake-aviso.ps1'] as const;
 export const scriptRefSchema = z
   .object({ version: z.string().min(1).max(32), sha256: sha256Hex })
   .strict();
@@ -217,6 +335,10 @@ export const checkinAnswerSchema = z
     ackReports: z.array(uuid).max(CHECKIN_MAX_REPORTS),
     /** Rotation (ADR-043): the PC switches to it; the old token works until it does. */
     newToken: b64url(43, 43).nullable(),
+    /** v1.6.0 (ADR-059): what this hub accepts; older hubs omit it. */
+    features: z.array(z.enum(AGENT_FEATURES)).max(8).optional(),
+    /** v1.6.0 (FR-605.3, ADR-061): power plan choices for the machine; older agents ignore it. */
+    power: z.object({ preventSleep: z.boolean() }).strict().optional(),
   })
   .strict();
 export type CheckinAnswer = z.infer<typeof checkinAnswerSchema>;

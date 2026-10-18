@@ -553,7 +553,7 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
   only `v*` tags on `main` publish installers (ADR-030) and agents never tag. The CI installer job
   only builds throwaway 0.0.x installers for its smoke tests.
 - **Decision:** On pushes to `dev`, the Windows installer job also builds
-  `UniWake-Setup-<next>-dev.<run>.exe` (now `1.5.0-dev.N`, base in `DEV_VERSION_BASE`; bumped from 1.4.0 on 2026-10-16 — a hub on the published 1.4.0 must see the test build as newer) with its
+  `UniWake-Setup-<next>-dev.<run>.exe` (now `1.6.0-dev.N`, base in `DEV_VERSION_BASE`; bumped to 1.5.0 on 2026-10-16 and to 1.6.0 on 2026-10-17 — a hub on the published version must see the test build as newer) with its
   SHA-256 and uploads them as the Actions artifact **UniWake-Setup-dev** (14-day retention). It is
   not a release: no tag, no GitHub Release, nothing a hub's update check can see. A hub installed
   from it is a prerelease version: it never updates to another prerelease (AC-001-05) and updates
@@ -993,3 +993,66 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
   not affected.
 - **Consequences:** an upgrade no longer depends on a WinSW timing race. A service that really
   keeps running still blocks the upgrade with the same message after 30 s.
+
+## ADR-058 — A shutdown schedule never fires for a time before its last save
+- **Date:** 2026-10-17 · **Status:** Accepted · **Amends:** ADR-053
+- **Context:** The v1.5.0 field log showed two pushes ~100 s after T: the schedule had been saved with
+  a time that had just passed, and the 60-minute late rule pushed it at once. Editing a schedule must
+  never shut a lab down on the spot (owner agreed, 2026-10-17).
+- **Decision:** occurrences at or before the schedule's `updatedAt` are skipped by the push
+  (`from = max(now − 60 min, createdAt, updatedAt)`) and by the agenda builder. `updatedAt` is
+  replicated, so every team hub serves the same agenda. Any save counts (a rename at T + 1 min also
+  drops T, which was already pushed and run before T). Wake schedules keep their v1.0 rule.
+- **Consequences:** "Testar agendamento" stays the way to shut a machine down in a few minutes.
+
+## ADR-059 — Agent health, feature negotiation, self-install and the repair task
+- **Date:** 2026-10-17 · **Status:** Accepted
+- **Context:** Prepared machines did not always take new agent versions and nobody knew why: the
+  ADR-044 self-update replaced two files silently, anything else (tasks, folder rights) needed a new
+  preparation, and an antivirus removing the script made the machine just go quiet.
+- **Decision:**
+  - The signed answer gets `features: ['health']`; agents add the optional `health` object only for
+    hubs that announced it, because the strict v1.5.0 contract refuses unknown fields (mixed teams).
+  - Self-update verifies by reading the file back; outcomes (`updated`, `download_failed`,
+    `hash_mismatch`, `write_blocked`, `removed_after_write`) are reported. Windows error 225/226
+    (ERROR_VIRUS_INFECTED / ERROR_VIRUS_DELETED) is named "antivírus".
+  - Install level: the script carries `$UwInstallLevel`; when it is newer than `config.installLevel`,
+    the agent (SYSTEM) re-registers its tasks with the definitions in the script, writes the
+    verified copy (`agent\copia\`, hashes from the signed answer) and the task "UniWake Reparo".
+  - "UniWake Reparo" runs an inline command (no script file: a quarantined file cannot disable it),
+    at start-up and every 30 min: missing or changed script → restore from the copy + note; no copy
+    → `POST /agent/v1/alert` with the device token. It never runs anything it downloads.
+  - Health is machine-local on the hub (`agent_health`, migration 009), like `agent_seen`.
+- **Consequences:** one last preparation for machines whose agent cannot run today; afterwards
+  agent changes reach every machine whose agent runs. The repair command is not signed code; it only
+  copies a file whose hash was recorded from a signed answer.
+
+## ADR-060 — Antivirus: report, never exclude
+- **Date:** 2026-10-17 · **Status:** Accepted
+- **Decision:** the agent reads Windows Security Center (`root/SecurityCenter2 AntiVirusProduct`) for
+  the installed products and, when Microsoft Defender is present, `Get-MpThreatDetection` filtered to
+  the UniWake folders (14 days). Third-party products have no common history API: their effect is
+  seen by the update outcome (blocked write, file removed) and the repair task. UniWake never adds
+  antivirus exclusions itself (a security decision of the IT team); the notice and the help name the
+  folder to allow. Sent only on change (hash of the collected data); read every 15 minutes.
+- **Consequences:** Defender detections are named precisely; others as "provável antivírus" with the
+  product installed.
+
+## ADR-061 — Sleeping machines: wake to shut down; prevention is opt-in
+- **Date:** 2026-10-17 · **Status:** Accepted
+- **Context:** a hibernated or suspended PC runs nothing, so no order reaches it. The agent already
+  wakes the PC with "UniWake Despertar" for agenda items (ADR-045), but not for orders, and only when
+  the firmware honours wake timers.
+- **Decision:**
+  - `power.wakeForShutdown` (**default off** — amended 2026-10-18 by the owner: only suspended or
+    hibernated machines may be woken to shut down, never ones that are really off; that is what
+    "UniWake Despertar" does, since wake timers cannot start a PC that is off and the preparation
+    turns Fast Startup off): when turned on, pushed and manual shutdowns send one magic packet to the
+    ready targets that do not answer and checked in during the last 12 h. A machine that was really
+    off boots, gets the order and shuts down again — accepted, stated in the help.
+  - `power.preventSleep` (default off, owner 2026-10-17): the agent sets the AC standby and hibernate
+    timeouts to 0 and runs `powercfg /hibernate off`, saving the previous values to restore them.
+    AC only: laptops on battery keep their plan.
+  - Resumes are reported by the agent (same boot after a gap; event 42 for sleep vs. hibernate).
+- **Consequences:** wake-on-LAN must work from S4 for the first one (`powercfg /deviceenablewake`
+  done by the preparation); not verified on the owner's hardware.

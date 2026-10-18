@@ -4,6 +4,7 @@
  * someone acknowledges it ("Ciente"); the acknowledgement is audited.
  */
 import type {
+  AgentBlockedEvent,
   DashboardNotice,
   EnrollMove,
   EnrollmentMoves,
@@ -98,6 +99,26 @@ export class NoticesService {
   }): void {
     const id = this.d.repo.insert('possible_duplicate', data, data.at);
     this.d.events.publish({ type: 'notice', id, noticeType: 'possible_duplicate' });
+  }
+
+  /**
+   * v1.6.0 (FR-604.2): antivirus / blocked agent events. One open notice lists the machines (the
+   * last 30 events); the same event never counts twice.
+   */
+  agentBlocked(events: readonly AgentBlockedEvent[], at: number): void {
+    if (events.length === 0) return;
+    const open = this.d.repo.open(50).find((n) => n.type === 'agent_blocked');
+    const prev = (
+      (open?.data as { events?: AgentBlockedEvent[] } | undefined)?.events ?? []
+    ).slice();
+    const key = (e: AgentBlockedEvent) => `${e.deviceId}:${e.kind}:${e.file}:${e.at}`;
+    const seen = new Set(prev.map(key));
+    const fresh = events.filter((e) => !seen.has(key(e)));
+    if (fresh.length === 0) return;
+    const data = { events: [...prev, ...fresh].slice(-30) };
+    const id = open ? open.id : this.d.repo.insert('agent_blocked', data, at);
+    if (open) this.d.repo.updateData(open.id, data);
+    this.d.events.publish({ type: 'notice', id, noticeType: 'agent_blocked' });
   }
 
   acknowledge(id: number, actor: Actor): void {

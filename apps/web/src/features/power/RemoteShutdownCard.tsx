@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   AGENT_READINESS_LABELS,
+  type AgentHealthView,
   type DeviceAgentInfo,
+  UPDATE_OUTCOME_LABEL,
   FREEZE_STATE_LABELS,
   type FreezeState,
 } from '@uniwake/shared';
@@ -22,6 +24,18 @@ const PRODUCTS: Record<string, string> = {
   reboot_restore_rx: 'Reboot Restore Rx',
   shadow_defender: 'Shadow Defender',
 };
+
+const PREVENT_STATE = {
+  applied: 'aplicado',
+  restored: 'desfeito (valores de antes)',
+  failed: 'falhou',
+} as const;
+
+const RESUME_KIND = {
+  sleep: 'Suspensa',
+  hibernate: 'Hibernada',
+  unknown: 'Suspensa ou hibernada',
+} as const;
 
 const WAKE_TIMERS: Record<string, string> = {
   enabled: 'ativados',
@@ -117,6 +131,49 @@ export function RemoteShutdownCard({
   );
 }
 
+/** v1.6.0 (FR-604.2): what the antivirus caught and what the repair task did, newest first. */
+function AgentAlerts({ health: h }: { health: AgentHealthView | null }) {
+  if (!h) return null;
+  const lines = [
+    ...(h.antivirus?.detections ?? []).map((d) => ({
+      at: d.at,
+      text: `Antivírus pegou ${d.file}${d.threat ? ` (${d.threat})` : ''}${d.action ? ` — ${d.action}` : ''}`,
+    })),
+    ...h.repairs.map((r) => ({
+      at: r.at,
+      text: `${r.file} ${r.reason === 'changed' ? 'foi alterado' : 'sumiu'}: ${r.outcome === 'restored' ? 'restaurado da cópia do UniWake' : 'não pôde ser restaurado'}`,
+    })),
+    ...(h.alert
+      ? [
+          {
+            at: h.alert.at,
+            text: `${h.alert.file} sumiu e não havia cópia: prepare a máquina de novo`,
+          },
+        ]
+      : []),
+  ].sort((x, y) => y.at - x.at);
+  if (lines.length === 0) return null;
+  return (
+    <div
+      role="alert"
+      className="rounded-md border border-red-300 bg-red-50 p-2 text-sm text-red-900"
+    >
+      <p className="font-semibold">Bloqueios do agente nesta máquina</p>
+      <ul className="ml-5 list-disc">
+        {lines.slice(0, 5).map((l) => (
+          <li key={`${l.at}:${l.text}`}>
+            {l.text} — {formatDateTime(l.at)}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-1">
+        Libere a pasta <code>C:\ProgramData\UniWake</code> no antivírus.{' '}
+        <HelpLink topic="antivirus" />
+      </p>
+    </div>
+  );
+}
+
 function AgentDetails({ agent: a }: { agent: DeviceAgentInfo }) {
   const offsetMin = a.clockOffsetMs === null ? 0 : Math.round(a.clockOffsetMs / 60_000);
   const rows: [string, string][] = [
@@ -124,7 +181,14 @@ function AgentDetails({ agent: a }: { agent: DeviceAgentInfo }) {
       'Última consulta ao UniWake',
       a.lastCheckin === null ? 'nunca' : formatDateTime(a.lastCheckin),
     ],
-    ['Versão do agente', a.agentVersion ?? '—'],
+    [
+      'Versão do agente',
+      a.agentVersion === null
+        ? '—'
+        : a.latestVersion && a.latestVersion !== a.agentVersion
+          ? `${a.agentVersion} (a deste UniWake é ${a.latestVersion})`
+          : a.agentVersion,
+    ],
     ['Congelamento', freezeText(a)],
     ['Pasta persistente', a.persistentArea ? 'sim' : 'não'],
     ['Suspensão (na tomada)', sleepText(a.sleepAfterMinutes)],
@@ -138,6 +202,51 @@ function AgentDetails({ agent: a }: { agent: DeviceAgentInfo }) {
           : 'não',
     ],
   ];
+  const h = a.health ?? null;
+  if (h?.update) {
+    rows.push([
+      'Última atualização do agente',
+      `${h.update.file}: ${UPDATE_OUTCOME_LABEL[h.update.outcome]}${h.update.code === 225 || h.update.code === 226 ? ' pelo antivírus' : ''}, ${formatDateTime(h.update.at)}`,
+    ]);
+  }
+  if (h?.antivirus) {
+    rows.push([
+      'Antivírus',
+      h.antivirus.products.length === 0
+        ? 'nenhum informado pelo Windows'
+        : h.antivirus.products
+            .map(
+              (p) =>
+                `${p.name}${p.enabled === false ? ' (desligado)' : ''}${p.upToDate === false ? ' (desatualizado)' : ''}`,
+            )
+            .join(', '),
+    ]);
+  }
+  if (h?.power) {
+    const p = h.power;
+    rows.push([
+      'Hibernação (na tomada)',
+      p.hibernateEnabled === null
+        ? 'desconhecida'
+        : !p.hibernateEnabled
+          ? 'desativada'
+          : p.hibernateAfterMinutes
+            ? `após ${plural(p.hibernateAfterMinutes, 'minuto', 'minutos')}`
+            : 'ativada (sem tempo automático)',
+    ]);
+    if (p.preventSleep) {
+      rows.push([
+        'Impedir suspensão e hibernação',
+        `${PREVENT_STATE[p.preventSleep.state]} em ${formatDateTime(p.preventSleep.at)}${p.preventSleep.detail ? ` (${p.preventSleep.detail})` : ''}`,
+      ]);
+    }
+    if (p.lastResume) {
+      rows.push([
+        'Última ausência sem reiniciar',
+        `${RESUME_KIND[p.lastResume.kind]} de ${formatDateTime(p.lastResume.from)} a ${formatDateTime(p.lastResume.to)} — não desligou`,
+      ]);
+    }
+  }
   if (Math.abs(offsetMin) >= 2) {
     rows.push([
       'Relógio da máquina',
@@ -167,6 +276,23 @@ function AgentDetails({ agent: a }: { agent: DeviceAgentInfo }) {
           <HelpLink topic={a.readiness === 'lost' ? 'frozen-labs' : 'remote-shutdown'} />
         </p>
       )}
+      {a.readiness === 'lost' && (
+        <div className="text-sm text-slate-800">
+          <p>
+            A máquina responde na rede, mas o agente parou de consultar o UniWake. Causas prováveis:
+          </p>
+          <ul className="ml-5 list-disc">
+            <li>o antivírus bloqueou ou apagou um arquivo do agente;</li>
+            <li>a tarefa "UniWake" foi desativada ou removida;</li>
+            <li>um programa de congelamento voltou a máquina para antes do preparo.</li>
+          </ul>
+          {h && <p>Último relatório do agente: {formatDateTime(h.receivedAt)}.</p>}
+          <p>
+            <HelpLink topic="antivirus" />
+          </p>
+        </div>
+      )}
+      <AgentAlerts health={h} />
       {a.readiness !== 'needs_preparation' && (
         <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
           {rows.map(([k, v]) => (

@@ -422,6 +422,61 @@ export const HELP: Record<HelpTopic, { title: string; summary: string; body: Rea
       </>
     ),
   },
+  antivirus: {
+    title: 'Antivírus e o agente do UniWake',
+    summary:
+      'Quando o antivírus bloqueia ou apaga um arquivo do agente, a máquina para de receber agendamentos e ordens de desligar.',
+    body: (
+      <>
+        <p>
+          O agente do UniWake são dois scripts do PowerShell na pasta{' '}
+          <code>C:\ProgramData\UniWake\agent</code>, rodados pelas tarefas agendadas "UniWake",
+          "UniWake Despertar", "UniWake Aviso" e "UniWake Reparo". Alguns antivírus desconfiam de
+          scripts que rodam como sistema e bloqueiam ou apagam esses arquivos.
+        </p>
+        <h2 className="text-lg font-bold">Como o UniWake avisa</h2>
+        <Bullets>
+          <li>
+            O Microsoft Defender informa o que pegou: o painel mostra o arquivo, o nome da ameaça e
+            quando.
+          </li>
+          <li>
+            Outros antivírus não têm uma consulta padrão: o agente percebe o efeito (a gravação foi
+            recusada ou o arquivo sumiu logo depois de gravado) e diz qual antivírus está instalado.
+          </li>
+          <li>
+            A tarefa "UniWake Reparo" restaura um arquivo apagado a partir de uma cópia conferida e
+            avisa o painel. Se nem a cópia existir, ela avisa que é preciso preparar a máquina de
+            novo.
+          </li>
+          <li>
+            Os avisos aparecem no painel inicial, na lista de Dispositivos ("Agente bloqueado") e na
+            página da máquina.
+          </li>
+        </Bullets>
+        <h2 className="text-lg font-bold">O que fazer</h2>
+        <Steps>
+          <li>
+            No console do antivírus, libere a pasta <code>C:\ProgramData\UniWake</code> (e a pasta
+            persistente, se usar uma) ou os arquivos <code>uniwake-agent.ps1</code> e{' '}
+            <code>uniwake-aviso.ps1</code>.
+          </li>
+          <li>
+            Restaure da quarentena o que foi pego, ou espere: em até 30 minutos o "UniWake Reparo"
+            restaura da cópia, e o agente baixa de novo do UniWake na próxima consulta.
+          </li>
+          <li>
+            Confira na página da máquina: "Última atualização do agente" deve dizer "atualizado" e
+            não deve haver bloqueios novos.
+          </li>
+        </Steps>
+        <p>
+          O UniWake nunca cria exceções no antivírus sozinho: liberar uma pasta é uma decisão de
+          segurança da equipe de TI.
+        </p>
+      </>
+    ),
+  },
   'frozen-labs': {
     title: 'Laboratórios com Deep Freeze ou similar',
     summary:

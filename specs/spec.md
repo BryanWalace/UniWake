@@ -1,12 +1,12 @@
 # UniWake — Specification
 
-Version: **1.6** · Date: 2026-10-15 · Owner: Architect
+Version: **1.7** · Date: 2026-10-17 · Owner: Architect
 History: v0.1 draft → reviewed in `specs/reviews/phase-1-*.md` → consolidated as v1.0 → v1.1
 (Phase 2: AC-001-13/14, FR-004.7) → v1.2 (Phase 6, `specs/reviews/phase-6-*.md`: FR-017 sync-ready
 data from `.agents/07-roadmap-features.md` §A, AC-005-12, FR-012/FR-014 additions) → v1.3 (Phase 7,
 `specs/reviews/phase-7-*.md`: §6a v1.2 Modo equipe, FR-201..207) → v1.4 (Phase 9,
 `specs/reviews/phase-9-*.md`: §6b v1.3 Desligar, FR-301..311, replaces RM-2) → v1.5 (Phase 11,
-`specs/reviews/phase-11-*.md`: §6c v1.4 Backup e migração, FR-401..407) → v1.6 (Phase 13, field fixes: §6d FR-501..504).
+`specs/reviews/phase-11-*.md`: §6c v1.4 Backup e migração, FR-401..407) → v1.6 (Phase 13, field fixes: §6d FR-501..504) → v1.7 (Phase 15: §6e product v1.6, FR-601..605).
 Sources: `.agents/01-project-brief.md`, `.agents/07-roadmap-features.md`, `specs/constitution.md`, `specs/improvements.md`,
 `specs/decisions.md`.
 
@@ -1304,6 +1304,103 @@ machine in N minutes (2–60), delivered through **both** paths and reconciled l
   the push is sent at its time; the result is reconciled.
 - AC-504-02: Given the device page, Then it shows agenda version, item count, next shutdown, last
   result with path and the IP source.
+
+## 6e. v1.6 "Máquinas que se atualizam e avisam" (ADR-058..061)
+
+Owner request after the v1.5.0 field test (2026-10-16): the log showed a test schedule whose only
+machine was **excluded** ("1 excluída", `Nunca desligar por agendamento` or an excluded tag) while the
+schedule form had said it reached "1 máquina pronta"; both orders left ~100 s **after** T because the
+schedule was saved with a time already past. The owner also asked (a) whether hibernated computers can
+be shut down, (b) for an update of prepared machines that really works without preparing them again,
+and (c) to be told when an antivirus blocks a UniWake file.
+
+### FR-601 Excluded machines are never hidden
+**FR-601.1** The reach summary of a "Desligar" schedule (form) uses the schedule's own rules: machines
+marked "Nunca desligar por agendamento" and machines with an excluded tag are not counted as reached;
+they are listed apart with the reason (`never_flag` / `excluded_tag`), up to 5 names and a count.
+**FR-601.2** Reconciliation and history count excluded targeted machines as **"excluída do
+agendamento"** with the reason; "nenhuma máquina no alvo" only when the target has no machine at all.
+
+### FR-602 Saving a schedule never shuts machines down at once
+**FR-602.1** An occurrence of a "Desligar" schedule whose time is not after the schedule's last save
+(create, edit, enable) is neither pushed by the hub nor listed in the agendas. Occurrences that pass
+while the hub is off keep the 60-minute late rule (ADR-053). Wake schedules are unchanged.
+
+### FR-603 Agent update that works and tells what happened
+**FR-603.1** The signed answer lists the hub's features (`features`); the agent sends the optional
+`health` part of the check-in only to hubs that list `health` (a mixed team keeps working).
+**FR-603.2** Self-update verifies what it wrote: after replacing a script the agent reads it back and
+compares its SHA-256. Outcome per update attempt: `updated`, `download_failed`, `hash_mismatch`,
+`write_blocked` (Windows refused the write; the virus error codes 225/226 mean the antivirus),
+`removed_after_write` (gone or changed right after writing: antivirus probable). The last outcome,
+the file and the time go in `health.update`.
+**FR-603.3** Self-install: when the running script's install level is newer than the one recorded on
+the machine, the agent itself applies the install steps of each newer level (level 2, v1.6.0: the
+verified copy of its scripts and the repair task; later levels add their own, e.g. new task
+definitions). Machines whose agent runs never need "Preparar máquinas" again for agent changes.
+**FR-603.4** Repair task "UniWake Reparo" (SYSTEM, at start-up and every 30 min; an inline command, no
+script file of its own): when an agent script is missing or differs from the verified copy, it restores
+the copy and leaves a note; the agent reports the note at its next check-in (`health.repairs`). When it
+cannot restore, it sends `POST /agent/v1/alert` (token-authenticated, nothing executed from the answer).
+**FR-603.5** The hub keeps the latest health of each machine (machine-local) and shows on the device
+page: agent version vs. the version this hub ships, last update outcome and reason, repairs, antivirus.
+The Dispositivos list marks machines whose agent is blocked or outdated; "Saúde do sistema" counts
+machines with an outdated agent.
+
+### FR-604 Antivirus that blocks UniWake is reported
+**FR-604.1** Every 15 minutes, and right after a failed update or a repair, the agent reads the
+installed antivirus products (Windows Security Center: name, enabled, up to date) and the Microsoft
+Defender detections of the last 14 days that touch the UniWake folders (threat, file, time, action).
+It sends them only when they change.
+**FR-604.2** A new detection, a blocked/removed update or a repair creates the dashboard notice
+**"Antivírus bloqueou o UniWake em <máquina>"** (one per machine and kind per day) naming the product,
+the file, the time and the folder to allow; the device page shows the same.
+**FR-604.3** A prepared machine that answers the network but whose agent stopped checking in
+("Desligamento remoto perdido") shows the probable causes (antivirus, task disabled, freezing) and the
+last health it sent.
+
+### FR-605 Sleeping and hibernated machines
+**FR-605.1** The agent reports how it came back after a gap (same boot = suspended or hibernated,
+`Kernel-Power` event 42 tells which when readable) and its hibernation settings; the device page shows
+the last one ("estava hibernada de … a … — não desligou").
+**FR-605.2** "Acordar para desligar" (setting `power.wakeForShutdown`, default **off** since the owner's field test of 2026-10-18 — it also turns on machines that were really off; suspended and hibernated machines are woken by "UniWake Despertar" instead): when a scheduled
+shutdown is pushed or a manual "Desligar" is sent, ready targeted machines that do not answer but whose
+agent checked in during the last 12 hours get one magic packet; the queued order runs when they wake.
+**FR-605.3** "Impedir suspensão e hibernação" (setting `power.preventSleep`, default **off**): the agent
+sets the AC sleep and hibernate timeouts to "never" and turns hibernation off (which also turns off
+Fast Startup), saving the previous values, and restores them when the setting is turned off.
+
+### Acceptance criteria
+- AC-601-01: Given a "Desligar" schedule targeting a room with one machine marked "Nunca desligar por
+  agendamento" and one with an excluded tag, Then the reach says 0 machines reached and lists both with
+  their reasons.
+- AC-601-02: Given that schedule fired and reconciled, Then the run detail says "2 excluídas do
+  agendamento" (not "nenhuma máquina no alvo") and the history lists both as excluded with the reason.
+- AC-602-01: Given a schedule saved at 11:33 for 11:32, Then no order is pushed and no agenda lists
+  11:32; the next day's 11:32 is pushed and listed normally.
+- AC-602-02: Given a schedule saved at 11:00 for 11:32 and the hub off from 11:20 to 11:40, Then at
+  11:40 the order is pushed (late) as before.
+- AC-603-01: Given a hub without `health` in `features` (v1.5.0), Then the agent sends no `health`
+  and the check-in is accepted; with the feature, `health` is sent and stored.
+- AC-603-02: Given a script write refused with error 225, Then the outcome is `write_blocked` with the
+  antivirus reason; a file gone right after writing is `removed_after_write`; both reach the hub and
+  create the notice.
+- AC-603-03: Given a machine prepared with an older install level, Then the next run re-registers the
+  tasks, writes the verified copy and the repair task, and records the new level, once.
+- AC-603-04: Given the agent script deleted, Then the repair command restores it from the verified
+  copy and leaves the note the agent reports; with the copy deleted too, it posts the alert.
+- AC-603-05: Given health reports, Then the device page shows version vs. latest, update outcome,
+  repairs and antivirus; the list marks blocked/outdated machines; health counts outdated agents.
+- AC-604-01: Given a Defender detection on a UniWake file, Then the next check-in carries it once and
+  the hub creates one notice naming product, file and time.
+- AC-604-02: Given a "perdido" machine, Then its page lists the probable causes and its last health.
+- AC-605-01: Given a gap with the same boot time, Then the agent reports a resume (`hibernate` when
+  event 42 says so) and the device page shows it.
+- AC-605-02: Given a pushed scheduled shutdown and a manual "Desligar", Then ready offline machines
+  seen in the last 12 h get one magic packet (fake sender) and the others none; with the setting off,
+  none.
+- AC-605-03: Given `power.preventSleep` turned on and then off, Then the agent applies the AC timeouts
+  and hibernation off, then restores the saved values (powercfg calls asserted, nothing real run).
 
 ## 7. Non-functional requirements
 | ID | Requirement | Measure / test |

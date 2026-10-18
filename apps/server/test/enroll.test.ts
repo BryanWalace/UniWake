@@ -328,13 +328,14 @@ describe('POST /agent/enroll (FR-007.2)', () => {
     expect(r.statusCode).toBe(413);
   });
 
-  it('the agent listener has exactly five routes (plan §6.2, ADR-043)', async () => {
+  it('the agent listener has exactly six routes (plan §6.2, ADR-043, ADR-059)', async () => {
     const { agent } = await setup();
     expect(agent.routeTable.map((r) => `${r.method} ${r.url} ${r.auth}`).sort()).toEqual([
       'GET /agent/prepare-target.ps1 public',
       'GET /agent/v1/scripts/:name public',
       'GET /api/health public',
       'POST /agent/enroll enrollment',
+      'POST /agent/v1/alert agent',
       'POST /agent/v1/checkin agent',
     ]);
   });

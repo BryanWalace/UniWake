@@ -140,15 +140,8 @@ describe('restore (FR-014)', () => {
 
 /** Undoes the newest migration (008_field_fixes) so the next start has one pending. */
 const UNDO_LATEST = [
-  'DELETE FROM schema_migrations WHERE version = 8',
-  'DROP TABLE power_tests',
-  'DROP TABLE power_reconciled',
-  ...['agenda_version', 'agenda_items', 'agenda_served_at'].map(
-    (c) => `ALTER TABLE agent_seen DROP COLUMN ${c}`,
-  ),
-  ...['seen_via', 'ip_source', 'ip_seen_at'].map(
-    (c) => `ALTER TABLE device_state DROP COLUMN ${c}`,
-  ),
+  'DELETE FROM schema_migrations WHERE version = 9',
+  'DROP TABLE agent_health',
 ].join(';\n');
 
 describe('restore and pre-migration backups on a real hub', () => {

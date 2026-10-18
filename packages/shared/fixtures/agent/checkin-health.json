@@ -1,0 +1,45 @@
+{
+  "installLevel": 2,
+  "update": {
+    "outcome": "write_blocked",
+    "file": "uniwake-aviso.ps1",
+    "at": 1791850860000,
+    "code": 225,
+    "detail": "A operação não foi concluída com êxito porque o arquivo contém um vírus."
+  },
+  "repairs": [
+    {
+      "at": 1791850800000,
+      "file": "uniwake-agent.ps1",
+      "reason": "missing",
+      "outcome": "restored"
+    }
+  ],
+  "antivirus": {
+    "products": [
+      {
+        "name": "Microsoft Defender Antivirus",
+        "enabled": true,
+        "upToDate": true
+      }
+    ],
+    "detections": [
+      {
+        "at": 1791850790000,
+        "threat": "Trojan:PowerShell/Teste.A",
+        "file": "uniwake-agent.ps1",
+        "action": "quarentena"
+      }
+    ]
+  },
+  "power": {
+    "hibernateEnabled": true,
+    "hibernateAfterMinutes": 180,
+    "lastResume": {
+      "from": 1791810000000,
+      "to": 1791846000000,
+      "kind": "hibernate"
+    },
+    "preventSleep": null
+  }
+}

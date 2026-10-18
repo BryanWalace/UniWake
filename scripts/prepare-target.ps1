@@ -611,9 +611,15 @@ function Register-UwAgentTask {
   $base = @{ AllowStartIfOnBatteries = $true; DontStopIfGoingOnBatteries = $true; StartWhenAvailable = $true; MultipleInstances = 'IgnoreNew' }
 
   $every = New-ScheduledTaskTrigger -Once -At ([DateTime]::Now.AddMinutes(1)) -RepetitionInterval (New-TimeSpan -Minutes 1)
+  # Also when the PC comes back from sleep or hibernation: the every-minute trigger stalled after a
+  # resume in the field test (2026-10-18) until the task was started; the agent adds the same one.
+  $resumeClass = Get-CimClass -ClassName MSFT_TaskEventTrigger -Namespace 'Root/Microsoft/Windows/TaskScheduler'
+  $resume = New-CimInstance -CimClass $resumeClass -ClientOnly
+  $resume.Enabled = $true
+  $resume.Subscription = '<QueryList><Query Id="0" Path="System"><Select Path="System">*[System[Provider[@Name=''Microsoft-Windows-Power-Troubleshooter''] and EventID=1]]</Select></Query></QueryList>'
   $settings = New-ScheduledTaskSettingsSet @base -ExecutionTimeLimit (New-TimeSpan -Hours 2)
   Register-ScheduledTask -TaskName 'UniWake' -Action (New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $run) `
-    -Trigger @((New-ScheduledTaskTrigger -AtStartup), $every) -Settings $settings -Principal $system -Force | Out-Null
+    -Trigger @((New-ScheduledTaskTrigger -AtStartup), $every, $resume) -Settings $settings -Principal $system -Force | Out-Null
 
   $wakeSettings = New-ScheduledTaskSettingsSet @base -WakeToRun -ExecutionTimeLimit (New-TimeSpan -Hours 2)
   Register-ScheduledTask -TaskName 'UniWake Despertar' -Action (New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "$run -Wake") `
@@ -634,7 +640,8 @@ function Start-UwAgentTask {
 function Unregister-UwAgentTask {
   [CmdletBinding(SupportsShouldProcess = $true)]
   param()
-  foreach ($name in 'UniWake', 'UniWake Despertar', 'UniWake Aviso') {
+  # 'UniWake Reparo' is created by the agent itself (install level 2, v1.6.0).
+  foreach ($name in 'UniWake', 'UniWake Despertar', 'UniWake Aviso', 'UniWake Reparo') {
     if ((Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue) -and $PSCmdlet.ShouldProcess($name, 'Remover tarefa agendada')) {
       Unregister-ScheduledTask -TaskName $name -Confirm:$false
     }

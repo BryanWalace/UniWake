@@ -22,6 +22,8 @@ export const AGENT_ALLOWED = new Set([
   'POST /agent/enroll',
   'GET /agent/prepare-target.ps1',
   'POST /agent/v1/checkin',
+  // v1.6.0 (ADR-059): the repair task's alert, agent token.
+  'POST /agent/v1/alert',
   'GET /agent/v1/scripts/:name',
 ]);
 

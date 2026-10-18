@@ -40,6 +40,8 @@ export interface AgendaSchedule {
   postponeMinutes: number | null;
   /** Tag UUIDs whose machines this shutdown schedule skips (FR-306.2). */
   excludeTags: readonly string[];
+  /** Last save (create, edit, enable): earlier shutdown instants are never listed (ADR-058). */
+  savedAt?: number;
 }
 
 export interface AgendaDevice extends Pick<DeviceSnap, 'id' | 'roomId' | 'tagIds' | 'enabled'> {
@@ -149,7 +151,7 @@ export function buildAgenda(input: AgendaInput): Agenda {
   const byInstant = new Map<number, AgendaItem>();
   for (const s of active) {
     if (s.action !== 'shutdown' || excluded(s, device)) continue;
-    for (const at of instants(s, input, from, to)) {
+    for (const at of instants(s, input, Math.max(from, s.savedAt ?? from), to)) {
       const item: AgendaItem = {
         occurrence: input.occurrenceId(s.uuid, at),
         at,

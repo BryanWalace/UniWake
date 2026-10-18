@@ -221,6 +221,18 @@ describe('remote shutdown in the inventory (M19-T03, FR-309, FR-306.2)', () => {
     expect(screen.getByText('Desligamento remoto perdido')).toBeInTheDocument();
   });
 
+  it('AC-603-05: marks machines whose agent is blocked or outdated', async () => {
+    inventoryApi().on('GET', '/api/power/agents', {
+      body: [
+        { deviceId: 1, readiness: 'ready', agentAlert: 'blocked' },
+        { deviceId: 2, readiness: 'ready', agentAlert: 'outdated' },
+      ],
+    });
+    renderApp('/dispositivos');
+    expect(await screen.findByText('Agente bloqueado')).toBeInTheDocument();
+    expect(screen.getByText('Agente desatualizado')).toBeInTheDocument();
+  });
+
   it('the table still works when the readiness list fails', async () => {
     inventoryApi().on('GET', '/api/power/agents', { status: 500, body: { message: 'x' } });
     renderApp('/dispositivos');

@@ -246,7 +246,7 @@ function ScheduleFormBody({ schedule, onClose, onSaved }: Props) {
             </SelectField>
           </div>
           <TargetPicker value={target} onChange={setTarget} error={errors.target} />
-          {action === 'shutdown' && <ShutdownReach target={target} />}
+          {action === 'shutdown' && <ShutdownReach target={target} excludeTagIds={excludeTagIds} />}
           {action === 'shutdown' ? (
             <fieldset className="space-y-3 rounded-md border border-slate-200 p-3">
               <legend className="px-1 text-sm font-medium text-slate-800">Aviso e adiamento</legend>

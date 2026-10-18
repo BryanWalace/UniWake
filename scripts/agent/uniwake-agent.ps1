@@ -18,7 +18,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$script:UwAgentVersion = '1.6.0'
+$script:UwAgentVersion = '1.7.0'
+# Install steps this script applies on the machine itself (FR-603.3, ADR-059): Invoke-UwSelfInstall.
+$script:UwInstallLevel = 3
+# Windows error codes of a write refused by the antivirus (ERROR_VIRUS_INFECTED, ERROR_VIRUS_DELETED).
+$script:UwVirusCodes = @(225, 226)
 $script:UwProtocol = 1
 $script:UwRoot = Join-Path $env:ProgramData 'UniWake'
 $script:UwAgentDir = Join-Path $script:UwRoot 'agent'
@@ -399,6 +403,130 @@ function ConvertTo-UwPowerInfo {
   return @{ sleepAfterMinutes = $minutes; wakeTimers = $wake }
 }
 
+# Hibernation facts (FR-605.1): whether it is on and the AC "hibernate after" minutes (0 = never).
+function Get-UwHibernateInfo {
+  [CmdletBinding()]
+  param()
+  Assert-UwRealSystem 'Get-UwHibernateInfo'
+  $props = $null
+  try {
+    $props = Get-ItemProperty -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\Power' -ErrorAction Stop
+  } catch { Write-Verbose "Power: $_" }
+  $enabled = ConvertTo-UwHibernateEnabled -Enabled (Get-UwProp $props 'HibernateEnabled') -Default (Get-UwProp $props 'HibernateEnabledDefault')
+  $idle = ConvertFrom-UwPowercfgOutput -Lines @(& powercfg.exe /QUERY SCHEME_CURRENT SUB_SLEEP HIBERNATEIDLE 2>$null)
+  $minutes = $null
+  if ($null -ne $idle) { $minutes = [int][Math]::Round($idle.Ac / 60) }
+  @{ enabled = $enabled; afterMinutes = $minutes }
+}
+
+<#
+  Field test 2026-10-17: Windows leaves HibernateEnabled unset until someone changes it; then the
+  factory value HibernateEnabledDefault says whether hibernation is on. Neither: unknown.
+#>
+function ConvertTo-UwHibernateEnabled {
+  [CmdletBinding()]
+  param($Enabled = $null, $Default = $null)
+  if ($null -ne $Enabled) { return ([int]$Enabled -eq 1) }
+  if ($null -ne $Default) { return ([int]$Default -eq 1) }
+  return $null
+}
+
+<#
+  How the PC went away before it came back without restarting (FR-605.1): the newest Kernel-Power
+  event 42 since then. TargetState 5 = hibernation, 2..4 = sleep (SYSTEM_POWER_STATE; não verificado
+  on every model), anything else or no event: unknown.
+#>
+function Get-UwSleepKind {
+  [CmdletBinding()]
+  [OutputType([string])]
+  param([Parameter(Mandatory)][long]$SinceMs)
+  Assert-UwRealSystem 'Get-UwSleepKind'
+  try {
+    $since = [DateTimeOffset]::FromUnixTimeMilliseconds($SinceMs).LocalDateTime.AddMinutes(-1)
+    $e = Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Microsoft-Windows-Kernel-Power'; Id = 42; StartTime = $since } -MaxEvents 1 -ErrorAction Stop
+    $xml = [xml]$e.ToXml()
+    $state = @($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'TargetState' } | ForEach-Object { $_.'#text' }) | Select-Object -First 1
+    return ConvertTo-UwSleepKind -TargetState $state
+  } catch {
+    return 'unknown'
+  }
+}
+
+<#
+  FR-605.1: back after a gap (no heartbeat for more than 3 minutes) without restarting (boot before
+  the last heartbeat): the PC was suspended or hibernated in between. $null otherwise.
+#>
+function Get-UwResume {
+  [CmdletBinding()]
+  param($LastBeat, $Boot, [Parameter(Mandatory)][long]$Now)
+  if ($null -eq $LastBeat -or $null -eq $Boot) { return $null }
+  if ($Now - [long]$LastBeat -le $script:UwSleepGapMs -or [long]$Boot -ge [long]$LastBeat) { return $null }
+  [ordered]@{ from = [long]$LastBeat; to = $Now; kind = (Get-UwSleepKind -SinceMs ([long]$LastBeat)) }
+}
+
+function ConvertTo-UwSleepKind {
+  [CmdletBinding()]
+  [OutputType([string])]
+  param($TargetState)
+  $s = [string]$TargetState
+  if ($s -eq '5') { return 'hibernate' }
+  if ($s -in @('2', '3', '4')) { return 'sleep' }
+  return 'unknown'
+}
+
+# FR-605.3: AC sleep and hibernate timeouts (minutes, 0 = never) and hibernation on/off ($null: keep).
+function Set-UwSleepTimeout {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param($StandbyMinutes = $null, $HibernateMinutes = $null, $Hibernation = $null)
+  Assert-UwRealSystem 'Set-UwSleepTimeout'
+  if (-not $PSCmdlet.ShouldProcess('Plano de energia', 'Mudar suspensão e hibernação')) { return }
+  $calls = @()
+  if ($null -ne $StandbyMinutes) { $calls += , @('/change', 'standby-timeout-ac', [string][int]$StandbyMinutes) }
+  if ($null -ne $HibernateMinutes) { $calls += , @('/change', 'hibernate-timeout-ac', [string][int]$HibernateMinutes) }
+  if ($null -ne $Hibernation) { $calls += , @('/hibernate', $(if ($Hibernation) { 'on' } else { 'off' })) }
+  foreach ($a in $calls) {
+    & powercfg.exe @a 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "powercfg $($a -join ' ') terminou com código $LASTEXITCODE" }
+  }
+}
+
+<#
+  FR-605.3 (ADR-061): "Impedir suspensão e hibernação". On: keep the current values once, then set
+  AC sleep/hibernate to never and hibernation off — again whenever the machine undid it (freezing
+  restores the power plan at restart). Off: put back what was kept. The outcome goes in the health.
+#>
+function Invoke-UwSleepPolicy {
+  [CmdletBinding()]
+  param([bool]$Prevent, [Parameter(Mandatory)][hashtable]$Health, [long]$Now, $Power = $null, $Hibernate = $null)
+  $state = [string](Get-UwProp $Health.preventSleep 'state' '')
+  $standby = Get-UwProp $Power 'sleepAfterMinutes'
+  $hibMinutes = Get-UwProp $Hibernate 'afterMinutes'
+  $hibOn = Get-UwProp $Hibernate 'enabled'
+  if ($Prevent) {
+    $done = $state -eq 'applied' -and $standby -eq 0 -and $hibOn -ne $true -and ($null -eq $hibMinutes -or $hibMinutes -eq 0)
+    if ($done) { return }
+    if ($null -eq $Health.sleepSaved) {
+      $Health.sleepSaved = [ordered]@{ standby = $standby; hibernate = $hibMinutes; hibernateEnabled = $hibOn }
+    }
+    try {
+      Set-UwSleepTimeout -StandbyMinutes 0 -HibernateMinutes 0 -Hibernation $false
+      $Health.preventSleep = [ordered]@{ state = 'applied'; at = $Now; detail = $null }
+    } catch {
+      $Health.preventSleep = [ordered]@{ state = 'failed'; at = $Now; detail = ([string]$_).Substring(0, [Math]::Min(200, ([string]$_).Length)) }
+    }
+    return
+  }
+  if ($state -ne 'applied' -or $null -eq $Health.sleepSaved) { return }
+  $saved = $Health.sleepSaved
+  try {
+    Set-UwSleepTimeout -StandbyMinutes (Get-UwProp $saved 'standby') -HibernateMinutes (Get-UwProp $saved 'hibernate') -Hibernation (Get-UwProp $saved 'hibernateEnabled')
+    $Health.preventSleep = [ordered]@{ state = 'restored'; at = $Now; detail = $null }
+    $Health.sleepSaved = $null
+  } catch {
+    $Health.preventSleep = [ordered]@{ state = 'failed'; at = $Now; detail = ([string]$_).Substring(0, [Math]::Min(200, ([string]$_).Length)) }
+  }
+}
+
 function Invoke-UwShutdown {
   [CmdletBinding()]
   [OutputType([int])]
@@ -483,6 +611,7 @@ function Get-UwPathSet {
     State     = Join-Path $data 'state.json'
     Reports   = Join-Path $data 'reports.json'
     Heartbeat = Join-Path $data 'heartbeat.json'
+    Health    = Join-Path $data 'health.json'
   }
 }
 
@@ -490,8 +619,9 @@ function Get-UwProp {
   [CmdletBinding()]
   param($Object, [string]$Name, $Default = $null)
   if ($null -eq $Object) { return $Default }
-  if ($Object -is [hashtable]) {
-    if ($Object.ContainsKey($Name)) { return $Object[$Name] }
+  # Hashtables and [ordered] dictionaries (built by the agent itself) as well as JSON objects.
+  if ($Object -is [System.Collections.IDictionary]) {
+    if ($Object.Contains($Name)) { return $Object[$Name] }
     return $Default
   }
   if ($Object.PSObject.Properties.Name -contains $Name) { return $Object.$Name }
@@ -530,6 +660,82 @@ function Save-UwState {
       orders        = @($State.orders)
       acked         = @($State.acked)
     })
+}
+
+<#
+  What the agent keeps for its health report (FR-603/604, ADR-059): the features each hub announced
+  (by key id), the last self-update outcome and what it last sent about the antivirus.
+#>
+function Read-UwHealthState {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)][string]$Path)
+  $raw = Read-UwJson $Path $null
+  $features = @{}
+  $f = Get-UwProp $raw 'hubFeatures'
+  if ($f) {
+    foreach ($p in $f.PSObject.Properties) { $features[$p.Name] = @(@($p.Value) | ForEach-Object { [string]$_ }) }
+  }
+  return @{
+    hubFeatures = $features
+    update      = Get-UwProp $raw 'update'
+    av          = Get-UwProp $raw 'av'
+    avHash      = [string](Get-UwProp $raw 'avHash' '')
+    avPendingHash = [string](Get-UwProp $raw 'avPendingHash' '')
+    avSentAt    = [long](Get-UwProp $raw 'avSentAt' 0)
+    avCheckedAt = [long](Get-UwProp $raw 'avCheckedAt' 0)
+    installTriedAt = [long](Get-UwProp $raw 'installTriedAt' 0)
+    lastResume     = Get-UwProp $raw 'lastResume'
+    preventSleep   = Get-UwProp $raw 'preventSleep'
+    sleepSaved     = Get-UwProp $raw 'sleepSaved'
+  }
+}
+
+function Save-UwHealthState {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][hashtable]$Health)
+  $features = [ordered]@{}
+  foreach ($k in $Health.hubFeatures.Keys) { $features[$k] = @($Health.hubFeatures[$k]) }
+  Save-UwJson $Path ([ordered]@{
+      hubFeatures = $features
+      update      = $Health.update
+      av          = $Health.av
+      avHash      = $Health.avHash
+      avPendingHash = $Health.avPendingHash
+      avSentAt    = $Health.avSentAt
+      avCheckedAt = $Health.avCheckedAt
+      installTriedAt = $Health.installTriedAt
+      lastResume     = $Health.lastResume
+      preventSleep   = $Health.preventSleep
+      sleepSaved     = $Health.sleepSaved
+    })
+}
+
+# The `health` part of the check-in (FR-603, FR-604); Invoke-UwCheckin sends it only to hubs that announce it.
+function Get-UwHealthReport {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][hashtable]$Health,
+    $Config,
+    [AllowEmptyCollection()][object[]]$Repairs = @(),
+    $Antivirus = $null,
+    $Hibernate = $null
+  )
+  $power = $null
+  if ($null -ne $Hibernate) {
+    $power = [ordered]@{
+      hibernateEnabled      = $Hibernate.enabled
+      hibernateAfterMinutes = $Hibernate.afterMinutes
+      lastResume            = $Health.lastResume
+      preventSleep          = $Health.preventSleep
+    }
+  }
+  [ordered]@{
+    installLevel = [int](Get-UwProp $Config 'installLevel' 1)
+    update       = $Health.update
+    repairs      = @($Repairs | Select-Object -Last 10)
+    antivirus    = $Antivirus
+    power        = $power
+  }
 }
 
 function Read-UwReportQueue {
@@ -601,9 +807,11 @@ function Format-UwCheckinRequest {
     [Parameter(Mandatory)][hashtable]$Power,
     [Parameter(Mandatory)][hashtable]$Session,
     [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Reports,
-    [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$AckedOrders
+    [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$AckedOrders,
+    # v1.6.0 (ADR-059): only for a hub that announced `health`; the key is left out otherwise.
+    $Health = $null
   )
-  [ordered]@{
+  $request = [ordered]@{
     protocol     = $script:UwProtocol
     nonce        = $Nonce
     agentVersion = $script:UwAgentVersion
@@ -615,6 +823,8 @@ function Format-UwCheckinRequest {
     reports      = @($Reports | Select-Object -First $script:UwMaxReportsPerCheckin)
     ackedOrders  = @($AckedOrders | Select-Object -First $script:UwMaxReportsPerCheckin)
   }
+  if ($null -ne $Health) { $request['health'] = $Health }
+  $request
 }
 
 # Keys this PC trusts: the ones in its hub list (the first came pinned by -HubKeyId).
@@ -640,7 +850,10 @@ function Invoke-UwCheckin {
     [Parameter(Mandatory)]$Config,
     [Parameter(Mandatory)][string]$Token,
     # Everything of the request but the nonce and the clock (Format-UwCheckinRequest parameters).
-    [Parameter(Mandatory)][hashtable]$Request
+    [Parameter(Mandatory)][hashtable]$Request,
+    # v1.6.0 (ADR-059): the health report and, per hub key id, the features that hub announced.
+    $Health = $null,
+    [hashtable]$Features = @{}
   )
   $unauthorized = $false
   $attempts = 0
@@ -650,8 +863,11 @@ function Invoke-UwCheckin {
       $attempts++
       $nonce = Get-UwNonce
       $sentAt = Get-UwUtcNow
+      # A v1.5.0 hub refuses unknown fields: health only goes to hubs that announced it.
+      $h = $null
+      if ($null -ne $Health -and @($Features[[string]$hub.keyId]) -contains 'health') { $h = $Health }
       $body = [System.Text.Encoding]::UTF8.GetBytes(
-        (ConvertTo-Json -InputObject (Format-UwCheckinRequest -Nonce $nonce -Clock $sentAt @Request) -Depth 10 -Compress))
+        (ConvertTo-Json -InputObject (Format-UwCheckinRequest -Nonce $nonce -Clock $sentAt -Health $h @Request) -Depth 10 -Compress))
       try {
         $r = Invoke-UwHttp -Method 'POST' -Url "$url/agent/v1/checkin" -Body $body -Headers @{
           'Authorization' = "Bearer $Token"
@@ -675,7 +891,10 @@ function Invoke-UwCheckin {
         continue
       }
       if ((Get-UwProp $answer 'protocol') -ne $script:UwProtocol) { continue }
-      return @{ Answer = $answer; Hub = $hub; Url = $url; SentAt = $sentAt; ReceivedAt = (Get-UwUtcNow) }
+      return @{
+        Answer = $answer; Hub = $hub; Url = $url; SentAt = $sentAt; ReceivedAt = (Get-UwUtcNow)
+        Features = @(@(Get-UwProp $answer 'features' @()) | ForEach-Object { [string]$_ }); SentHealth = ($null -ne $h)
+      }
     }
   }
   if ($unauthorized) { return @{ Unauthorized = $true } }
@@ -903,12 +1122,48 @@ function Write-UwUiRequest {
 }
 
 <#
+  Asks Windows to keep the computer awake (on) or lets it sleep again (off). Field test 2026-10-18:
+  a PC woken from hibernation by "UniWake Despertar" with nobody at it went back to sleep after
+  about 2 minutes (unattended wake), in the middle of the warning, before shutting down.
+#>
+function Set-UwKeepAwake {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param([bool]$On)
+  Assert-UwRealSystem 'Set-UwKeepAwake'
+  if (-not $PSCmdlet.ShouldProcess('Windows', 'Manter o computador acordado')) { return }
+  if (-not ('UniWake.Power' -as [type])) {
+    Add-Type -Namespace UniWake -Name Power -MemberDefinition '[System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint esFlags);'
+  }
+  # ES_CONTINUOUS (+ ES_SYSTEM_REQUIRED while on).
+  $flags = [uint32]2147483648
+  if ($On) { $flags = [uint32]2147483649 }
+  [void][UniWake.Power]::SetThreadExecutionState($flags)
+}
+
+<#
   Runs one shutdown/restart (an agenda item or an order): the warning (window with "Adiar" when a
   user is logged on, the native warning as the fallback), cancel checks, then shutdown.exe. Returns
   the report, or $null when the job was cancelled through a check-in (that path already reported).
-  -Poll is a check-in; cancels arrive through $State.doneIds.
+  -Poll is a check-in; cancels arrive through $State.doneIds. The computer is kept awake meanwhile.
 #>
 function Invoke-UwExecution {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][hashtable]$Job,
+    [Parameter(Mandatory)][hashtable]$State,
+    [Parameter(Mandatory)]$Messages,
+    [Parameter(Mandatory)][scriptblock]$Poll,
+    [Parameter(Mandatory)][hashtable]$Freeze
+  )
+  try { Set-UwKeepAwake -On $true } catch { Write-Verbose "manter acordado: $_" }
+  try {
+    return Invoke-UwExecutionStep @PSBoundParameters
+  } finally {
+    try { Set-UwKeepAwake -On $false } catch { Write-Verbose "manter acordado: $_" }
+  }
+}
+
+function Invoke-UwExecutionStep {
   [CmdletBinding()]
   param(
     [Parameter(Mandatory)][hashtable]$Job,
@@ -1032,27 +1287,395 @@ function Format-UwUiRequest {
 
 <#
   Replaces an agent script whose SHA-256 differs from the one in the signed answer, after checking
-  the downloaded bytes against it (write temp, verify, move). A mismatch changes nothing.
+  the downloaded bytes against it (write temp, verify, move). A mismatch changes nothing. v1.6.0
+  (FR-603.2): the written file is read back a moment later, and every attempt has an outcome that
+  goes in `$Health.update` for the hub — "the antivirus removed it" is no longer silent.
 #>
 function Sync-UwScript {
   [CmdletBinding()]
-  param([Parameter(Mandatory)]$Scripts, [Parameter(Mandatory)][string]$HubUrl)
+  param([Parameter(Mandatory)]$Scripts, [Parameter(Mandatory)][string]$HubUrl, [hashtable]$Health = $null)
+  $last = $null
+  $all = $true
   foreach ($name in 'uniwake-agent.ps1', 'uniwake-aviso.ps1') {
     $want = [string](Get-UwProp (Get-UwProp $Scripts $name) 'sha256' '')
     if (-not $want) { continue }
     $path = Join-Path $script:UwAgentDir $name
-    if (Test-Path -LiteralPath $path) {
-      if ((Get-UwSha256Hex -Bytes ([System.IO.File]::ReadAllBytes($path))) -eq $want) { continue }
-    }
+    if ((Get-UwFileSha256 -Path $path) -eq $want) { continue }
+    $last = Sync-UwScriptFile -Name $name -Path $path -Want $want -HubUrl $HubUrl
+    if ($last.outcome -ne 'updated') { $all = $false }
+    if ($null -ne $Health) { $Health.update = $last }
+  }
+  # M29-R: every file matches the signed hashes again (restored by "UniWake Reparo", or the
+  # antivirus was fixed): a past failure is over, so the panel stops showing the agent as blocked.
+  if ($all -and $null -eq $last -and $null -ne $Health -and $null -ne $Health.update -and
+    [string](Get-UwProp $Health.update 'outcome') -ne 'updated') {
+    $Health.update = Format-UwUpdateOutcome 'updated' ([string](Get-UwProp $Health.update 'file')) $null 'conferido: igual ao do UniWake'
+  }
+  return $last
+}
+
+# SHA-256 of a file, '' when it does not exist or cannot be read.
+function Get-UwFileSha256 {
+  [CmdletBinding()]
+  [OutputType([string])]
+  param([Parameter(Mandatory)][string]$Path)
+  if (-not (Test-Path -LiteralPath $Path)) { return '' }
+  try { return Get-UwSha256Hex -Bytes ([System.IO.File]::ReadAllBytes($Path)) } catch { return '' }
+}
+
+function Format-UwUpdateOutcome {
+  [CmdletBinding()]
+  param([string]$Outcome, [string]$Name, $Code = $null, [string]$Detail = '')
+  $d = $null
+  if ($Detail) { $d = $Detail.Substring(0, [Math]::Min(200, $Detail.Length)) }
+  [ordered]@{ outcome = $Outcome; file = $Name; at = (Get-UwUtcNow); code = $Code; detail = $d }
+}
+
+# The Windows error code inside an exception (225 = the antivirus refused the file), or $null.
+function Get-UwWin32Code {
+  [CmdletBinding()]
+  param($Exception)
+  $e = $Exception
+  while ($null -ne $e) {
+    $h = [int]$e.HResult
+    if (($h -band 0xFFFF0000) -eq [int]0x80070000) { return ($h -band 0xFFFF) }
+    $e = $e.InnerException
+  }
+  return $null
+}
+
+# Writes the bytes next to the file and moves them over it (a reader never sees half a script).
+function Save-UwScriptContent {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][byte[]]$Bytes)
+  [System.IO.File]::WriteAllBytes("$Path.tmp", $Bytes)
+  Move-Item -LiteralPath "$Path.tmp" -Destination $Path -Force
+}
+
+function Sync-UwScriptFile {
+  [CmdletBinding()]
+  param([string]$Name, [string]$Path, [string]$Want, [string]$HubUrl)
+  try {
+    $r = Invoke-UwHttp -Method 'GET' -Url "$HubUrl/agent/v1/scripts/$Name"
+  } catch {
+    return Format-UwUpdateOutcome 'download_failed' $Name $null "$_"
+  }
+  if ($r.Status -ne 200) { return Format-UwUpdateOutcome 'download_failed' $Name $null "HTTP $($r.Status)" }
+  if ((Get-UwSha256Hex -Bytes $r.Body) -ne $Want) { return Format-UwUpdateOutcome 'hash_mismatch' $Name }
+  try {
+    Save-UwScriptContent -Path $Path -Bytes $r.Body
+  } catch {
+    Remove-Item -LiteralPath "$Path.tmp" -Force -ErrorAction SilentlyContinue
+    $code = Get-UwWin32Code $_.Exception
+    return Format-UwUpdateOutcome 'write_blocked' $Name $code $_.Exception.Message
+  }
+  # On-access scanners act right after the write: look again a moment later.
+  Wait-UwSecond -Seconds 2
+  if ((Get-UwFileSha256 -Path $Path) -ne $Want) {
+    return Format-UwUpdateOutcome 'removed_after_write' $Name $null 'o arquivo sumiu ou mudou logo depois de gravado'
+  }
+  return Format-UwUpdateOutcome 'updated' $Name
+}
+
+# ------------------------------------------------------------------ antivirus (FR-604, ADR-060)
+
+# How often the antivirus is read, and when an unchanged report is sent again anyway (another hub).
+$script:UwAvCheckMs = 15L * 60000
+$script:UwAvResendMs = 6L * 3600000
+
+<#
+  Raw antivirus facts: the products Windows Security Center knows and, when Microsoft Defender is
+  there, its detections. Third-party products have no common history API (ADR-060).
+#>
+function Get-UwAntivirusRaw {
+  [CmdletBinding()]
+  param()
+  Assert-UwRealSystem 'Get-UwAntivirusRaw'
+  $products = @()
+  try {
+    $products = @(Get-CimInstance -Namespace 'root/SecurityCenter2' -ClassName 'AntiVirusProduct' -ErrorAction Stop |
+        ForEach-Object { @{ name = [string]$_.displayName; state = [long]$_.productState } })
+  } catch { Write-Verbose "Central de Segurança: $_" } # Windows Server has no Security Center
+  $detections = @()
+  if (Get-Command -Name 'Get-MpThreatDetection' -ErrorAction SilentlyContinue) {
     try {
-      $r = Invoke-UwHttp -Method 'GET' -Url "$HubUrl/agent/v1/scripts/$name"
-    } catch {
+      $names = @{}
+      try { foreach ($t in @(Get-MpThreat -ErrorAction Stop)) { $names[[string]$t.ThreatID] = [string]$t.ThreatName } } catch { Write-Verbose "$_" }
+      $detections = @(Get-MpThreatDetection -ErrorAction Stop | ForEach-Object {
+          @{ at = $_.InitialDetectionTime; resources = @($_.Resources); threat = $names[[string]$_.ThreatID]; status = [int]$_.ThreatStatusID }
+        })
+    } catch { Write-Verbose "Defender: $_" }
+  }
+  @{ products = $products; detections = $detections }
+}
+
+# What Microsoft Defender did (ThreatStatusID), in the panel's words; unknown codes say nothing.
+$script:UwDefenderAction = @{ 2 = 'limpo'; 3 = 'quarentena'; 4 = 'removido'; 5 = 'permitido'; 6 = 'bloqueado' }
+
+<#
+  The contract's `antivirus` object (FR-604.1): product names with enabled/up-to-date decoded from
+  productState (unknown bits: null), and the detections of the last 14 days that touch UniWake —
+  file names only, newest first.
+#>
+function ConvertTo-UwAntivirusInfo {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)][hashtable]$Raw, [Parameter(Mandatory)][long]$Now)
+  $products = @(foreach ($p in @($Raw.products)) {
+      if (-not $p.name) { continue }
+      $hex = '{0:X6}' -f [long]$p.state
+      $enabled = $null
+      if ($hex.Length -eq 6) {
+        $on = $hex.Substring(2, 2)
+        if ($on -in @('10', '11')) { $enabled = $true } elseif ($on -in @('00', '01')) { $enabled = $false }
+        $sig = $hex.Substring(4, 2)
+        $upToDate = $null
+        if ($sig -eq '00') { $upToDate = $true } elseif ($sig -eq '10') { $upToDate = $false }
+      } else { $upToDate = $null }
+      [ordered]@{ name = ([string]$p.name).Substring(0, [Math]::Min(100, ([string]$p.name).Length)); enabled = $enabled; upToDate = $upToDate }
+    })
+  $since = $Now - 14L * 86400000
+  $found = foreach ($d in @($Raw.detections)) {
+    if ($null -eq $d.at) { continue }
+    $at = ([DateTimeOffset][datetime]$d.at).ToUnixTimeMilliseconds()
+    if ($at -lt $since) { continue }
+    $hit = @(@($d.resources) | Where-Object { [string]$_ -match '\\UniWake\\|uniwake-[a-z]+\.ps1' }) | Select-Object -First 1
+    if (-not $hit) { continue }
+    $file = [regex]::Match([string]$hit, 'uniwake-[a-z]+\.ps1', 'IgnoreCase').Value
+    if (-not $file) { $file = Split-Path -Leaf (([string]$hit) -replace '^[A-Za-z]+:_', '') }
+    $threat = [string]$d.threat
+    if (-not $threat) { $threat = 'desconhecida' }
+    $action = $null
+    if ($script:UwDefenderAction.ContainsKey([int]$d.status)) { $action = $script:UwDefenderAction[[int]$d.status] }
+    [ordered]@{
+      at = $at; threat = $threat.Substring(0, [Math]::Min(120, $threat.Length))
+      file = $file.Substring(0, [Math]::Min(80, $file.Length)); action = $action
+    }
+  }
+  [ordered]@{
+    products   = @($products | Select-Object -First 6)
+    detections = @(@($found) | Sort-Object { $_.at } -Descending | Select-Object -First 10)
+  }
+}
+
+<#
+  The antivirus part to send now, or $null when nothing changed (FR-604.1): read every 15 minutes, or
+  at once after a blocked update or a repair; sent when it changed or every 6 hours. Returns
+  @{ Report; Hash } so the caller marks it sent only once a hub took it.
+#>
+function Get-UwAntivirusReport {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)][hashtable]$Health, [Parameter(Mandatory)][long]$Now, [switch]$Force)
+  if (-not $Force -and $Now - $Health.avCheckedAt -lt $script:UwAvCheckMs) {
+    # Field test 2026-10-17: the first reading happens before the hub announced health, so no hub
+    # took it; offer it again instead of waiting 15 minutes for the next reading.
+    if ($null -ne $Health.av -and $Health.avPendingHash -and $Health.avPendingHash -ne $Health.avHash) {
+      return @{ Report = $Health.av; Hash = $Health.avPendingHash }
+    }
+    return $null
+  }
+  $Health.avCheckedAt = $Now
+  $av = ConvertTo-UwAntivirusInfo -Raw (Get-UwAntivirusRaw) -Now $Now
+  $hash = Get-UwSha256Hex -Bytes ([System.Text.Encoding]::UTF8.GetBytes((ConvertTo-Json $av -Depth 5 -Compress)))
+  $Health.av = $av
+  $Health.avPendingHash = $hash
+  if ($hash -eq $Health.avHash -and $Now - $Health.avSentAt -lt $script:UwAvResendMs) { return $null }
+  return @{ Report = $av; Hash = $hash }
+}
+
+# A blocked update or a repair note newer than the last antivirus reading: read it again now.
+function Test-UwAntivirusDue {
+  [CmdletBinding()]
+  [OutputType([bool])]
+  param([Parameter(Mandatory)][hashtable]$Health, [AllowEmptyCollection()][object[]]$Repairs = @())
+  $u = $Health.update
+  if ($null -ne $u -and [string](Get-UwProp $u 'outcome') -in @('write_blocked', 'removed_after_write') -and
+    [long](Get-UwProp $u 'at' 0) -gt $Health.avCheckedAt) { return $true }
+  foreach ($r in @($Repairs)) { if ([long]$r.at -gt $Health.avCheckedAt) { return $true } }
+  return $false
+}
+
+# ------------------------------------------------------------------ self-install and repair (ADR-059)
+
+<#
+  The repair task's command (FR-603.4): inline, so a quarantined script file cannot disable it. When
+  a script is missing or differs from the verified copy, it restores the copy and appends a note to
+  repairs.log (the agent reports it); when it cannot, it tells the hubs (POST /agent/v1/alert with
+  the device token). It runs nothing it receives. Single quotes only: it sits inside -Command "...".
+#>
+function Get-UwRepairCommand {
+  [CmdletBinding()]
+  [OutputType([string])]
+  param([Parameter(Mandatory)][string]$AgentDir)
+  $d = $AgentDir.Replace("'", "''")
+  @(
+    "`$ErrorActionPreference='Stop';`$d='$d';`$c=Join-Path `$d 'copia';`$m=Join-Path `$c 'manifest.json'"
+    "if(-not(Test-Path -LiteralPath `$m)){exit 0}"
+    "`$h={param(`$x) if(Test-Path -LiteralPath `$x){(Get-FileHash -LiteralPath `$x -Algorithm SHA256).Hash}else{''}}"
+    "`$man=Get-Content -Raw -LiteralPath `$m|ConvertFrom-Json"
+    "foreach(`$p in `$man.PSObject.Properties){`$f=Join-Path `$d `$p.Name;if((& `$h `$f) -eq `$p.Value){continue}"
+    "`$why='missing';if(Test-Path -LiteralPath `$f){`$why='changed'};`$out='not_restored';`$s=Join-Path `$c `$p.Name"
+    "try{if((& `$h `$s) -eq `$p.Value){Copy-Item -LiteralPath `$s -Destination `$f -Force;if((& `$h `$f) -eq `$p.Value){`$out='restored'}}}catch{}"
+    "`$at=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()"
+    "Add-Content -LiteralPath (Join-Path `$d 'repairs.log') -Value (@{at=`$at;file=`$p.Name;reason=`$why;outcome=`$out}|ConvertTo-Json -Compress)"
+    "if(`$out -ne 'restored'){try{`$cfg=Get-Content -Raw -LiteralPath (Join-Path `$d 'config.json')|ConvertFrom-Json"
+    "`$t=(Get-Content -Raw -LiteralPath (Join-Path `$d 'token.txt')).Trim()"
+    "`$b=@{protocol=1;kind='agent_missing';file=`$p.Name;at=`$at}|ConvertTo-Json -Compress"
+    "foreach(`$hub in @(`$cfg.hubs)){foreach(`$u in @(`$hub.urls)){try{Invoke-WebRequest -UseBasicParsing -Method Post -Uri (`$u+'/agent/v1/alert') -Headers @{Authorization=('Bearer '+`$t)} -ContentType 'application/json' -Body `$b -TimeoutSec 10|Out-Null;break}catch{}}}}catch{}}}"
+  ) -join ';'
+}
+
+# "Back from sleep or hibernation" (Power-Troubleshooter event 1).
+$script:UwResumeSubscription = '<QueryList><Query Id="0" Path="System"><Select Path="System">*[System[Provider[@Name=''Microsoft-Windows-Power-Troubleshooter''] and EventID=1]]</Select></Query></QueryList>'
+
+<#
+  Install level 3 (field test 2026-10-18): after the notebook came back from hibernation, the
+  every-minute trigger of "UniWake" stopped firing until something started the task (the scheduler
+  kept moving "next run" forward; cause não verificado). A trigger on resume starts it, which brings
+  the repetition back. Adds it to the existing task, keeping its other triggers.
+#>
+function Add-UwResumeTrigger {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param([string]$TaskName = 'UniWake')
+  Assert-UwRealSystem 'Add-UwResumeTrigger'
+  $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop
+  foreach ($t in @($task.Triggers)) {
+    if ($t.CimClass.CimClassName -eq 'MSFT_TaskEventTrigger' -and [string]$t.Subscription -match 'Power-Troubleshooter') { return }
+  }
+  if (-not $PSCmdlet.ShouldProcess($TaskName, 'Executar ao voltar da suspensão ou hibernação')) { return }
+  $class = Get-CimClass -ClassName MSFT_TaskEventTrigger -Namespace 'Root/Microsoft/Windows/TaskScheduler'
+  $resume = New-CimInstance -CimClass $class -ClientOnly
+  $resume.Enabled = $true
+  $resume.Subscription = $script:UwResumeSubscription
+  Set-ScheduledTask -TaskName $TaskName -Trigger (@($task.Triggers) + $resume) | Out-Null
+}
+
+# Registers "UniWake Reparo" (SYSTEM, at start-up and every 30 minutes).
+function Register-UwRepairTask {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param([Parameter(Mandatory)][string]$Command)
+  Assert-UwRealSystem 'Register-UwRepairTask'
+  if (-not $PSCmdlet.ShouldProcess('UniWake Reparo', 'Registrar tarefa agendada')) { return }
+  $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
+    -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command `"$Command`""
+  $triggers = @(
+    (New-ScheduledTaskTrigger -AtStartup),
+    (New-ScheduledTaskTrigger -Once -At ([DateTime]::Now.AddMinutes(5)) -RepetitionInterval (New-TimeSpan -Minutes 30))
+  )
+  $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `
+    -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
+  $principal = New-ScheduledTaskPrincipal -UserId 'S-1-5-18' -RunLevel Highest
+  Register-ScheduledTask -TaskName 'UniWake Reparo' -Action $action -Trigger $triggers `
+    -Settings $settings -Principal $principal -Force | Out-Null
+}
+
+<#
+  Keeps agent\copia\ in step with the scripts whose bytes match the signed hashes (FR-603.3): only a
+  file verified against a signed answer is copied, so the repair task never restores anything else.
+#>
+function Update-UwVerifiedCopy {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param([Parameter(Mandatory)]$Scripts)
+  $dir = Join-Path $script:UwAgentDir 'copia'
+  $manifestPath = Join-Path $dir 'manifest.json'
+  $old = Read-UwJson $manifestPath $null
+  $manifest = [ordered]@{}
+  $changed = $false
+  foreach ($name in 'uniwake-agent.ps1', 'uniwake-aviso.ps1') {
+    $want = [string](Get-UwProp (Get-UwProp $Scripts $name) 'sha256' '')
+    $source = Join-Path $script:UwAgentDir $name
+    $copy = Join-Path $dir $name
+    if (-not $want -or (Get-UwFileSha256 -Path $source) -ne $want) {
+      # Not verified now: keep what the copy already had.
+      $kept = [string](Get-UwProp $old $name '')
+      if ($kept -and (Get-UwFileSha256 -Path $copy) -eq $kept) { $manifest[$name] = $kept }
       continue
     }
-    if ($r.Status -ne 200 -or (Get-UwSha256Hex -Bytes $r.Body) -ne $want) { continue }
-    [System.IO.File]::WriteAllBytes("$path.tmp", $r.Body)
-    Move-Item -LiteralPath "$path.tmp" -Destination $path -Force
+    if ((Get-UwFileSha256 -Path $copy) -ne $want) {
+      if (-not $PSCmdlet.ShouldProcess($copy, 'Atualizar cópia conferida')) { continue }
+      New-Item -ItemType Directory -Force -Path $dir | Out-Null
+      Copy-Item -LiteralPath $source -Destination $copy -Force
+      $changed = $true
+    }
+    $manifest[$name] = $want
   }
+  if ($changed -or $null -eq $old -or (ConvertTo-Json $manifest -Compress) -ne (ConvertTo-Json $old -Compress)) {
+    Save-UwJson $manifestPath $manifest
+  }
+}
+
+<#
+  FR-603.3: applies the install steps newer than the machine's level, so prepared machines take agent
+  changes without "Preparar máquinas". Level 2 (v1.6.0): the verified copy and the repair task.
+  Level 3: "UniWake" also runs when the PC comes back from sleep or hibernation.
+  Failures are retried at most hourly and never stop the run.
+#>
+function Invoke-UwSelfInstall {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)]$Scripts, [Parameter(Mandatory)][hashtable]$Paths, [Parameter(Mandatory)][hashtable]$Health, [long]$Now)
+  Update-UwVerifiedCopy -Scripts $Scripts
+  $config = Read-UwJson $Paths.Config $null
+  if ($null -eq $config) { return }
+  $level = [int](Get-UwProp $config 'installLevel' 1)
+  if ($level -ge $script:UwInstallLevel) { return }
+  $last = [long](Get-UwProp $Health 'installTriedAt' 0)
+  if ($Health.ContainsKey('installTriedAt')) { $last = [long]$Health.installTriedAt }
+  if ($Now - $last -lt 3600000L) { return }
+  $Health.installTriedAt = $Now
+  if ($level -lt 2) { Register-UwRepairTask -Command (Get-UwRepairCommand -AgentDir $script:UwAgentDir) }
+  if ($level -lt 3) { Add-UwResumeTrigger }
+  # Only failures wait an hour: a frozen machine loses the task at every restart (M29-R).
+  $Health.installTriedAt = 0L
+  $out = [ordered]@{}
+  foreach ($p in $config.PSObject.Properties) { $out[$p.Name] = $p.Value }
+  $out['installLevel'] = $script:UwInstallLevel
+  Save-UwJson $Paths.Config $out
+}
+
+# The repair task's notes (repairs.log), newest last; the file is trimmed to the last 20.
+function Read-UwRepairNote {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)][string]$Path)
+  if (-not (Test-Path -LiteralPath $Path)) { return }
+  $lines = @(Get-Content -LiteralPath $Path -ErrorAction SilentlyContinue | Where-Object { $_ })
+  if ($lines.Count -gt 50) { Set-Content -LiteralPath $Path -Value ($lines | Select-Object -Last 20) -Encoding UTF8 }
+  foreach ($l in @($lines | Select-Object -Last 10)) {
+    try {
+      $n = $l | ConvertFrom-Json
+      if ([string]$n.outcome -in @('restored', 'not_restored') -and [string]$n.reason -in @('missing', 'changed')) {
+        [ordered]@{ at = [long]$n.at; file = [string]$n.file; reason = [string]$n.reason; outcome = [string]$n.outcome }
+      }
+    } catch {
+      Write-Verbose "nota de reparo ilegível: $l"
+    }
+  }
+}
+
+<#
+  ADR-046: the "UniWake Aviso" task runs as the logged-on user, who must be able to read the warning
+  script. Writing it again (self-update since v1.3, the repair task's copy) left only the folder's
+  inherited rights (SYSTEM, Administrators): the warning window could not start and Windows showed
+  its own notice, without "Adiar" (field test 2026-10-18). Checked every run, put back when missing.
+  Returns $true when it had to put it back.
+#>
+function Repair-UwWarningAccess {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  [OutputType([bool])]
+  param([string]$Path = (Join-Path $script:UwAgentDir 'uniwake-aviso.ps1'))
+  if (-not (Test-Path -LiteralPath $Path)) { return $false }
+  # Only the access part: writing the audit part (SACL) needs a privilege we do not ask for.
+  $item = Get-Item -LiteralPath $Path
+  $acl = $item.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access)
+  $users = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-545')
+  $rx = [System.Security.AccessControl.FileSystemRights]::ReadAndExecute
+  foreach ($ace in $acl.Access) {
+    if ($ace.AccessControlType -ne 'Allow') { continue }
+    try { $sid = $ace.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]) } catch { continue }
+    if ($sid -eq $users -and ($ace.FileSystemRights -band $rx) -eq $rx) { return $false }
+  }
+  if (-not $PSCmdlet.ShouldProcess($Path, 'Permitir leitura pelos usuários')) { return $false }
+  $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($users, 'ReadAndExecute', 'Allow')))
+  $item.SetAccessControl($acl)
+  return $true
 }
 
 # ------------------------------------------------------------------ one run
@@ -1097,7 +1720,17 @@ function Invoke-UwRun {
   $ctx = @{
     Paths = $paths; Config = $config; State = $state; Last = $null
     Boot = (Get-UwBootTime); Freeze = (Get-UwFreezeInfo); Power = (Get-UwPowerInfo); Session = (Get-UwSessionInfo)
+    Health = (Read-UwHealthState $paths.Health); Antivirus = $null; AntivirusHash = $null
+    Repairs = @(Read-UwRepairNote -Path (Join-Path $script:UwAgentDir 'repairs.log'))
   }
+  $resume = Get-UwResume -LastBeat $lastBeat -Boot $ctx.Boot -Now (Get-UwUtcNow)
+  if ($null -ne $resume) { $ctx.Health.lastResume = $resume }
+  $ctx.Hibernate = $null
+  try { $ctx.Hibernate = Get-UwHibernateInfo } catch { Write-Verbose "hibernação: $_" }
+  try {
+    $av = Get-UwAntivirusReport -Health $ctx.Health -Now (Get-UwUtcNow) -Force:(Test-UwAntivirusDue -Health $ctx.Health -Repairs $ctx.Repairs)
+    if ($null -ne $av) { $ctx.Antivirus = $av.Report; $ctx.AntivirusHash = $av.Hash }
+  } catch { Write-Verbose "antivirus: $_" }
   # FR-308.4: data kept in a folder that survives freezing (ThawSpace, UWF exclusion) when configured.
   $persistent = Get-UwProp $config 'persistentPath'
   $ctx.Freeze = @{ product = $ctx.Freeze.product; state = $ctx.Freeze.state; persistent = [bool]$persistent }
@@ -1108,8 +1741,22 @@ function Invoke-UwRun {
   $first = & $poll
   if ($null -ne $first -and $first.ContainsKey('Unauthorized')) { return 4 }
   if ($null -ne $ctx.Last) {
-    try { Sync-UwScript -Scripts $ctx.Last.Answer.scripts -HubUrl $ctx.Last.Url } catch { Write-Verbose "update: $_" }
+    try {
+      [void](Sync-UwScript -Scripts $ctx.Last.Answer.scripts -HubUrl $ctx.Last.Url -Health $ctx.Health)
+    } catch { Write-Verbose "update: $_" }
+    try {
+      Invoke-UwSelfInstall -Scripts $ctx.Last.Answer.scripts -Paths $paths -Health $ctx.Health -Now (Get-UwUtcNow)
+    } catch { Write-Verbose "self-install: $_" }
+    try {
+      $prevent = [bool](Get-UwProp (Get-UwProp $ctx.Last.Answer 'power') 'preventSleep' $false)
+      Invoke-UwSleepPolicy -Prevent $prevent -Health $ctx.Health -Now (Get-UwUtcNow) -Power $ctx.Power -Hibernate $ctx.Hibernate
+    } catch { Write-Verbose "energia: $_" }
+    Save-UwHealthState $paths.Health $ctx.Health
   }
+  # Also with the hub unreachable: a copy restored by "UniWake Reparo" needs it as well.
+  try {
+    if (Repair-UwWarningAccess) { Write-Verbose 'aviso: leitura pelos usuários restaurada' }
+  } catch { Write-Verbose "aviso: $_" }
   $messages = $script:UwDefaultMessages
   if ($null -ne $ctx.Last) { $messages = $ctx.Last.Answer.message }
 
@@ -1145,8 +1792,29 @@ function Invoke-UwPoll {
     BootTime = $Context.Boot; Freeze = $Context.Freeze; Power = $Context.Power; Session = $Context.Session
     Reports = $queue; AckedOrders = $acks
   }
-  $result = Invoke-UwCheckin -Config $cfg -Token $token -Request $request
+  $health = $null
+  $report = $null
+  if ($Context.ContainsKey('Health') -and $null -ne $Context.Health) {
+    $health = $Context.Health
+    $hib = $null
+    if ($Context.ContainsKey('Hibernate')) { $hib = $Context.Hibernate }
+    $report = Get-UwHealthReport -Health $health -Config $cfg -Repairs @($Context.Repairs) -Antivirus $Context.Antivirus -Hibernate $hib
+  }
+  $features = @{}
+  if ($null -ne $health) { $features = $health.hubFeatures }
+  $result = Invoke-UwCheckin -Config $cfg -Token $token -Request $request -Health $report -Features $features
   if ($null -eq $result -or $result.ContainsKey('Unauthorized')) { return $result }
+  if ($null -ne $health) {
+    # What this hub accepts from now on (a hub without the list accepts no health).
+    $health.hubFeatures[[string]$result.Hub.keyId] = @($result.Features)
+    if ($result.SentHealth -and $null -ne $Context.Antivirus -and $Context.ContainsKey('AntivirusHash')) {
+      # A hub took it: unchanged readings are not sent again for a while.
+      $health.avHash = $Context.AntivirusHash
+      $health.avSentAt = [long]$result.Answer.serverTime
+      $Context.Antivirus = $null
+    }
+    Save-UwHealthState $paths.Health $health
+  }
   $extra = Invoke-UwAnswer -Result $result -State $Context.State -Paths $paths -Config $cfg -SentAcks ([string[]]$acks)
   foreach ($r in $extra) { Add-UwReport $paths.Reports $r }
   $Context.Last = $result
@@ -1170,6 +1838,8 @@ function Get-UwNextJob {
     [Parameter(Mandatory)][hashtable]$Session,
     [Parameter(Mandatory)][hashtable]$Freeze
   )
+  $hubBoot = $null
+  if ($null -ne $Boot) { $hubBoot = [long]$Boot + $State.offsetMs }
   $order = @($State.orders | Select-Object -First 1)
   if ($order.Count -gt 0) {
     $o = $order[0]
@@ -1182,6 +1852,24 @@ function Get-UwNextJob {
     } else { $occ = $null }
     $planned = Get-UwProp $o 'plannedAt' $null
     if ($null -ne $planned) { $planned = [long]$planned }
+    # Field test 2026-10-18 (owner): someone may turn a lab PC off before the scheduled time. Started
+    # after T (or, for a manual order, after it was given), the PC was off then: as for agenda items
+    # (AC-303-05) it is not shut down — whoever turned it on is using it. A resume from sleep or
+    # hibernation keeps the boot time, so those still shut down.
+    $ref = $planned
+    if ($null -eq $ref) {
+      $issued = Get-UwProp $o 'issuedAt' $null
+      if ($null -ne $issued) { $ref = [long]$issued }
+    }
+    if ($null -ne $ref -and $null -ne $hubBoot -and $hubBoot -gt $ref) {
+      $State.doneIds[[string]$o.uuid] = $Now
+      [void]$State.orders.Remove($o)
+      Add-UwReport $Paths.Reports (Format-UwReport -Occurrence $occ -Order ([string]$o.uuid) -Action ([string]$o.action) `
+          -Outcome 'skipped' -Reason 'was_off' -PlannedAt $planned -Session $Session -FreezeState $Freeze.state `
+          -Detail 'máquina estava desligada e foi ligada depois')
+      Save-UwState $Paths.State $State $Now
+      return $null
+    }
     return @{
       Kind = 'order'; Order = [string]$o.uuid; Occurrence = $occ; Action = [string]$o.action
       At = $Now + [long]$o.warningMinutes * $script:UwMinute; PlannedAt = $planned

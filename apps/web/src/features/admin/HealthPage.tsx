@@ -154,6 +154,11 @@ export function HealthPage() {
                   <HelpLink topic="frozen-labs" />
                 </span>
               )}
+              {w.code === 'agent_blocked' && (
+                <span className="mt-1 block">
+                  <HelpLink topic="antivirus" />
+                </span>
+              )}
             </li>
           ))}
         </ul>

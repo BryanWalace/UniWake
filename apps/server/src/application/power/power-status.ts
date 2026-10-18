@@ -8,6 +8,7 @@ import {
   type DeviceAgentInfo,
   type PowerHistory,
   type PowerOccurrence,
+  type PowerDeviceRef,
   type PowerOccurrenceDevice,
   SHUTDOWN_RESULTS,
   type ShutdownResult,
@@ -19,6 +20,8 @@ import { AppError } from '../errors';
 import type { Clock } from '../ports';
 import { rowsToTarget, type ScheduleRecord, type TargetRefs } from '../schedules/schedules-service';
 import type { PowerOrdersService } from './power-orders';
+import type { StoredHealth } from './agent-service';
+import { agentAlertOf, healthView } from './agent-health';
 
 export interface AgentRowView {
   deviceId: number;
@@ -109,6 +112,11 @@ export interface PowerStatusDeps {
   recentJobIds: (limit: number) => number[];
   orders: PowerOrdersService;
   clock: Clock;
+  /** v1.6.0 (FR-603.5): stored health, one machine or all (absent in older tests). */
+  health?: (deviceId: number) => StoredHealth | null;
+  healthAll?: () => Map<number, StoredHealth>;
+  /** The agent version this hub ships. */
+  latestAgentVersion?: () => string | null;
 }
 
 const DAY = 86_400_000;
@@ -130,8 +138,18 @@ export class PowerStatusService {
     );
   }
 
-  private view(r: AgentRowView, now: number): DeviceAgentInfo {
+  private view(
+    r: AgentRowView,
+    now: number,
+    health: StoredHealth | null = null,
+    full = false,
+  ): DeviceAgentInfo {
+    const latestVersion = this.d.latestAgentVersion?.() ?? null;
     return {
+      latestVersion,
+      agentAlert:
+        r.hasToken && r.revokedAt === null ? agentAlertOf(health, r, latestVersion, now) : null,
+      ...(full ? { health: health ? healthView(health) : null } : {}),
       deviceId: r.deviceId,
       readiness: this.readiness(r, now),
       agentVersion: r.agentVersion,
@@ -151,13 +169,30 @@ export class PowerStatusService {
   /** Every machine's agent (device list badges, FR-309). */
   list(): DeviceAgentInfo[] {
     const now = this.d.clock.now();
-    return this.d.agents().map((r) => this.view(r, now));
+    const health = this.d.healthAll?.() ?? new Map<number, StoredHealth>();
+    return this.d.agents().map((r) => this.view(r, now, health.get(r.deviceId) ?? null));
   }
 
   device(deviceId: number): DeviceAgentInfo {
     const r = this.d.agents([deviceId])[0];
     if (!r) throw new AppError('DEVICE_NOT_FOUND', { ids: String(deviceId) });
-    return this.view(r, this.d.clock.now());
+    return this.view(r, this.d.clock.now(), this.d.health?.(deviceId) ?? null, true);
+  }
+
+  /** v1.6.0 (FR-603.5): machines whose agent is blocked or older than the one this hub ships. */
+  agentAlerts(): { blocked: PowerDeviceRef[]; outdated: PowerDeviceRef[] } {
+    const out = { blocked: [] as PowerDeviceRef[], outdated: [] as PowerDeviceRef[] };
+    const now = this.d.clock.now();
+    const health = this.d.healthAll?.() ?? new Map<number, StoredHealth>();
+    const latest = this.d.latestAgentVersion?.() ?? null;
+    for (const r of this.d.agents()) {
+      // Only machines heard from in the last week: one kept in storage is not "desatualizada".
+      if (!r.hasToken || r.revokedAt !== null) continue;
+      if (r.lastCheckin === null || now - r.lastCheckin > 7 * DAY) continue;
+      const mark = agentAlertOf(health.get(r.deviceId) ?? null, r, latest, now);
+      if (mark) out[mark].push({ deviceId: r.deviceId, name: r.name });
+    }
+    return out;
   }
 
   /** Counts for "Saúde do sistema" (Q-5: how many are "perdido"). */
@@ -314,8 +349,27 @@ export class PowerStatusService {
     for (const dev of targeted) {
       const a = agents.get(dev.id);
       const x = extras.get(dev.id);
-      if (a?.neverScheduledShutdown) continue;
-      if (x?.tagUuids.some((t) => exclude.has(t))) continue;
+      // FR-601.2: skipped by the schedule's own rules, but never hidden.
+      const excludedReason = a?.neverScheduledShutdown
+        ? ('never_flag' as const)
+        : x?.tagUuids.some((t) => exclude.has(t))
+          ? ('excluded_tag' as const)
+          : null;
+      if (excludedReason) {
+        out.push({
+          deviceId: dev.id,
+          name: dev.name,
+          result: 'excluded',
+          excludedReason,
+          path: null,
+          postpones: 0,
+          wasAsleep: false,
+          lateMinutes: null,
+          nativeWarning: false,
+          userLoggedOn: null,
+        });
+        continue;
+      }
       const o = orders.get(dev.id);
       out.push({
         deviceId: dev.id,

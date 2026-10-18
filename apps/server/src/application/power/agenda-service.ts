@@ -123,6 +123,7 @@ export class AgendaService {
         postponeMax: s.postponeMax ?? null,
         postponeMinutes: s.postponeMinutes ?? null,
         excludeTags: s.excludeTags ?? [],
+        savedAt: s.updatedAt,
       }));
   }
 }

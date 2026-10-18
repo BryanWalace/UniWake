@@ -256,13 +256,14 @@ empty in v1.0).
 | POST `/api/notices/:id/wake-missed` | operator | FR-204.2 |
 | GET `/*` except `/api/*`, `/agent/*` | public | SPA files, `index.html` fallback |
 
-### 6.2 Agent listener — exactly five routes (three until v1.2; ADR-043)
+### 6.2 Agent listener — exactly six routes (three until v1.2, five until v1.5; ADR-043, ADR-059)
 | Method & path | Auth | Purpose |
 |---|---|---|
 | GET `/api/health` | public | `{status}` |
 | POST `/agent/enroll` | enrollment (token) | FR-007.2 (+ agent token when asked, §15.5) |
 | GET `/agent/prepare-target.ps1` | public | script bytes |
 | POST `/agent/v1/checkin` | agent token | FR-302 (v1.3, §15.4) |
+| POST `/agent/v1/alert` | agent token | FR-603.4 repair task alert (v1.6.0, ADR-059) |
 | GET `/agent/v1/scripts/:name` | public | agent scripts (v1.3) |
 
 ### 6.3 SSE events
@@ -642,6 +643,7 @@ Agent listener (amends §6.2 → five routes):
 | POST `/agent/enroll` | enrollment token | FR-007.2; + agent token, hub key, script hashes (signed) when asked |
 | GET `/agent/prepare-target.ps1` | public | script bytes |
 | POST `/agent/v1/checkin` | agent token | FR-302 |
+| POST `/agent/v1/alert` | agent token | FR-603.4 (repair task, nothing returned to run) |
 | GET `/agent/v1/scripts/:name` | public | `uniwake-agent.ps1`, `uniwake-aviso.ps1` bytes |
 
 Panel (`/api`):

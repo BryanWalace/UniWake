@@ -241,6 +241,11 @@ describe('info logs (FR-504.2)', () => {
     const lines = (msg: string) => log.filter((e) => e.level === 'info' && e.msg === msg);
     const a = w.agent(pc);
     await a.checkin();
+    // As the monitor would see it (an agent check-in counts as online, ADR-055): not one to wake.
+    s.db.run("UPDATE device_state SET status = 'online', online_since = ? WHERE device_id = ?", [
+      w.h.clock.now(),
+      pc,
+    ]);
     const sched = s.schedules.create(
       {
         name: 'Desligar Lab 1',

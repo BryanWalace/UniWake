@@ -12,6 +12,7 @@ import {
   type CreatedEnrollmentToken,
   type EnrollAgentAnswer,
   type EnrollResponse,
+  WAS_OFF_ORDER_DETAIL,
 } from '@uniwake/shared';
 import { tokenHash } from '../src/application/power/agent-tokens';
 import { verifySigned } from '../src/application/power/hub-key';
@@ -276,6 +277,27 @@ describe('reports, orders and status (FR-302, FR-304.5, FR-305)', () => {
     ).json<CheckinAnswer>();
     expect(third.orders).toEqual([expect.objectContaining({ action: 'cancel', cancels: other })]);
     expect(state(shut)).toBe('executed');
+  });
+
+  it('an order skipped because the machine was off then is settled with the fixed was_off detail', async () => {
+    const { s, h, checkin, request, order } = await setup();
+    const shut = order(1);
+    await checkin();
+    h.clock.set(h.clock.now() + 61_000);
+    const skipped = report(8, {
+      occurrence: null,
+      order: shut,
+      outcome: 'skipped',
+      reason: 'was_off',
+      executedAt: null,
+      detail: 'máquina estava desligada e foi ligada depois',
+    });
+    await checkin(request({ ackedOrders: [shut], reports: [skipped], clock: h.clock.now() }));
+    const row = s.db.get<{ state: string; detail: string | null }>(
+      'SELECT state, detail FROM power_orders WHERE uuid = ?',
+      [shut],
+    )!;
+    expect(row).toEqual({ state: 'failed', detail: WAS_OFF_ORDER_DETAIL });
   });
 
   it('records the sighting and the status the machine reports, without user names', async () => {

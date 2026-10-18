@@ -1,6 +1,7 @@
 /** Manual shutdown and restart from the panel (FR-305, plan §15.4). */
 import { z } from 'zod';
-import type { PowerPolicy } from '../agent/checkin';
+import type { AgentHealth, PowerPolicy, UpdateOutcome } from '../agent/checkin';
+import { idSchema, LIMITS } from './common';
 import { wakeTargetSchema } from './wake';
 
 /**
@@ -17,6 +18,13 @@ export const powerRequestSchema = z.object({
   confirm: z.object({ count: z.number().int().min(0) }).optional(),
   /** FR-305: also shut down machines flagged "Nunca desligar por agendamento". */
   confirmProtected: z.boolean().default(false),
+  /**
+   * v1.6 (FR-601.1): preview with a "Desligar" schedule's rules — machines flagged "Nunca desligar
+   * por agendamento" or carrying one of these tags are listed in `excluded`, not counted. Preview only.
+   */
+  schedule: z
+    .object({ excludeTagIds: z.array(idSchema).max(LIMITS.compactListMax).default([]) })
+    .optional(),
 });
 export type PowerRequest = z.input<typeof powerRequestSchema>;
 export type PowerRequestParams = z.output<typeof powerRequestSchema>;
@@ -42,17 +50,28 @@ export interface PowerPreview {
   withUser: number;
   /** Ready machines the monitor sees offline: their order waits until they check in (≤ 2 h). */
   offline: number;
+  /** v1.6.0 (FR-605.2): of those, the ones that get a magic packet ("Acordar para desligar"). */
+  asleep?: number;
   /** Flagged "Nunca desligar por agendamento": included only with an extra confirmation. */
   protected: PowerDeviceRef[];
   /** v1.6 (FR-501.5): targeted machines that are the PC running this UniWake. */
   self: PowerDeviceRef[];
+  /** v1.6 (FR-601.1): with `schedule`, the ready machines the schedule skips and why. */
+  excluded: (PowerDeviceRef & { reason: ExcludedReason })[];
   policy: PowerPolicy;
 }
+
+export const EXCLUDED_REASON_LABEL = {
+  never_flag: 'Nunca desligar por agendamento',
+  excluded_tag: 'etiqueta excluída neste agendamento',
+} as const;
+export type ExcludedReason = keyof typeof EXCLUDED_REASON_LABEL;
 
 /**
  * Per-machine state of a manual job (pt-BR labels in the panel):
  * pending (enviada), received (recebida), confirming (executou; aguardando confirmar pela rede),
- * done (desligou / reiniciou), not_confirmed (não confirmou), cancelled, expired, failed.
+ * done (desligou / reiniciou), not_confirmed (não confirmou), cancelled, expired, failed,
+ * was_off (v1.6.0: estava desligada quando a ordem foi dada e foi ligada depois — não desligou).
  */
 export const POWER_DEVICE_STATES = [
   'pending',
@@ -63,8 +82,16 @@ export const POWER_DEVICE_STATES = [
   'cancelled',
   'expired',
   'failed',
+  'was_off',
 ] as const;
 export type PowerDeviceState = (typeof POWER_DEVICE_STATES)[number];
+
+/**
+ * v1.6.0 (field test 2026-10-18): the detail the hub stores on an order a machine skipped because it
+ * was off when the order was given (report reason `was_off`). The order row keeps state `failed`
+ * (no migration); the panel shows the machine as `was_off` from this exact text.
+ */
+export const WAS_OFF_ORDER_DETAIL = 'Estava desligada quando a ordem foi dada e foi ligada depois.';
 
 export interface PowerJobDevice extends PowerDeviceRef {
   state: PowerDeviceState;
@@ -99,7 +126,34 @@ export interface DeviceAgentInfo {
   sessions: number | null;
   clockOffsetMs: number | null;
   tokenRotatedAt: number | null;
+  /** v1.6.0 (FR-603.5): the agent version this hub ships (null when unknown). */
+  latestVersion?: string | null;
+  /** v1.6.0: the device list mark — antivirus/blocked update/agent removed, or an older agent. */
+  agentAlert?: 'blocked' | 'outdated' | null;
+  /** v1.6.0: the last health the machine sent (device page only). */
+  health?: AgentHealthView | null;
 }
+
+/** v1.6.0 (FR-603.5, FR-604.2): what the device page shows of a machine's health. */
+export interface AgentHealthView {
+  installLevel: number | null;
+  update: AgentHealth['update'];
+  repairs: AgentHealth['repairs'];
+  antivirus: (NonNullable<AgentHealth['antivirus']> & { at: number }) | null;
+  /** The repair task could not restore the agent and told the hub. */
+  alert: { file: string; at: number } | null;
+  /** FR-605.1/605.3: sleep and hibernation facts (null: not reported). */
+  power: NonNullable<AgentHealth['power']> | null;
+  receivedAt: number;
+}
+
+export const UPDATE_OUTCOME_LABEL: Record<UpdateOutcome, string> = {
+  updated: 'atualizado',
+  download_failed: 'não conseguiu baixar do UniWake (tenta de novo na próxima consulta)',
+  hash_mismatch: 'o arquivo baixado não conferiu e foi descartado',
+  write_blocked: 'a gravação foi bloqueada',
+  removed_after_write: 'o arquivo sumiu logo depois de gravado (provável antivírus)',
+};
 
 export interface PowerJob {
   id: number;
@@ -129,6 +183,8 @@ export const SHUTDOWN_RESULTS = [
   'no_agent',
   'stale_agenda',
   'no_answer',
+  // v1.6.0 (FR-601.2): targeted but skipped by the schedule's own rules.
+  'excluded',
 ] as const;
 export type ShutdownResult = (typeof SHUTDOWN_RESULTS)[number];
 
@@ -147,6 +203,7 @@ export const SHUTDOWN_RESULT_LABEL: Record<ShutdownResult, string> = {
   no_agent: 'Sem agente (precisa do preparo)',
   stale_agenda: 'Agenda desatualizada (a última agenda entregue não tinha este horário)',
   no_answer: 'Sem resposta (não consultou o UniWake desde antes do aviso)',
+  excluded: 'Excluída do agendamento',
 };
 
 /** FR-502.1: why a shutdown schedule does (not) reach a machine. */
@@ -215,6 +272,8 @@ export interface PowerOccurrenceDevice extends PowerDeviceRef {
   lateMinutes: number | null;
   nativeWarning: boolean;
   userLoggedOn: boolean | null;
+  /** v1.6.0 (FR-601.2): why an `excluded` machine was skipped. */
+  excludedReason?: ExcludedReason;
 }
 
 /** One scheduled shutdown aggregated over the machines' reports (AC-307-01). */

@@ -9,6 +9,8 @@ import {
   ORDER_EXPIRY_MINUTES,
   POWER_DEVICE_STATES,
   POSTPONE_MINUTES_MIN,
+  WAS_OFF_ORDER_DETAIL,
+  type ExcludedReason,
   type PowerDeviceRef,
   type PowerDeviceState,
   type PowerJob,
@@ -91,9 +93,13 @@ export interface PowerOrdersDeps {
   clock: Clock;
   transaction: <T>(fn: () => T) => T;
   newUuid: () => string;
+  /** v1.6.0 (FR-605.2): sends the magic packet to these machines (absent in older tests). */
+  wakeAsleep?: (deviceIds: number[], label: string) => void;
 }
 
 const MINUTE = 60_000;
+/** FR-605.2: a machine heard from this recently that does not answer is probably asleep. */
+const ASLEEP_SEEN_MS = 12 * 60 * MINUTE;
 /** A shutdown still answering ping/TCP this long after it ran is "não confirmou" (AC-305-02). */
 export const CONFIRM_SHUTDOWN_MS = 5 * MINUTE;
 /** A restart that has not come back online after this long is "não confirmou". */
@@ -123,6 +129,36 @@ export class PowerOrdersService {
     };
   }
 
+  /**
+   * FR-605.2 (ADR-061): a magic packet for the ready targets that do not answer but checked in
+   * during the last 12 hours (probably suspended or hibernated); their order runs when they wake.
+   */
+  private wakeAsleep(
+    ready: readonly DeviceSnap[],
+    info: Map<number, PowerDeviceInfo>,
+    now: number,
+    label: string,
+  ): number {
+    if (!this.d.wakeAsleep) return 0;
+    const ids = this.asleepIds(ready, info, now);
+    if (ids.length > 0) this.d.wakeAsleep(ids, label);
+    return ids.length;
+  }
+
+  private asleepIds(
+    ready: readonly DeviceSnap[],
+    info: Map<number, PowerDeviceInfo>,
+    now: number,
+  ): number[] {
+    if (!this.d.settings.get('power.wakeForShutdown')) return [];
+    return ready
+      .filter((dev) => {
+        const seen = info.get(dev.id)?.lastCheckin ?? null;
+        return dev.status !== 'online' && seen !== null && now - seen <= ASLEEP_SEEN_MS;
+      })
+      .map((dev) => dev.id);
+  }
+
   private plan(req: PowerRequestParams) {
     const r = this.d.resolve(req.target);
     const info = this.d.store.info(r.devices.map((d) => d.id));
@@ -140,13 +176,39 @@ export class PowerOrdersService {
       else if (state === 'lost') lost.push(ref(dev));
       else ready.push(dev);
     }
+    if (req.schedule) {
+      // FR-601.1: a schedule skips these (startScheduled), so its reach must not count them.
+      const tags = new Set(req.schedule.excludeTagIds);
+      const excluded: (PowerDeviceRef & { reason: ExcludedReason })[] = [];
+      const reached = ready.filter((dev) => {
+        const reason: ExcludedReason | null = info.get(dev.id)?.neverScheduledShutdown
+          ? 'never_flag'
+          : dev.tagIds.some((t) => tags.has(t))
+            ? 'excluded_tag'
+            : null;
+        if (reason) excluded.push({ ...ref(dev), reason });
+        return reason === null;
+      });
+      return {
+        r,
+        info,
+        ready: reached,
+        needsPreparation,
+        revoked,
+        lost,
+        protectedDevs: [] as DeviceSnap[],
+        excluded,
+      };
+    }
     const protectedDevs = ready.filter((dev) => info.get(dev.id)?.neverScheduledShutdown);
-    return { r, info, ready, needsPreparation, revoked, lost, protectedDevs };
+    return { r, info, ready, needsPreparation, revoked, lost, protectedDevs, excluded: [] };
   }
 
   preview(req: PowerRequestParams, selfIds: ReadonlySet<number> = new Set()): PowerPreview {
-    const { r, info, ready, needsPreparation, revoked, lost, protectedDevs } = this.plan(req);
+    const { r, info, ready, needsPreparation, revoked, lost, protectedDevs, excluded } =
+      this.plan(req);
     return {
+      excluded,
       // FR-501.5: the PC running this hub is among the targets: say so, never skip it silently.
       self: r.devices.filter((dev) => selfIds.has(dev.id)).map(ref),
       lost,
@@ -159,6 +221,8 @@ export class PowerOrdersService {
       revoked,
       withUser: ready.filter((dev) => info.get(dev.id)?.userLoggedOn === true).length,
       offline: ready.filter((dev) => dev.status !== 'online').length,
+      asleep:
+        req.action === 'shutdown' ? this.asleepIds(ready, info, this.d.clock.now()).length : 0,
       protected: protectedDevs.map(ref),
       policy: this.policy(req.warning),
     };
@@ -166,7 +230,7 @@ export class PowerOrdersService {
 
   /** Creates the job and one order per ready machine (AC-305-01, AC-305-04). */
   start(req: PowerRequestParams, actor: Actor): { jobId: number; count: number } {
-    const { r, ready, protectedDevs } = this.plan(req);
+    const { r, info, ready, protectedDevs } = this.plan(req);
     if (r.devices.length === 0) throw new AppError('POWER_TARGET_EMPTY');
     if (ready.length === 0) throw new AppError('POWER_NOT_READY');
     if (protectedDevs.length > 0 && !req.confirmProtected) {
@@ -216,6 +280,8 @@ export class PowerOrdersService {
       return id;
     });
     this.d.events.publish({ type: 'power.job', jobId });
+    if (req.action === 'shutdown')
+      this.wakeAsleep(ready, info, now, `acordar para desligar (${r.label})`);
     return { jobId, count: ready.length };
   }
 
@@ -284,6 +350,7 @@ export class PowerOrdersService {
       return id;
     });
     this.d.events.publish({ type: 'power.job', jobId });
+    this.wakeAsleep(ready, info, now, `acordar para desligar (${label})`);
     return { jobId, count: ready.length, notReady, excluded, existing: false };
   }
 
@@ -355,7 +422,8 @@ function readyRooms(
 /** The panel state of one machine of a job, from its order and the monitor (AC-305-02). */
 export function deviceState(
   action: 'shutdown' | 'restart',
-  o: Pick<JobOrderRow, 'state' | 'executedAt' | 'status' | 'onlineSince'>,
+  o: Pick<JobOrderRow, 'state' | 'executedAt' | 'status' | 'onlineSince'> &
+    Partial<Pick<JobOrderRow, 'detail'>>,
   now: number,
 ): PowerDeviceState {
   switch (o.state) {
@@ -364,9 +432,10 @@ export function deviceState(
     case 'delivered':
     case 'warning':
       return 'received';
+    case 'failed':
+      return o.detail === WAS_OFF_ORDER_DETAIL ? 'was_off' : 'failed';
     case 'cancelled':
     case 'expired':
-    case 'failed':
       return o.state;
     case 'executed':
       break;

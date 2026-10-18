@@ -14,6 +14,7 @@ export const HELP_TOPICS = [
   'remote-shutdown',
   'frozen-labs',
   'backup-migration',
+  'antivirus',
 ] as const;
 export type HelpTopic = (typeof HELP_TOPICS)[number];
 

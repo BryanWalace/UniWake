@@ -155,6 +155,9 @@ describe('push: the hub sends the order (FR-501.2, ADR-053)', () => {
       expect.objectContaining({
         action: 'shutdown',
         occurrence,
+        // 2026-10-18: a PC started after T (or after the order was given) skips it.
+        plannedAt: AT_0630,
+        issuedAt: AT_0630 - 6 * MIN,
         warningMinutes: 5,
         allowPostpone: true,
         postponeMax: 2,

@@ -4,7 +4,12 @@
  * agente, agenda desatualizada, sem resposta), sends one retry order to the ones still on without a
  * reason, writes the counts to the schedule run and logs them. Each occurrence is reconciled once.
  */
-import { SHUTDOWN_RESULT_LABEL, type ShutdownResult } from '@uniwake/shared';
+import {
+  EXCLUDED_REASON_LABEL,
+  type ExcludedReason,
+  SHUTDOWN_RESULT_LABEL,
+  type ShutdownResult,
+} from '@uniwake/shared';
 import type { Clock, Logger } from '../ports';
 import type { ScheduleRecord } from '../schedules/schedules-service';
 import type { PowerOrdersService } from './power-orders';
@@ -50,6 +55,20 @@ const SUMMARY_ORDER: readonly ShutdownResult[] = [
   'no_report',
 ];
 
+/** FR-601.2: "2 excluídas do agendamento (1 nunca desligar por agendamento, 1 etiqueta …)". */
+function excludedText(devices: readonly { result: string; excludedReason?: ExcludedReason }[]) {
+  const reasons = new Map<ExcludedReason, number>();
+  for (const d of devices) {
+    if (d.result === 'excluded' && d.excludedReason) {
+      reasons.set(d.excludedReason, (reasons.get(d.excludedReason) ?? 0) + 1);
+    }
+  }
+  const total = [...reasons.values()].reduce((a, b) => a + b, 0);
+  if (total === 0) return [];
+  const why = [...reasons].map(([r, n]) => `${n} ${EXCLUDED_REASON_LABEL[r].toLowerCase()}`);
+  return [`${total} ${total === 1 ? 'excluída' : 'excluídas'} do agendamento (${why.join(', ')})`];
+}
+
 export class ShutdownReconciler {
   constructor(private readonly d: ReconcileDeps) {}
 
@@ -78,9 +97,12 @@ export class ShutdownReconciler {
           if (this.d.power.retryScheduled(jobId, dev.deviceId, uuid, now + 60 * 60_000)) retried++;
         }
       }
-      const summary = SUMMARY_ORDER.filter((r) => (counts[r] ?? 0) > 0)
-        .map((r) => `${counts[r]} ${SHUTDOWN_RESULT_LABEL[r].toLowerCase()}`)
-        .join(', ');
+      const summary = [
+        ...SUMMARY_ORDER.filter((r) => (counts[r] ?? 0) > 0).map(
+          (r) => `${counts[r]} ${SHUTDOWN_RESULT_LABEL[r].toLowerCase()}`,
+        ),
+        ...excludedText(devices),
+      ].join(', ');
       const text =
         `; conferência às T+10: ${summary || 'nenhuma máquina no alvo'}` +
         (paths.agenda + paths.order > 0
