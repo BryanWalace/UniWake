@@ -3,7 +3,7 @@
  * confirmation for protected machines, live states from reports and the monitor, cancel.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import type { PowerJob, PowerPreview } from '@uniwake/shared';
+import { WAS_OFF_ORDER_DETAIL, type PowerJob, type PowerPreview } from '@uniwake/shared';
 import { deviceState } from '../src/application/power/power-orders';
 import { changeLog } from '../src/db/sync/change-log';
 import { apiHarness, type ApiHarness } from './helpers/api';
@@ -249,6 +249,14 @@ describe('manual shutdown (FR-305)', () => {
         at + 9 * MIN,
       ),
     ).toBe('done');
+  });
+
+  it('a machine that skipped the order because it was off shows "was_off", not "failed"', () => {
+    const row = { state: 'failed', executedAt: 1, status: 'online', onlineSince: 2 } as const;
+    expect(deviceState('shutdown', { ...row, detail: WAS_OFF_ORDER_DETAIL }, 10)).toBe('was_off');
+    expect(deviceState('restart', { ...row, detail: WAS_OFF_ORDER_DETAIL }, 10)).toBe('was_off');
+    expect(deviceState('shutdown', { ...row, detail: 'erro do Windows' }, 10)).toBe('failed');
+    expect(deviceState('shutdown', row, 10)).toBe('failed');
   });
 
   it('"Cancelar" cancels what has not run, is audited and tells the panel', async () => {

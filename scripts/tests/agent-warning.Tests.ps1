@@ -127,6 +127,18 @@ Describe 'Warning window helpers (uniwake-aviso.ps1)' {
     @(Get-ChildItem (Get-UwUiPathSet).Response).Count | Should -Be 0
   }
 
+  It 'keeps only its newest "alive" answer, and every "postpone" answer' {
+    $script:UwWritten.Clear()
+    [void](Write-UwAvisoResponse -RequestId 'r-1' -Kind 'alive')
+    [void](Write-UwAvisoResponse -RequestId 'r-1' -Kind 'postpone')
+    $last = Write-UwAvisoResponse -RequestId 'r-1' -Kind 'alive'
+    $files = @(Get-ChildItem (Get-UwUiPathSet).Response | Sort-Object Name)
+    $files.Count | Should -Be 2
+    @($files | Where-Object Name -like 'alive-*').FullName | Should -Be $last
+    @($files | Where-Object Name -like 'postpone-*').Count | Should -Be 1
+    Clear-UwAvisoResponse
+  }
+
   It 'formats the countdown and the button' {
     Format-UwCountdown -AtMs 300000 -NowMs 1000 | Should -Be 'Desliga em 4:59'
     Format-UwCountdown -AtMs 1000 -NowMs 5000 | Should -Be 'Desliga em 0:00'

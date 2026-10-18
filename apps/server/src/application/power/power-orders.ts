@@ -9,6 +9,7 @@ import {
   ORDER_EXPIRY_MINUTES,
   POWER_DEVICE_STATES,
   POSTPONE_MINUTES_MIN,
+  WAS_OFF_ORDER_DETAIL,
   type ExcludedReason,
   type PowerDeviceRef,
   type PowerDeviceState,
@@ -421,7 +422,8 @@ function readyRooms(
 /** The panel state of one machine of a job, from its order and the monitor (AC-305-02). */
 export function deviceState(
   action: 'shutdown' | 'restart',
-  o: Pick<JobOrderRow, 'state' | 'executedAt' | 'status' | 'onlineSince'>,
+  o: Pick<JobOrderRow, 'state' | 'executedAt' | 'status' | 'onlineSince'> &
+    Partial<Pick<JobOrderRow, 'detail'>>,
   now: number,
 ): PowerDeviceState {
   switch (o.state) {
@@ -430,9 +432,10 @@ export function deviceState(
     case 'delivered':
     case 'warning':
       return 'received';
+    case 'failed':
+      return o.detail === WAS_OFF_ORDER_DETAIL ? 'was_off' : 'failed';
     case 'cancelled':
     case 'expired':
-    case 'failed':
       return o.state;
     case 'executed':
       break;

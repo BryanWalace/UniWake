@@ -1,8 +1,39 @@
 # NEXT — handoff
 
-Atualizado: 2026-10-17 · Branch de trabalho: **`dev`** (ADR-030) · **`main` = `6e1e8ff`** (release **v1.5.0** publicada).
-**Na `dev`: versão 1.6.0 "Máquinas que se atualizam e avisam", validada, sem merge e sem tag — aguardando o seu
-teste.** Nada da 1.6.0 foi para a `main`.
+Atualizado: 2026-10-18 · Branch de trabalho: **`dev`** (ADR-030).
+**A 1.6.0 (com as correções do teste no notebook) foi para a `main` a seu pedido em 18/10 — sem tag.**
+A última release publicada continua a **v1.5.0**: os PCs reais **não** recebem a 1.6.0 até alguém criar a tag
+`v1.6.0` na `main` (só quando você pedir: "pode criar a tag").
+
+## Teste no notebook (18/10) — resultado
+Relatório completo: `specs/reviews/field-test-2026-10-18.md`. Conferido em hardware real: atualização sozinha,
+reparo, leitura do Defender, exclusões, regra de salvar, impedir suspensão, aviso com "Adiar" e cancelar pelo
+painel, acordar da hibernação pelo despertador e o caso de quem desliga antes da hora. Corrigido:
+1. **A janela do aviso com "Adiar" não abria** (existia desde a v1.3): depois de atualizar ou reparar, o arquivo
+   da janela ficava sem permissão de leitura para os usuários. O agente agora corrige sozinho a cada minuto.
+2. **A máquina acordada pelo despertador voltava a dormir em ~2 min**: agora fica acordada até o fim do aviso.
+3. **Depois de hibernar, o UniWake parava até alguém mexer**: a tarefa agora também roda ao acordar.
+4. **"Acordar para desligar" agora vem desligado** (você pediu: só tratar máquina hibernada/suspensa; máquina
+   desligada não deve ligar para desligar). O nome na tela ficou "Mandar o pacote de ligar para as máquinas que
+   não respondem, ao desligar", com o aviso de que liga as desligadas.
+5. **Quem desliga antes da hora:** máquina desligada antes do horário e ligada depois **não desliga**; no painel
+   aparece "estava desligada" (não "Falhou"). Hibernada continua desligando no horário.
+6. Menos arquivos temporários durante o aviso; `-RemoveAgent` também remove a tarefa "UniWake Reparo".
+
+**Limpeza feita:** no notebook saíram as 4 tarefas, `C:ProgramDataUniWake`, o script baixado, a regra de ping,
+o servidor SSH, a chave e a regra de firewall do SSH; o plano de energia voltou ao que era. **Ficou** a
+Inicialização Rápida desligada e os despertadores do Windows ligados (feitos pelo preparo; o valor original
+não foi anotado). Neste PC saíram o UniWake de teste, os dados dele e a chave SSH. Nenhum dado do notebook
+ficou no repositório ou na memória.
+
+**Notas para o agente (próximas sessões):** o preparo continua recusando placa só Wi-Fi (de propósito); para
+testar num notebook Wi-Fi, o ajuste vai só na cópia de `build/stage` e some com `npm run build:app`. Testes de
+fumaça do pacote: ligar `wake.dryRun` antes de tudo.
+
+## Próximo passo
+- Para os PCs da faculdade receberem a 1.6.0: diga **"pode criar a tag"** → tag `v1.6.0` na `main` → o CI publica
+  a release e os PCs se atualizam na janela de manutenção.
+- Depois: o roteiro abaixo ("Como testar a v1.6.0") vale para conferir no laboratório.
 
 ## v1.6.0 — exclusões visíveis, agente que se atualiza e avisa, hibernação (na `dev`, aguardando seu teste)
 
@@ -33,8 +64,8 @@ teste.** Nada da 1.6.0 foi para a `main`.
    instalado. Nova ajuda "Antivírus e o agente do UniWake". **O UniWake nunca cria exceção no antivírus
    sozinho.**
 5. **Computadores hibernados ou suspensos:**
-   - **"Acordar para desligar"** (ligado por padrão): ao enviar um desligamento, as máquinas prontas que não
-     respondem mas falaram com o UniWake nas últimas 12 h recebem o pacote de ligar e desligam ao acordar;
+   - **"Acordar para desligar"** (**desligado por padrão desde 18/10**): quando marcado, as máquinas prontas que
+     não respondem mas falaram com o UniWake nas últimas 12 h recebem o pacote de ligar e desligam ao acordar;
    - a página da máquina mostra a hibernação ("após 180 minutos") e a **última ausência sem reiniciar**
      ("Hibernada de … a … — não desligou");
    - **"Impedir suspensão e hibernação"** (desligado por padrão, como você pediu): o agente desliga a

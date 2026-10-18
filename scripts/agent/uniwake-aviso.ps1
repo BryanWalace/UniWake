@@ -57,6 +57,14 @@ function Write-UwAvisoResponse {
       at = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
     })
   [System.IO.File]::WriteAllText($path, $json, (New-Object System.Text.UTF8Encoding($false)))
+  # Field test 2026-10-18: one "alive" every 5 s piled up hundreds of files in a long warning. The
+  # agent only needs the newest one, so the earlier "alive" files of this window go now.
+  if ($Kind -eq 'alive') {
+    foreach ($old in @($script:UwWritten | Where-Object { (Split-Path -Leaf $_) -like 'alive-*' })) {
+      Remove-Item -LiteralPath $old -Force -ErrorAction SilentlyContinue
+      [void]$script:UwWritten.Remove($old)
+    }
+  }
   [void]$script:UwWritten.Add($path)
   return $path
 }

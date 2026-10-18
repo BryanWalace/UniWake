@@ -338,3 +338,15 @@ In pt-BR in `specs/handoff/NEXT.md` ("Como testar a v1.6.0").
 
 ## Verdict
 No open CRITICAL/MAJOR. v1.6.0 is validated on `dev`. Not merged, not tagged.
+
+## Field test 2026-10-18 (owner's notebook, real hardware)
+Full report: `specs/reviews/field-test-2026-10-18.md`. Self-update, repair, Defender reading,
+exclusions, save rule, prevent sleep, the warning with "Adiar" and cancel, wake from hibernation and
+the early-shutdown case were run on a real Windows 11 notebook. Nine findings (F1–F9), all fixed with
+tests: the warning script lost the users' read access on every rewrite (window never opened — since
+v1.3), timer-woken machines re-slept before the warning ended, the minute task stalled after
+hibernation, "Acordar para desligar" now **off by default** (owner), a machine turned off before T and
+on after it is no longer shut down (`was_off`), the panel shows that case as "estava desligada", the
+window keeps one `alive` file, and `-RemoveAgent` also removes "UniWake Reparo".
+
+Verdict: no open CRITICAL/MAJOR. Merged `dev` → `main` on the owner's request (2026-10-18); **no tag**.

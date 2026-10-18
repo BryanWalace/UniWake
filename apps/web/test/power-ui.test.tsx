@@ -2,6 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PowerJob, PowerOccurrence, PowerPreview } from '@uniwake/shared';
+import { powerStateLabel } from '../src/features/power/api';
 import { type FakeApi, loggedInApi, renderApp } from './helpers';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -52,6 +53,7 @@ const JOB: PowerJob = {
     cancelled: 0,
     expired: 0,
     failed: 0,
+    was_off: 0,
   },
   devices: [
     { deviceId: 1, name: 'PC-01', state: 'done', postpones: 2, detail: null },
@@ -358,5 +360,14 @@ describe('waking sleeping machines to shut them down (v1.6.0, FR-605.2)', () => 
     ).toHaveTextContent(
       '1 consultou o UniWake nas últimas 12 horas e vai receber o pacote de ligar para acordar (se estiver suspensa ou hibernada) e desligar.',
     );
+  });
+});
+
+describe('job states (v1.6.0)', () => {
+  it('a machine that was off when the order was given is not shown as failed', () => {
+    expect(powerStateLabel('was_off', 'shutdown')).toBe(
+      'Não executou: estava desligada e foi ligada depois',
+    );
+    expect(powerStateLabel('failed', 'shutdown')).toBe('Falhou');
   });
 });

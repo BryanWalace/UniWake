@@ -70,7 +70,8 @@ export type ExcludedReason = keyof typeof EXCLUDED_REASON_LABEL;
 /**
  * Per-machine state of a manual job (pt-BR labels in the panel):
  * pending (enviada), received (recebida), confirming (executou; aguardando confirmar pela rede),
- * done (desligou / reiniciou), not_confirmed (não confirmou), cancelled, expired, failed.
+ * done (desligou / reiniciou), not_confirmed (não confirmou), cancelled, expired, failed,
+ * was_off (v1.6.0: estava desligada quando a ordem foi dada e foi ligada depois — não desligou).
  */
 export const POWER_DEVICE_STATES = [
   'pending',
@@ -81,8 +82,16 @@ export const POWER_DEVICE_STATES = [
   'cancelled',
   'expired',
   'failed',
+  'was_off',
 ] as const;
 export type PowerDeviceState = (typeof POWER_DEVICE_STATES)[number];
+
+/**
+ * v1.6.0 (field test 2026-10-18): the detail the hub stores on an order a machine skipped because it
+ * was off when the order was given (report reason `was_off`). The order row keeps state `failed`
+ * (no migration); the panel shows the machine as `was_off` from this exact text.
+ */
+export const WAS_OFF_ORDER_DETAIL = 'Estava desligada quando a ordem foi dada e foi ligada depois.';
 
 export interface PowerJobDevice extends PowerDeviceRef {
   state: PowerDeviceState;

@@ -640,7 +640,8 @@ function Start-UwAgentTask {
 function Unregister-UwAgentTask {
   [CmdletBinding(SupportsShouldProcess = $true)]
   param()
-  foreach ($name in 'UniWake', 'UniWake Despertar', 'UniWake Aviso') {
+  # 'UniWake Reparo' is created by the agent itself (install level 2, v1.6.0).
+  foreach ($name in 'UniWake', 'UniWake Despertar', 'UniWake Aviso', 'UniWake Reparo') {
     if ((Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue) -and $PSCmdlet.ShouldProcess($name, 'Remover tarefa agendada')) {
       Unregister-ScheduledTask -TaskName $name -Confirm:$false
     }

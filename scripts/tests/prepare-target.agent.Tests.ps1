@@ -234,3 +234,22 @@ Describe 'Remove-UwAgentFolder on a real folder (D-M20-01)' {
     Test-Path -LiteralPath $root | Should -BeFalse
   }
 }
+
+Describe 'Unregister-UwAgentTask (v1.6.0)' {
+  # The wrapper itself, with the Task Scheduler cmdlets mocked: nothing real is removed.
+  It 'removes the four UniWake tasks, also the agent-made "UniWake Reparo"' {
+    Mock Get-ScheduledTask { [pscustomobject]@{ TaskName = $TaskName } }
+    Mock Unregister-ScheduledTask {}
+    Unregister-UwAgentTask -Confirm:$false
+    foreach ($name in 'UniWake', 'UniWake Despertar', 'UniWake Aviso', 'UniWake Reparo') {
+      Should -Invoke Unregister-ScheduledTask -Times 1 -Exactly -ParameterFilter { $TaskName -eq $name }
+    }
+  }
+
+  It 'skips the tasks that do not exist' {
+    Mock Get-ScheduledTask { if ($TaskName -eq 'UniWake') { [pscustomobject]@{ TaskName = $TaskName } } }
+    Mock Unregister-ScheduledTask {}
+    Unregister-UwAgentTask -Confirm:$false
+    Should -Invoke Unregister-ScheduledTask -Times 1 -Exactly
+  }
+}

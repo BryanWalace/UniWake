@@ -97,5 +97,7 @@ export function powerStateLabel(state: PowerDeviceState, action: 'shutdown' | 'r
       return 'Expirou (a máquina não consultou o UniWake em 2 h)';
     case 'failed':
       return 'Falhou';
+    case 'was_off':
+      return 'Não executou: estava desligada e foi ligada depois';
   }
 }

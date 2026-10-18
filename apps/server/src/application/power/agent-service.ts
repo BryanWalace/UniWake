@@ -18,6 +18,7 @@ import {
   type CheckinRequest,
   type EnrollAgentAnswer,
   type PowerPolicy,
+  WAS_OFF_ORDER_DETAIL,
 } from '@uniwake/shared';
 import { AppError } from '../errors';
 import type { Clock, Logger } from '../ports';
@@ -237,7 +238,15 @@ export class AgentService {
               : r.reason === 'already_done'
                 ? 'executed'
                 : SETTLE[r.outcome];
-          this.d.store.settleOrder(deviceId, r.order, state, r.executedAt ?? now, r.detail);
+          // Field test 2026-10-18: a machine started after the order skips it (was off then).
+          const wasOff = r.outcome === 'skipped' && r.reason === 'was_off';
+          this.d.store.settleOrder(
+            deviceId,
+            r.order,
+            state,
+            r.executedAt ?? now,
+            wasOff ? WAS_OFF_ORDER_DETAIL : r.detail,
+          );
         }
       }
       this.d.store.expireOrders(now);

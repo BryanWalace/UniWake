@@ -338,9 +338,12 @@ registro fica em `C:\ProgramData\UniWake-Prepare\`. Para só ver o que mudaria: 
   ("28/30 desligaram, 1 adiou 2×, 1 estava desligada").
 - **Exceções:** marque "Nunca desligar por agendamento" na máquina (por exemplo, a do professor) ou
   exclua uma etiqueta no agendamento. O "Desligar" manual dessas máquinas pede confirmação extra.
-- **Em suspensão:** a tarefa **UniWake Despertar** acorda a máquina no horário para desligar. Se
+- **Em suspensão ou hibernação:** a tarefa **UniWake Despertar** acorda a máquina no horário para desligar. Se
   ela acordar mais de 60 minutos atrasada (ou depois do próximo "Ligar"), não desliga e o
   Histórico mostra "Pulado: acordou … min após o horário".
+- **Desligada antes da hora:** se alguém desligar a máquina antes do horário e outra pessoa ligar
+  depois dele, o UniWake **não desliga** (quem ligou está usando); o Histórico mostra "estava
+  desligada". Vale também para o Desligar manual.
 - **O aviso:** "Este computador será desligado às … pela equipe de TI. Salve seus arquivos: o que
   não for salvo será perdido." (texto editável em **Configurações**). Sem ninguém logado, desliga
   em 30 segundos. O UniWake registra só se havia alguém logado e quantas sessões, **nunca nomes**.

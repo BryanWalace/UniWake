@@ -166,6 +166,7 @@ function Jobs({ items }: { items: PowerJob[] }) {
                   {j.counts.done}/{j.devices.length}
                   {j.counts.not_confirmed > 0 && ` · ${j.counts.not_confirmed} não confirmaram`}
                   {j.counts.expired > 0 && ` · ${j.counts.expired} expiraram`}
+                  {j.counts.was_off > 0 && ` · ${j.counts.was_off} estavam desligadas`}
                 </td>
               </tr>
             ))}
