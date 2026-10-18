@@ -143,8 +143,9 @@ Describe 'Registering the real repair task (disposable CI Windows only)' {
       Add-UwResumeTrigger -TaskName $name
       $t = @((Get-ScheduledTask -TaskName $name).Triggers)
       $t.Count | Should -Be 3
-      @($t | Where-Object { [string]$_.Subscription -match 'Power-Troubleshooter' }).Count | Should -Be 1
-      @($t | Where-Object { $null -ne $_.Repetition -and $_.Repetition.Interval -eq 'PT1M' }).Count | Should -Be 1
+      # Check the type first: under the agent's strict mode only event triggers have Subscription.
+      @($t | Where-Object { $_.CimClass.CimClassName -eq 'MSFT_TaskEventTrigger' -and [string]$_.Subscription -match 'Power-Troubleshooter' }).Count | Should -Be 1
+      @($t | Where-Object { $_.CimClass.CimClassName -eq 'MSFT_TaskTimeTrigger' -and $_.Repetition.Interval -eq 'PT1M' }).Count | Should -Be 1
     } finally {
       $script:UwRealSystem = $false
       Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction SilentlyContinue
