@@ -1,9 +1,9 @@
 # NEXT — handoff
 
 Atualizado: 2026-10-18 · Branch de trabalho: **`dev`** (ADR-030).
-**A 1.6.0 (com as correções do teste no notebook) foi para a `main` a seu pedido em 18/10 — sem tag.**
-A última release publicada continua a **v1.5.0**: os PCs reais **não** recebem a 1.6.0 até alguém criar a tag
-`v1.6.0` na `main` (só quando você pedir: "pode criar a tag").
+**A 1.6.0 foi para a `main` (`536f477`) e a tag `v1.6.0` foi criada a seu pedido em 18/10.** O workflow de
+release publica o instalador; o PC do UniWake se atualiza na janela de manutenção e as máquinas pegam o agente
+1.7.0 na consulta seguinte. Confira em GitHub → Actions → "Release" (v1.6.0) e em Releases.
 
 ## Teste no notebook (18/10) — resultado
 Relatório completo: `specs/reviews/field-test-2026-10-18.md`. Conferido em hardware real: atualização sozinha,
@@ -31,8 +31,7 @@ testar num notebook Wi-Fi, o ajuste vai só na cópia de `build/stage` e some co
 fumaça do pacote: ligar `wake.dryRun` antes de tudo.
 
 ## Próximo passo
-- Para os PCs da faculdade receberem a 1.6.0: diga **"pode criar a tag"** → tag `v1.6.0` na `main` → o CI publica
-  a release e os PCs se atualizam na janela de manutenção.
+- Conferir a release v1.6.0 publicada (Actions → Release) e, no dia seguinte, a Saúde do sistema: `1.6.0`.
 - Depois: o roteiro abaixo ("Como testar a v1.6.0") vale para conferir no laboratório.
 
 ## v1.6.0 — exclusões visíveis, agente que se atualiza e avisa, hibernação (na `dev`, aguardando seu teste)
