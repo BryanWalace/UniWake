@@ -20,7 +20,7 @@ $ErrorActionPreference = 'Stop'
 
 $script:UwAgentVersion = '1.7.0'
 # Install steps this script applies on the machine itself (FR-603.3, ADR-059): Invoke-UwSelfInstall.
-$script:UwInstallLevel = 2
+$script:UwInstallLevel = 3
 # Windows error codes of a write refused by the antivirus (ERROR_VIRUS_INFECTED, ERROR_VIRUS_DELETED).
 $script:UwVirusCodes = @(225, 226)
 $script:UwProtocol = 1
@@ -1524,6 +1524,31 @@ function Get-UwRepairCommand {
   ) -join ';'
 }
 
+# "Back from sleep or hibernation" (Power-Troubleshooter event 1).
+$script:UwResumeSubscription = '<QueryList><Query Id="0" Path="System"><Select Path="System">*[System[Provider[@Name=''Microsoft-Windows-Power-Troubleshooter''] and EventID=1]]</Select></Query></QueryList>'
+
+<#
+  Install level 3 (field test 2026-10-18): after the notebook came back from hibernation, the
+  every-minute trigger of "UniWake" stopped firing until something started the task (the scheduler
+  kept moving "next run" forward; cause não verificado). A trigger on resume starts it, which brings
+  the repetition back. Adds it to the existing task, keeping its other triggers.
+#>
+function Add-UwResumeTrigger {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param([string]$TaskName = 'UniWake')
+  Assert-UwRealSystem 'Add-UwResumeTrigger'
+  $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop
+  foreach ($t in @($task.Triggers)) {
+    if ($t.CimClass.CimClassName -eq 'MSFT_TaskEventTrigger' -and [string]$t.Subscription -match 'Power-Troubleshooter') { return }
+  }
+  if (-not $PSCmdlet.ShouldProcess($TaskName, 'Executar ao voltar da suspensão ou hibernação')) { return }
+  $class = Get-CimClass -ClassName MSFT_TaskEventTrigger -Namespace 'Root/Microsoft/Windows/TaskScheduler'
+  $resume = New-CimInstance -CimClass $class -ClientOnly
+  $resume.Enabled = $true
+  $resume.Subscription = $script:UwResumeSubscription
+  Set-ScheduledTask -TaskName $TaskName -Trigger (@($task.Triggers) + $resume) | Out-Null
+}
+
 # Registers "UniWake Reparo" (SYSTEM, at start-up and every 30 minutes).
 function Register-UwRepairTask {
   [CmdletBinding(SupportsShouldProcess = $true)]
@@ -1581,6 +1606,7 @@ function Update-UwVerifiedCopy {
 <#
   FR-603.3: applies the install steps newer than the machine's level, so prepared machines take agent
   changes without "Preparar máquinas". Level 2 (v1.6.0): the verified copy and the repair task.
+  Level 3: "UniWake" also runs when the PC comes back from sleep or hibernation.
   Failures are retried at most hourly and never stop the run.
 #>
 function Invoke-UwSelfInstall {
@@ -1595,7 +1621,8 @@ function Invoke-UwSelfInstall {
   if ($Health.ContainsKey('installTriedAt')) { $last = [long]$Health.installTriedAt }
   if ($Now - $last -lt 3600000L) { return }
   $Health.installTriedAt = $Now
-  Register-UwRepairTask -Command (Get-UwRepairCommand -AgentDir $script:UwAgentDir)
+  if ($level -lt 2) { Register-UwRepairTask -Command (Get-UwRepairCommand -AgentDir $script:UwAgentDir) }
+  if ($level -lt 3) { Add-UwResumeTrigger }
   # Only failures wait an hour: a frozen machine loses the task at every restart (M29-R).
   $Health.installTriedAt = 0L
   $out = [ordered]@{}

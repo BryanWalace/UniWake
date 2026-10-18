@@ -8,7 +8,8 @@ $script:UwAgentSystemFunctions = @(
   'Get-UwUtcNow', 'Wait-UwSecond', 'Get-UwBootTime', 'Invoke-UwHttp', 'Get-UwSessionInfo',
   'Get-UwFreezeInfo', 'Get-UwPowerInfo', 'Invoke-UwShutdown', 'Register-UwWakeTask',
   'Start-UwWarningTask', 'Test-UwAgentFolder', 'Register-UwRepairTask', 'Get-UwAntivirusRaw',
-  'Get-UwHibernateInfo', 'Get-UwSleepKind', 'Set-UwSleepTimeout', 'Set-UwKeepAwake'
+  'Get-UwHibernateInfo', 'Get-UwSleepKind', 'Set-UwSleepTimeout', 'Set-UwKeepAwake',
+  'Add-UwResumeTrigger'
 )
 
 # Fake clock (UTC ms) shared by the mocks; Wait-UwSecond advances it instantly.
@@ -38,6 +39,8 @@ function Register-UwFakeAgent {
   Mock Get-UwSleepKind { 'unknown' }
   $script:UwFake.SleepCalls = New-Object System.Collections.ArrayList
   $script:UwFake.KeepAwake = New-Object System.Collections.ArrayList
+  $script:UwFake.ResumeTrigger = 0
+  Mock Add-UwResumeTrigger { $script:UwFake.ResumeTrigger++ }
   Mock Set-UwKeepAwake { [void]$script:UwFake.KeepAwake.Add([bool]$On) }
   Mock Set-UwSleepTimeout { [void]$script:UwFake.SleepCalls.Add(@{ standby = $StandbyMinutes; hibernate = $HibernateMinutes; hibernation = $Hibernation }) }
   if ($Root) {

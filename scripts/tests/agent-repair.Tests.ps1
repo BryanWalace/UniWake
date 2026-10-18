@@ -37,11 +37,24 @@ Describe 'Self-install of the newer steps (FR-603.3)' {
     }
     (Read-UwJson (Join-Path $copy 'manifest.json'))."uniwake-agent.ps1" | Should -Be $script:Refs.'uniwake-agent.ps1'.sha256
     $script:UwFake.RepairTask | Should -Match "copia"
-    (Read-UwJson $script:Paths.Config).installLevel | Should -Be 2
+    $script:UwFake.ResumeTrigger | Should -Be 1 # level 3
+    (Read-UwJson $script:Paths.Config).installLevel | Should -Be 3
     (Read-UwJson $script:Paths.Config).hubs | Should -Not -BeNullOrEmpty # the rest of the config is kept
     $script:UwFake.RepairTask = $null
     Invoke-UwSelfInstall -Scripts $script:Refs -Paths $script:Paths -Health $script:Health -Now ($script:T0 + 7200000)
     $script:UwFake.RepairTask | Should -BeNullOrEmpty
+  }
+
+  It 'a level-2 machine (prepared before) gets only the level-3 step: the resume trigger' {
+    $cfg = Read-UwJson $script:Paths.Config
+    $out = [ordered]@{}
+    foreach ($p in $cfg.PSObject.Properties) { $out[$p.Name] = $p.Value }
+    $out['installLevel'] = 2
+    Save-UwJson $script:Paths.Config $out
+    Invoke-UwSelfInstall -Scripts $script:Refs -Paths $script:Paths -Health $script:Health -Now $script:T0
+    $script:UwFake.RepairTask | Should -BeNullOrEmpty
+    $script:UwFake.ResumeTrigger | Should -Be 1
+    (Read-UwJson $script:Paths.Config).installLevel | Should -Be 3
   }
 
   It 'a frozen machine that lost the task at restart registers it again at once (success is not throttled)' {
@@ -119,6 +132,25 @@ Describe 'The repair command (FR-603.4), run for real in a temporary folder' {
 }
 
 Describe 'Registering the real repair task (disposable CI Windows only)' {
+  It 'adds the resume trigger to a real task, keeping its other triggers, once' -Skip:($env:GITHUB_ACTIONS -ne 'true') {
+    $script:UwRealSystem = $true
+    $name = 'UniWake Teste Gatilho'
+    try {
+      Register-ScheduledTask -TaskName $name -Action (New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c exit 0') `
+        -Trigger @((New-ScheduledTaskTrigger -AtStartup), (New-ScheduledTaskTrigger -Once -At ([DateTime]::Now.AddMinutes(5)) -RepetitionInterval (New-TimeSpan -Minutes 1))) `
+        -Principal (New-ScheduledTaskPrincipal -UserId 'S-1-5-18') -Force | Out-Null
+      Add-UwResumeTrigger -TaskName $name
+      Add-UwResumeTrigger -TaskName $name
+      $t = @((Get-ScheduledTask -TaskName $name).Triggers)
+      $t.Count | Should -Be 3
+      @($t | Where-Object { [string]$_.Subscription -match 'Power-Troubleshooter' }).Count | Should -Be 1
+      @($t | Where-Object { $null -ne $_.Repetition -and $_.Repetition.Interval -eq 'PT1M' }).Count | Should -Be 1
+    } finally {
+      $script:UwRealSystem = $false
+      Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction SilentlyContinue
+    }
+  }
+
   It 'registers "UniWake Reparo" with its triggers and SYSTEM, then removes it' -Skip:($env:GITHUB_ACTIONS -ne 'true') {
     $script:UwRealSystem = $true
     try {

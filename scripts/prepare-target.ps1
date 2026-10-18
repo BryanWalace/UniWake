@@ -611,9 +611,15 @@ function Register-UwAgentTask {
   $base = @{ AllowStartIfOnBatteries = $true; DontStopIfGoingOnBatteries = $true; StartWhenAvailable = $true; MultipleInstances = 'IgnoreNew' }
 
   $every = New-ScheduledTaskTrigger -Once -At ([DateTime]::Now.AddMinutes(1)) -RepetitionInterval (New-TimeSpan -Minutes 1)
+  # Also when the PC comes back from sleep or hibernation: the every-minute trigger stalled after a
+  # resume in the field test (2026-10-18) until the task was started; the agent adds the same one.
+  $resumeClass = Get-CimClass -ClassName MSFT_TaskEventTrigger -Namespace 'Root/Microsoft/Windows/TaskScheduler'
+  $resume = New-CimInstance -CimClass $resumeClass -ClientOnly
+  $resume.Enabled = $true
+  $resume.Subscription = '<QueryList><Query Id="0" Path="System"><Select Path="System">*[System[Provider[@Name=''Microsoft-Windows-Power-Troubleshooter''] and EventID=1]]</Select></Query></QueryList>'
   $settings = New-ScheduledTaskSettingsSet @base -ExecutionTimeLimit (New-TimeSpan -Hours 2)
   Register-ScheduledTask -TaskName 'UniWake' -Action (New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $run) `
-    -Trigger @((New-ScheduledTaskTrigger -AtStartup), $every) -Settings $settings -Principal $system -Force | Out-Null
+    -Trigger @((New-ScheduledTaskTrigger -AtStartup), $every, $resume) -Settings $settings -Principal $system -Force | Out-Null
 
   $wakeSettings = New-ScheduledTaskSettingsSet @base -WakeToRun -ExecutionTimeLimit (New-TimeSpan -Hours 2)
   Register-ScheduledTask -TaskName 'UniWake Despertar' -Action (New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "$run -Wake") `
