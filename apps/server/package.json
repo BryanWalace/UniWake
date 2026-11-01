@@ -7,7 +7,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@fastify/cookie": "11.1.2",
+    "@fastify/cookie": "11.1.5",
     "@fastify/static": "10.1.5",
     "@uniwake/shared": "0.0.0",
     "csv-parse": "7.0.3",
