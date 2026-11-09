@@ -786,3 +786,38 @@ session, 15 min; argon2id m = 64 MiB, t = 3, p = 1, one derivation at a time (qu
 | RK-27 | Stolen export with secrets | Password-only secrets, strong KDF, AAD; automatic exports never carry secrets |
 | RK-28 | Replace on the wrong PC | Preview, typed confirmation, `pre-import` backup + undo |
 | RK-29 | Network share not writable by LocalSystem | Health warning with the error; README (computer account) |
+
+## 17. Ligar e desligar garantidos (v1.7.0; spec §6f; ADR-063..066)
+
+### 17.1 Data (migration 010, machine-local only)
+| Table / change | Kind | Columns |
+|---|---|---|
+| `packet_log` + | machine-local (existing) | round (0 = first attempt), via NULL (name of the neighbour that sent it) |
+| `wake_relays` | machine-local | id, job_id, device_id (target), relay_device_id, mac, round, created_at, expires_at, delivered_at NULL; UNIQUE (job_id, round, device_id, relay_device_id); purged with `packet_log` retention |
+| `agent_health` + | machine-local (existing) | wol_json NULL (kept when absent), escalations_json (last 10), errors_json (last 20) |
+
+Settings: `wake.retryRounds` 3 (0–10), `wake.retryIntervalSeconds` 60 (15–600), `wake.peerRelay` on,
+`power.keepWakeOnLan` on — all shared.
+
+### 17.2 Flow
+- **Job runner:** round 0 as before → verify loop; every `retryIntervalSeconds` while machines wait
+  and rounds remain: `retry(jobId, round)` = send to the waiting ones (broadcasts + `unicastRoutes`)
+  → `WakeRelay.request` (unless dry-run or `peerRelay` off). Elapsed time spent in a round counts in
+  the window guard (M3-F1). On close: one log line with the outcome (FR-704.2).
+- **Relay:** `WakeRelayService.request` picks peers (`pickPeers`: same room, then /24; agent ≥ 1.8.0
+  seen ≤ 3 min) → rows; `forAgent(deviceId)` in the check-in answer marks them delivered;
+  `onReported` matches `health.relays` to the delivered row (±10 min) and logs one packet row.
+- **Agent 1.8.0:** run = heartbeat → poll (hub down/up logged) → self-update/install/sleep policy →
+  WoL check when due → **watchdog** → next job → execution (WoL check before it, fallback chain) →
+  watch set on "done". Poll: health report carries relays, wol, escalations, errors; a hub that took
+  it clears exactly the events it carried; `wake` in the verified answer → `Invoke-UwRelay`.
+- **Hub process:** `CrashGuard` marker at start/clean stop; `installProcessGuards` in `main.ts`.
+
+### 17.3 Testing
+| Layer | What |
+|---|---|
+| Wake engine | rounds/timing/unicast (fake clock + sender), stop after wake, 0 rounds, scale test pinned to round 0 |
+| Relay | peer choice (pure), signed-answer delivery once, report → packet log once, dry-run/off |
+| Agent (Pester) | fallback codes, watchdog sequence and end conditions, relay sends, WoL items, log/rotation, event clearing, hub down once, contract keys vs fixture `checkin-health-v18.json` |
+| Hub health | storage merge limits, device view, log lines with names |
+| Process | fatal line read by the Logs reader, rejection logged without exit, unclean-stop marker on a real hub |

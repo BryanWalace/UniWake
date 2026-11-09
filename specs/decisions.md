@@ -1076,3 +1076,99 @@ Status: Proposed · Accepted · Superseded by ADR-xxx.
     with the tag's version before building.
 - **Consequences:** a version cannot be published with stale documents; prose quality still needs the
   human review step, which the check cannot judge.
+
+## ADR-063 — A wake insists: retry rounds, unicast and neighbours that relay (amends constitution §2.6)
+- **Date:** 2026-11-08 · **Status:** Accepted (owner request: "se tal pacote não funcionou, use outra
+  maneira até ligar")
+- **Context:** a wake job sent one burst (3 repeats, 100 ms apart) and then only verified. Field
+  reports: some machines of a room turn on, others do not. Known causes of a lost first burst: a switch
+  port in power save (EEE/Green Ethernet) that renegotiates the link for a few seconds, a NIC that arms
+  late after Windows shuts down, routers and VLANs that drop directed broadcasts, and switches that
+  filter broadcast storms. The large management suites solve the last ones with a *wake-up proxy*: an
+  awake computer of the same subnet sends the packet locally (Configuration Manager since 2012 SP1).
+- **Decision:**
+  - **Retry rounds** while the job verifies: the machines still waiting get the packets again every
+    `wake.retryIntervalSeconds` (60 s), up to `wake.retryRounds` (3) rounds, staggered as the first.
+    Round numbers go in the packet log (`packet_log.round`). A round that cannot send never fails the
+    job.
+  - **Unicast** to the device's last known IPv4 from round 1 (from the interface on its subnet, or the
+    gateway interface for routed subnets): switches that still know the MAC and routers that still
+    hold it in their ARP table (often hours) deliver it where broadcasts are dropped.
+  - **Neighbours relay** (`wake.peerRelay`, on): from round 1, up to 3 lab PCs whose agent (1.8.0+)
+    checked in during the last 3 minutes — same room first, then the same /24 — get the MAC in their
+    next **signed** check-in answer (`wake: {ports, macs}`, at most 50, canonical MACs only; requests
+    expire after 2 min; machine-local table `wake_relays`). The agent broadcasts the packet from every
+    interface with a gateway (255.255.255.255 and the subnet broadcast, 3 times per port) with the
+    .NET `UdpClient` (built into Windows) and reports what it sent in `health.relays`; the hub logs it in
+    the packet log with `via` = that PC. Never in dry-run or demo mode.
+  - Constitution §2.6 now reads: the hub sends to the limited and subnet broadcasts (and the room's
+    directed broadcast), adds a unicast to the last IP in retry rounds, and may ask awake agents to
+    broadcast in their network through signed answers. Agents still never receive commands that run
+    code; a magic packet is harmless.
+- **Consequences:** a room whose machines are all off has no neighbour to relay (the hub's own rounds
+  still run); the first PC that wakes becomes a relay for the rest of the room. A 500-machine room that
+  stays off logs up to 4× the packets of v1.6 (bounded by retention).
+
+## ADR-064 — A shutdown insists: fallbacks and a watchdog on the agent
+- **Date:** 2026-11-08 · **Status:** Accepted (owner request: "mesma coisa com agendamento de
+  desligar")
+- **Context:** the agent ran `shutdown.exe` once and reported "done" when it exited 0. It failed for
+  good on exit 1190 (a shutdown already scheduled by a user, Windows Update or another tool) and on
+  other codes, and nobody noticed when a user ran `shutdown /a`, an application held the session or an
+  update kept Windows up: the panel only said "não confirmou".
+- **Decision:**
+  - **Fallback chain** (`Invoke-UwPowerCommand`): `shutdown.exe` → on 1190, `shutdown /a` and once
+    more → 1115 (already shutting down) counts as done → CIM `Win32Shutdown` forced (flags 5/6) →
+    `Stop-Computer`/`Restart-Computer -Force`. The report detail names the method used and the codes
+    seen. The native-warning path does not fall back (it would skip the warning): it logs the error and
+    the shutdown still happens at its time through the chain.
+  - **Watchdog** (`Invoke-UwWatchdog`): after a "done" execution the agent keeps `state.watch` (id,
+    action, shutdown time, boot time). A run that finds the **same boot time 3 minutes after** the
+    shutdown time forces it — attempt 1 `shutdown /s|/r /f /t 0`, attempt 2 CIM forced power-off (12) or
+    reboot (6), attempt 3 `Stop-Computer -Force` — one attempt per run, never after 30 minutes. A new
+    boot time ends the watch; an unknown boot time never forces. Each attempt goes to the agent log and
+    to `health.escalations`; the hub logs it and the device page lists it.
+  - All new calls are wrappers that assert the real system and are mocked in Pester (constitution §5).
+- **Consequences:** a user who cancels a scheduled shutdown with `shutdown /a` loses unsaved work three
+  minutes later — the warning already told them; this is what "garantido" means. Freezing software that
+  restores `state.json` on reboot does not matter: a reboot ends the watch anyway.
+
+## ADR-065 — The agent keeps Wake-on-LAN armed
+- **Date:** 2026-11-08 · **Status:** Accepted
+- **Context:** the preparation (FR-007.1) arms the NIC once. Driver updates (Intel I219/I225, Realtek)
+  and feature updates are known to reset "Wake on Magic Packet", "Shutdown Wake-On-LAN", Energy
+  Efficient Ethernet and Fast Startup; such a machine shuts down fine and never wakes again.
+- **Decision:** at start-up (a new boot time), every 6 hours and right before each shutdown/restart it
+  runs, the agent checks the wired adapter with the default route: power management "Magic Packet",
+  `powercfg /devicequery wake_armed`, `HiberbootEnabled = 0`, and the advanced properties Wake on Magic
+  Packet / Shutdown Wake-On-LAN (on) and EEE/Green Ethernet (off), with the same keyword and display
+  rules as the preparation; it turns back on what is off (`-NoRestart`: never drops the network) and
+  reports each item as `ok`, `fixed`, `failed` (with the reason) or `unsupported` in `health.wol`.
+  Setting `power.keepWakeOnLan` (on) travels in the signed answer; off = only the preparation applies.
+- **Consequences:** advanced properties changed with `-NoRestart` take effect at the next driver start
+  (the next boot); power management and Fast Startup take effect at once. Wi-Fi-only PCs report "nenhuma
+  placa com fio".
+
+## ADR-066 — Errors are never silent: process guards, unclean-stop marker, agent log
+- **Date:** 2026-11-08 · **Status:** Accepted (owner: "o log parece não estar captando bem os erros")
+- **Context:** the hub had no handler for unhandled rejections or uncaught exceptions (Node 24 exits on
+  both; the asynchronous pino stream loses the last lines, the stack only reached the WinSW
+  `logs\service\*.err.log` that the Logs page does not show). The agent swallowed 18 errors with
+  `Write-Verbose` (invisible to a scheduled task) and kept no log. Failed shutdown reports, agent
+  errors and wake jobs that left machines off were not written to the hub log at all.
+- **Decision:**
+  - Hub (`adapters/crash-guard.ts`): `unhandledRejection` → error line, the hub keeps running;
+    `uncaughtException` → one `fatal` line written **synchronously** to `uniwake.log`, then exit 1
+    (WinSW restarts it); `warning` → warn line. A `logs\running.json` marker is written at start and
+    removed on a clean stop; a start that finds it logs "did not stop cleanly" with the last 20 lines of
+    the newest WinSW `.err.log`.
+  - Hub log lines (FR-704.2): every finished wake job (warn when machines did not turn on, with their
+    names, the retry rounds, relayed packets and the send errors), each retry round and relay request,
+    agent reports (warn on `failed`, with the detail), agent errors, forced shutdowns and Wake-on-LAN
+    changes — always with the machine's name.
+  - Agent: `C:\ProgramData\UniWake\agent\data\agent.log` (512 KB + one `.1` file); every former silent
+    catch writes an `ERRO` line; the last 10 errors go to the hub in `health.errors` (cleared only after
+    a hub took them) and the hub keeps the last 20 per machine for the device page. A hub that stops
+    answering is logged once, and again when it answers.
+- **Consequences:** the Logs page explains failures without opening the packet log or the PC. The log
+  never contains user names (Q-6) or tokens.
