@@ -247,8 +247,10 @@ Describe 'Orders and cancel (FR-304.4, FR-305)' {
     (@(Get-TestQueue)[0]).reason | Should -Be 'was_off'
   }
 
-  It 'a failing shutdown.exe is reported as failed with its exit code' {
-    Mock Invoke-UwShutdown { 1190 }
+  It 'FR-703.1: when shutdown.exe, CIM and Stop-Computer all fail, it is reported as failed with every reason' {
+    Mock Invoke-UwShutdown { 5 }
+    Mock Invoke-UwCimShutdown { 1 }
+    Mock Invoke-UwStopComputer { throw 'acesso negado' }
     $state = Read-UwState (Get-UwPathSet).State
     $job = @{
       Kind = 'order'; Order = 'c1b2c3d4-0000-4000-8000-000000000003'; Occurrence = $null; Action = 'shutdown'; At = (Get-SpTime 12 18 1); PlannedAt = $null
@@ -257,7 +259,7 @@ Describe 'Orders and cancel (FR-304.4, FR-305)' {
     }
     $r = Invoke-UwExecution -Job $job -State $state -Messages $script:UwDefaultMessages -Poll {} -Freeze @{ state = 'none' }
     $r.outcome | Should -Be 'failed'
-    $r.detail | Should -Be 'shutdown.exe saiu com código 1190'
+    $r.detail | Should -Be 'shutdown.exe saiu com código 5; CIM Win32Shutdown retornou 1; Stop-Computer: acesso negado'
   }
 }
 
