@@ -86,9 +86,10 @@ cadastro, sincronizando pela rede local.
 - **Modo demonstração**: uma rede de laboratórios simulada para conhecer o sistema sem enviar nada.
 
 > [!NOTE]
-> **Novo na 1.7.0 ("Ligar e desligar garantidos"):** novas tentativas para quem não ligou, máquinas
+> **Novo na 1.7 ("Ligar e desligar garantidos", publicada como 1.7.1):** novas tentativas para quem não ligou, máquinas
 > vizinhas que mandam o pacote de ligar, o agente que reativa o "ligar pela rede" e força o
-> desligamento que não aconteceu, e erros que aparecem no Logs e na página da máquina. Veja o
+> desligamento que não aconteceu, e erros que aparecem no Logs e na página da máquina. A 1.7.1 também
+> atualiza dependências com avisos de segurança. Veja o
 > [histórico de versões](CHANGELOG.md).
 > Quem já tem o UniWake instalado recebe a atualização sozinho, na janela de manutenção; as máquinas
 > já preparadas pegam o agente novo (1.8.0) sozinhas.
@@ -626,7 +627,7 @@ dentro da rede da sala para as outras (opção "Pedir às máquinas vizinhas já
 | 1.4 | **Backup e migração** em arquivo `.uniwake` (exportar/importar com prévia e senha, em espera até ativar, exportação automática, linha de comando) | publicada (1.4.0) |
 | 1.5 | Desligamento agendado confiável (ordem direta + agenda, conferência 10 min depois), status Ligada/Desligada por vários sinais | publicada (1.5.0) |
 | 1.6 | **Agente que se atualiza e se conserta**, aviso de antivírus, exclusões visíveis no agendamento, máquinas suspensas ou hibernadas, quem desliga antes da hora | publicada (1.6.0) |
-| 1.7 | **Ligar e desligar garantidos**: novas tentativas e máquinas vizinhas para ligar, agente que reativa o "ligar pela rede", plano B e desligamento forçado, erros visíveis no Logs e na página da máquina | publicada (1.7.0) |
+| 1.7 | **Ligar e desligar garantidos**: novas tentativas e máquinas vizinhas para ligar, agente que reativa o "ligar pela rede", plano B e desligamento forçado, erros visíveis no Logs e na página da máquina | publicada (1.7.1) |
 | — | Reinício agendado, agente por VLAN, notificações (e-mail/Telegram), ferramentas de BIOS dos fabricantes, permissões por sala | ideias |
 
 O que mudou em cada versão está no [CHANGELOG.md](CHANGELOG.md). Sugestões de funções são bem-vindas
