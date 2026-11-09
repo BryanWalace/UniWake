@@ -1,31 +1,21 @@
 # NEXT — handoff
 
 Atualizado: 2026-11-09 · Branch de trabalho: **`dev`** (ADR-030).
-**A 1.7.0 "Ligar e desligar garantidos" foi para a `main` (`116be88`) e a tag `v1.7.0` foi criada a seu
-pedido em 09/11** ("pode subir a dev para a main e criar a release 1.7.0"). O workflow "Release" publica o
-instalador com o SHA-256; o PC do UniWake se atualiza na janela de manutenção (padrão 03:00–05:00) e as
-máquinas preparadas pegam o agente 1.8.0 na consulta seguinte.
+**A 1.7.1 foi publicada em 09/11** (`main` = `e20fd8c`, tag `v1.7.1`, a pedido: "pode subir a dev para a
+main e criar a release 1.7.1"). Release: https://github.com/BryanWalace/UniWake/releases/tag/v1.7.1
+(`UniWake-Setup.exe` + `.sha256`). Ela traz **todas as novidades da 1.7.0** — a tag `v1.7.0` existe, mas
+o workflow dela parou no `npm audit` (avisos novos em zod/fastify/@fastify/static/fast-uri) e nada foi
+publicado — mais as dependências corrigidas (audit 0). CI da `dev`, CI da `main` e Release: tudo verde.
+Atenção: o `npm run verify` local **não** roda o `npm audit`; rode `npm audit --omit=dev --audit-level=high`
+antes de qualquer merge/tag.
 
-## ⚠ A release v1.7.0 NÃO foi publicada (verificado em 09/11)
-- O workflow "Release" da tag `v1.7.0` falhou no `npm audit --omit=dev --audit-level=high` (avisos
-  novos: zod GHSA-mrhx-c7xc-m3w5 *high*, fastify GHSA-389g-gv7q-r4x8, glob/minimatch via
-  @fastify/static, fast-uri) e o "Build and publish" foi pulado: **nenhum instalador saiu e nenhum PC se
-  atualiza**. O mesmo audit já travava o Verify da `dev` desde 01/11 (o `npm run verify` local não roda
-  o audit — por isso a validação local ficou verde).
-- As falhas de "Build two/three installers" às 06:24 foram intermitentes (3 execuções simultâneas; o
-  mesmo job passou na execução vizinha e no CI seguinte).
-- Corrigido na `dev` em `3c35366` (fastify 5.12.8, zod 4.6.7, @fastify/static 10.1.10, fast-uri
-  3.1.9/4.2.3; audit 0 vulnerabilidades; verify verde; CI da `dev` todo verde).
-- **Falta o dono autorizar** a publicação: proposta = levar a `dev` para a `main` como **v1.7.1** (não
-  mover a tag `v1.7.0`). Antes da tag: CHANGELOG "[Não publicado]" → "[1.7.1]", `specs/releases/v1.7.1.md`,
-  versão nos documentos públicos, `npm run check:docs`.
-
-## Próximo passo (depois de publicada)
-- Confira em GitHub → Actions → "Release" e em Releases que o instalador saiu.
-- No dia seguinte: Saúde do sistema mostra `1.7.0`; a página das máquinas mostra **Versão do agente
+## Próximo passo
+- No dia seguinte: Saúde do sistema mostra `1.7.1`; a página das máquinas mostra **Versão do agente
   1.8.0** e a linha **"Ligar pela rede"**.
-- Os testes abaixo ("Como testar a v1.7.0") continuam valendo para conferir no laboratório (pule o passo 0:
-  a instalação chega sozinha). Se algo falhar, me mande o que está no fim deste roteiro.
+- Os testes abaixo ("Como testar a v1.7.0") valem para a 1.7.1 (pule o passo 0: a instalação chega
+  sozinha). Se algo falhar, me mande o que está no fim deste roteiro.
+- Pendências: PRs do Dependabot abertos (fastify 5.12.8 e @fastify/static 10.1.10 já entraram na `dev`;
+  dev-tooling e react-query ainda não).
 
 ## v1.7.0 — o que mudou (seu pedido de 08/11)
 
