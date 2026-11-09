@@ -79,6 +79,8 @@ import { SqliteJobsRepo } from './db/repositories/jobs-repo';
 import { SqliteMonitorRepo } from './db/repositories/monitor-repo';
 import { SqliteNoticesRepo } from './db/repositories/notices-repo';
 import { SqliteRetentionRepo } from './db/repositories/retention-repo';
+import { SqliteWakeRelayRepo } from './db/repositories/wake-relay-repo';
+import { WakeRelayService } from './application/wake/relay-service';
 import { SqliteRoomsRepo } from './db/repositories/rooms-repo';
 import { SqliteSchedulerRepo } from './db/repositories/scheduler-repo';
 import { SqliteSchedulesRepo } from './db/repositories/schedules-repo';
@@ -274,7 +276,17 @@ export function createServices(
     notices: () => notices.list(),
   });
 
+  // v1.7.0 (FR-701.3, ADR-063): awake lab PCs relay the magic packet in retry rounds.
+  const wakeRelay = new WakeRelayService({
+    store: new SqliteWakeRelayRepo(db),
+    jobs: jobsRepo,
+    settings,
+    clock,
+    logger: ports.logger.child({ module: 'wake-relay' }),
+    transaction: tx,
+  });
   const runner = new JobRunner({
+    relay: wakeRelay,
     jobs: jobsRepo,
     rooms: roomsRepo,
     settings,
@@ -825,6 +837,8 @@ export function createServices(
     cancelId: (orderUuid) => uuidV5(`power-cancel:${orderUuid}`),
     version: opts.version ?? '0.0.0-dev',
     logger: ports.logger.child({ module: 'agent' }),
+    relay: wakeRelay,
+    deviceName: (id) => deviceNameOf(id),
     // v1.6.0 (FR-604.2): what changed in a machine's health becomes one dashboard notice.
     onHealth: (deviceId, before, now, at) => {
       const events = healthEvents(before, now);

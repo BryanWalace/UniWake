@@ -185,6 +185,9 @@ export function JobPage() {
                       Porta
                     </th>
                     <th scope="col" className="px-2 py-1">
+                      Tentativa
+                    </th>
+                    <th scope="col" className="px-2 py-1">
                       #
                     </th>
                     <th scope="col" className="px-2 py-1">
@@ -197,9 +200,12 @@ export function JobPage() {
                     <tr key={i} className={p.outcome === 'error' ? 'text-red-800' : ''}>
                       <td className="px-2 py-0.5">{formatTime(p.at)}</td>
                       <td className="px-2 py-0.5">{p.mac}</td>
-                      <td className="px-2 py-0.5">{p.srcIp}</td>
+                      <td className="px-2 py-0.5">
+                        {p.via ? `${p.via} (vizinha, ${p.srcIp})` : p.srcIp}
+                      </td>
                       <td className="px-2 py-0.5">{p.dstIp}</td>
                       <td className="px-2 py-0.5">{p.port}</td>
+                      <td className="px-2 py-0.5">{(p.round ?? 0) + 1}</td>
                       <td className="px-2 py-0.5">{p.repeat + 1}</td>
                       <td className="px-2 py-0.5">
                         {p.outcome === 'sent'

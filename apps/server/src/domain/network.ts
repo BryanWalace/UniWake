@@ -74,6 +74,25 @@ export interface SendRoute {
 }
 
 /**
+ * v1.7.0 (FR-701.2, ADR-063): a unicast to the device's last known IPv4, from the interface on its
+ * subnet or, for a routed subnet, from the interfaces with a gateway. A switch that still knows the
+ * MAC, or a router that still has it in its ARP table (often hours), delivers it where broadcasts
+ * are dropped. Empty for an invalid, loopback or APIPA address.
+ */
+export function unicastRoutes(interfaces: readonly NetInterface[], ip: string | null): SendRoute[] {
+  if (!ip || isLoopback(ip) || isApipa(ip)) return [];
+  try {
+    ipToInt(ip);
+  } catch {
+    return [];
+  }
+  const local = interfaces.filter((i) => sameSubnet(i.address, ip, i.prefixLength));
+  const from =
+    local.length > 0 ? local.slice(0, 1) : interfaces.filter((i) => i.gateway !== null).slice(0, 1);
+  return from.map((i) => ({ sourceIp: i.address, destination: ip }));
+}
+
+/**
  * Where one device's magic packets go: from every selected interface to the limited broadcast
  * and that interface's subnet broadcast; plus the room's directed broadcast (routed subnets),
  * sent from interfaces with a gateway. De-duplicated.

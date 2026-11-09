@@ -94,6 +94,9 @@ export function healthView(h: StoredHealth): AgentHealthView {
     antivirus: h.antivirus && h.antivirusAt !== null ? { ...h.antivirus, at: h.antivirusAt } : null,
     alert: h.alert,
     power: h.power,
+    wol: h.wol ?? null,
+    escalations: h.escalations ?? [],
+    errors: h.errors ?? [],
     receivedAt: h.receivedAt,
   };
 }

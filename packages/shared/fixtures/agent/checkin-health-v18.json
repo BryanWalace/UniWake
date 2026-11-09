@@ -1,0 +1,51 @@
+{
+  "installLevel": 3,
+  "update": null,
+  "repairs": [],
+  "antivirus": null,
+  "power": {
+    "hibernateEnabled": false,
+    "hibernateAfterMinutes": 0,
+    "lastResume": null,
+    "preventSleep": null
+  },
+  "relays": [
+    {
+      "mac": "00:AA:00:00:00:01",
+      "at": 1794200000000,
+      "sent": 12,
+      "error": null
+    }
+  ],
+  "wol": {
+    "at": 1794199000000,
+    "adapter": "Intel(R) Ethernet Connection I219-LM",
+    "trigger": "before_shutdown",
+    "items": [
+      { "item": "magic_packet", "state": "ok", "detail": null },
+      { "item": "device_wake", "state": "fixed", "detail": null },
+      { "item": "fast_startup", "state": "ok", "detail": null },
+      { "item": "advanced_magic", "state": "ok", "detail": null },
+      { "item": "advanced_s5", "state": "unsupported", "detail": null },
+      { "item": "advanced_eee", "state": "failed", "detail": "Acesso negado" }
+    ]
+  },
+  "escalations": [
+    {
+      "at": 1794199500000,
+      "action": "shutdown",
+      "id": "6f1d2a3b-4c5d-5e6f-8a7b-000000000012",
+      "attempt": 1,
+      "method": "shutdown_force",
+      "code": 0,
+      "detail": null
+    }
+  ],
+  "errors": [
+    {
+      "at": 1794199400000,
+      "where": "desligar",
+      "message": "shutdown.exe saiu com código 5"
+    }
+  ]
+}

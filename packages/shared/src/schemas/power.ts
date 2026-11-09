@@ -1,6 +1,12 @@
 /** Manual shutdown and restart from the panel (FR-305, plan §15.4). */
 import { z } from 'zod';
-import type { AgentHealth, PowerPolicy, UpdateOutcome } from '../agent/checkin';
+import type {
+  AgentEscalation,
+  AgentHealth,
+  PowerPolicy,
+  UpdateOutcome,
+  WolItem,
+} from '../agent/checkin';
 import { idSchema, LIMITS } from './common';
 import { wakeTargetSchema } from './wake';
 
@@ -144,8 +150,31 @@ export interface AgentHealthView {
   alert: { file: string; at: number } | null;
   /** FR-605.1/605.3: sleep and hibernation facts (null: not reported). */
   power: NonNullable<AgentHealth['power']> | null;
+  /** v1.7.0 (FR-702.2): the last Wake-on-LAN check (null: not reported, agent before 1.8.0). */
+  wol?: NonNullable<AgentHealth['wol']> | null;
+  /** v1.7.0 (FR-703.3): shutdowns/restarts the agent had to force, newest last. */
+  escalations?: NonNullable<AgentHealth['escalations']>;
+  /** v1.7.0 (FR-704.3): the last errors of the agent log, newest last. */
+  errors?: NonNullable<AgentHealth['errors']>;
   receivedAt: number;
 }
+
+/** v1.7.0 (FR-702.2): pt-BR names of the Wake-on-LAN settings the agent keeps. */
+export const WOL_ITEM_LABEL: Record<WolItem, string> = {
+  magic_packet: 'Placa pode ligar o computador (Magic Packet)',
+  device_wake: 'Dispositivo autorizado a ligar o computador',
+  fast_startup: 'Inicialização rápida desativada',
+  advanced_magic: 'Wake on Magic Packet (driver)',
+  advanced_s5: 'Ligar a partir do desligamento (driver)',
+  advanced_eee: 'Ethernet com eficiência energética desligada',
+};
+
+/** v1.7.0 (FR-703.3): how the agent forced a shutdown that did not happen. */
+export const ESCALATION_METHOD_LABEL: Record<AgentEscalation['method'], string> = {
+  shutdown_force: 'shutdown.exe forçado',
+  cim_force: 'desligamento forçado pelo Windows (CIM)',
+  stop_computer: 'Stop-Computer forçado',
+};
 
 export const UPDATE_OUTCOME_LABEL: Record<UpdateOutcome, string> = {
   updated: 'atualizado',

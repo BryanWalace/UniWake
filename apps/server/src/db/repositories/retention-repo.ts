@@ -30,6 +30,12 @@ export class SqliteRetentionRepo implements RetentionRepo {
     const db = this.db;
     switch (rule.table) {
       case 'packet_log':
+        // v1.7.0: relay requests (FR-701.3) are kept as long as the packets they explain.
+        db.run(
+          'DELETE FROM wake_relays WHERE id IN (SELECT id FROM wake_relays WHERE created_at < ? LIMIT ?)',
+          [rule.before, limit],
+        );
+        return chunk(db, rule.table, 'at < ?', [rule.before], limit);
       case 'device_events':
       case 'audit_log':
         return chunk(db, rule.table, 'at < ?', [rule.before], limit);

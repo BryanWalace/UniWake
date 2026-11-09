@@ -120,6 +120,72 @@ export const UPDATE_OUTCOMES = [
 ] as const;
 export type UpdateOutcome = (typeof UPDATE_OUTCOMES)[number];
 
+// ------------------------------------------------------------------ v1.7.0 (spec §6f, ADR-063..066)
+export const RELAY_REPORTS_MAX = 50;
+export const AGENT_ERRORS_MAX = 10;
+
+/** One MAC this PC broadcast a magic packet for (FR-701.3); `sent` = datagrams that left. */
+export const agentRelayReportSchema = z.object({
+  mac: z.string().min(12).max(17),
+  at: instant,
+  sent: z.number().int().min(0).max(1000),
+  error: z.string().max(200).nullable(),
+});
+export type AgentRelayReport = z.infer<typeof agentRelayReportSchema>;
+
+/** Wake-on-LAN settings the agent checks and re-applies (FR-702.1). */
+export const WOL_ITEMS = [
+  'magic_packet',
+  'device_wake',
+  'fast_startup',
+  'advanced_magic',
+  'advanced_s5',
+  'advanced_eee',
+] as const;
+export type WolItem = (typeof WOL_ITEMS)[number];
+export const WOL_ITEM_STATES = ['ok', 'fixed', 'failed', 'unsupported'] as const;
+export type WolItemState = (typeof WOL_ITEM_STATES)[number];
+
+export const agentWolSchema = z.object({
+  at: instant,
+  /** The adapter's description as Windows shows it (no MAC, no user data). */
+  adapter: z.string().max(120).nullable(),
+  /** Why it was checked: start-up, periodic, right before a shutdown/restart. */
+  trigger: z.enum(['boot', 'periodic', 'before_shutdown']),
+  items: z
+    .array(
+      z.object({
+        item: z.enum(WOL_ITEMS),
+        state: z.enum(WOL_ITEM_STATES),
+        detail: z.string().max(200).nullable(),
+      }),
+    )
+    .max(12),
+});
+export type AgentWol = z.infer<typeof agentWolSchema>;
+
+/** A shutdown/restart the agent had to force (FR-703.2). */
+export const agentEscalationSchema = z.object({
+  at: instant,
+  action: powerActionSchema,
+  /** The order or occurrence it belongs to. */
+  id: uuid.nullable(),
+  attempt: z.number().int().min(1).max(10),
+  method: z.enum(['shutdown_force', 'cim_force', 'stop_computer']),
+  /** Exit code or HRESULT of the method, when it failed. */
+  code: z.number().int().nullable(),
+  detail: z.string().max(200).nullable(),
+});
+export type AgentEscalation = z.infer<typeof agentEscalationSchema>;
+
+/** One error line of the agent log (FR-704.3); `where` names the step, e.g. "antivirus". */
+export const agentErrorSchema = z.object({
+  at: instant,
+  where: z.string().min(1).max(40),
+  message: z.string().min(1).max(300),
+});
+export type AgentError = z.infer<typeof agentErrorSchema>;
+
 /**
  * The optional `health` part of a check-in (FR-603, FR-604). Unlike the rest of the contract its
  * objects drop (never store) fields they do not name instead of refusing them, so a newer agent
@@ -195,6 +261,17 @@ export const agentHealthSchema = z.object({
     })
     .nullable()
     .optional(),
+  /**
+   * v1.7.0 (FR-701.3): magic packets this PC sent on the hub's request since its last accepted
+   * check-in (one entry per MAC); older hubs drop the field.
+   */
+  relays: z.array(agentRelayReportSchema).max(RELAY_REPORTS_MAX).optional(),
+  /** v1.7.0 (FR-702): Wake-on-LAN readiness of the wired adapter, as last checked and repaired. */
+  wol: agentWolSchema.nullable().optional(),
+  /** v1.7.0 (FR-703.2): shutdowns/restarts the agent had to force since its last check-in. */
+  escalations: z.array(agentEscalationSchema).max(10).optional(),
+  /** v1.7.0 (FR-704.3): errors the agent wrote to its log since its last accepted check-in. */
+  errors: z.array(agentErrorSchema).max(AGENT_ERRORS_MAX).optional(),
 });
 export type AgentHealth = z.infer<typeof agentHealthSchema>;
 
@@ -338,7 +415,28 @@ export const checkinAnswerSchema = z
     /** v1.6.0 (ADR-059): what this hub accepts; older hubs omit it. */
     features: z.array(z.enum(AGENT_FEATURES)).max(8).optional(),
     /** v1.6.0 (FR-605.3, ADR-061): power plan choices for the machine; older agents ignore it. */
-    power: z.object({ preventSleep: z.boolean() }).strict().optional(),
+    power: z
+      .object({
+        preventSleep: z.boolean(),
+        /** v1.7.0 (FR-702.1): keep the Wake-on-LAN settings on; absent = on. */
+        keepWakeOnLan: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
+    /**
+     * v1.7.0 (FR-701.3, ADR-063): magic packets this PC is asked to broadcast in its own network
+     * for neighbours that did not wake; older agents ignore it.
+     */
+    wake: z
+      .object({
+        ports: z.array(z.number().int().min(1).max(65535)).min(1).max(4),
+        macs: z
+          .array(z.string().regex(/^[0-9A-F]{2}(?::[0-9A-F]{2}){5}$/))
+          .min(1)
+          .max(50),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 export type CheckinAnswer = z.infer<typeof checkinAnswerSchema>;

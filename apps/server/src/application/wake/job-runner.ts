@@ -1,11 +1,20 @@
 /**
  * Runs wake jobs (FR-003.2–.6, plan §7.1): read interfaces at send time, stagger, send magic
  * packets on every route/port with repeats, log every attempt, then verify within the window.
+ * v1.7.0 (FR-701, ADR-063): while verifying, the machines that did not answer yet get retry rounds
+ * with a unicast to their last IP added and, through `relay`, awake lab PCs of their room or
+ * network asked to send the packet too.
  * Jobs survive restarts: `recover()` resumes verification or closes them (AC-003-17).
  */
 import type { DeviceResult, JobState, Settings } from '@uniwake/shared';
 import { magicPacket } from '../../domain/magic-packet';
-import { type NetInterface, routesFor, selectInterfaces } from '../../domain/network';
+import {
+  type NetInterface,
+  routesFor,
+  selectInterfaces,
+  type SendRoute,
+  unicastRoutes,
+} from '../../domain/network';
 import { planStagger } from '../../domain/stagger';
 import type { AuditService } from '../audit/audit-service';
 import type { EventsBus } from '../events-bus';
@@ -24,6 +33,23 @@ import { hasAddress, type Verifier } from './verifier';
 export const NETWORK_RETRY_MS = 30_000;
 const INTERFACE_READ_ATTEMPTS = 3;
 
+/** A machine still waiting in a retry round (FR-701.3). */
+export interface RelayTarget {
+  deviceId: number;
+  mac: string;
+  ip: string | null;
+  roomId: number | null;
+}
+
+/** FR-701.3: asks awake lab PCs near the targets to send the magic packet in their own network. */
+export interface WakeRelay {
+  request(
+    jobId: number,
+    round: number,
+    targets: readonly RelayTarget[],
+  ): { requested: number; peers: string[] };
+}
+
 export interface JobRunnerDeps {
   jobs: JobsRepo;
   rooms: RoomsRepo;
@@ -41,6 +67,8 @@ export interface JobRunnerDeps {
   auditTarget?: (target: StoredJob['target']) => string;
   /** Called when a job reaches a final state (scheduler morning result, M5). */
   onFinished?: (job: StoredJob) => void;
+  /** v1.7.0 (FR-701.3): peer relay through awake agents; absent = hub-only retries. */
+  relay?: WakeRelay;
 }
 
 export interface RunOptions {
@@ -185,11 +213,33 @@ export class JobRunner {
       return;
     }
 
-    await this.send(job, devices, ifaces, s);
+    await this.send(job, devices, ifaces, s, 0);
     await this.verify(jobId, clock.now() + s['wake.verifyWindowMinutes'] * 60_000);
   }
 
-  private async send(job: StoredJob, devices: JobDeviceRow[], ifaces: NetInterface[], s: Settings) {
+  /** Round 0: the broadcasts. Retry rounds add a unicast to the machine's last known IP. */
+  private routesOf(
+    dev: JobDeviceRow,
+    ifaces: NetInterface[],
+    directedBroadcast: string | null,
+    round: number,
+  ): SendRoute[] {
+    const routes = routesFor(ifaces, directedBroadcast);
+    if (round === 0) return routes;
+    const seen = new Set(routes.map((r) => `${r.sourceIp}>${r.destination}`));
+    return [
+      ...routes,
+      ...unicastRoutes(ifaces, dev.ip).filter((r) => !seen.has(`${r.sourceIp}>${r.destination}`)),
+    ];
+  }
+
+  private async send(
+    job: StoredJob,
+    devices: JobDeviceRow[],
+    ifaces: NetInterface[],
+    s: Settings,
+    round: number,
+  ) {
     const { jobs, clock } = this.d;
     const rooms = new Map(this.d.rooms.list().map((r) => [r.id, r]));
     const sender = job.dryRun ? this.d.dryRunSender : this.d.sender;
@@ -220,7 +270,7 @@ export class JobRunner {
           const dev = byId.get(deviceId)!;
           const room = dev.roomId === null ? undefined : rooms.get(dev.roomId);
           const payload = magicPacket(dev.mac);
-          for (const route of routesFor(ifaces, room?.directedBroadcast ?? null)) {
+          for (const route of this.routesOf(dev, ifaces, room?.directedBroadcast ?? null, round)) {
             for (const port of s['wake.ports']) {
               const at = clock.now();
               try {
@@ -242,6 +292,7 @@ export class JobRunner {
                   at,
                   outcome: job.dryRun ? 'dry_run' : 'sent',
                   error: null,
+                  round,
                 });
               } catch (e) {
                 const err = e as NodeJS.ErrnoException;
@@ -256,6 +307,7 @@ export class JobRunner {
                   at,
                   outcome: 'error',
                   error: (err.code ?? err.message ?? 'erro').slice(0, 200),
+                  round,
                 });
               }
             }
@@ -266,13 +318,66 @@ export class JobRunner {
       }
       const now = clock.now();
       this.d.transaction(() => jobs.markSent(job.id, [...ok], now));
-      this.setResults(
-        job.id,
-        step.deviceIds
-          .filter((id) => !ok.has(id) && byId.get(id)!.result === 'aguardando')
-          .map((id) => ({ deviceId: id, result: 'falha_no_envio' as const })),
-      );
+      // A retry round that cannot send leaves the machine waiting: an earlier round reached it.
+      if (round === 0) {
+        this.setResults(
+          job.id,
+          step.deviceIds
+            .filter((id) => !ok.has(id) && byId.get(id)!.result === 'aguardando')
+            .map((id) => ({ deviceId: id, result: 'falha_no_envio' as const })),
+        );
+      }
       this.publish(job.id);
+    }
+  }
+
+  /**
+   * FR-701.1: one retry round for the machines still waiting — the hub's broadcasts again plus a
+   * unicast to the last IP, and (FR-701.3) awake neighbours asked to send it in their network.
+   * A failure here is logged and never fails the job: the machines may still wake.
+   */
+  private async retry(jobId: number, round: number): Promise<void> {
+    const job = this.d.jobs.get(jobId);
+    if (!job) return;
+    const pending = this.d.jobs.devices(jobId).filter((x) => x.result === 'aguardando');
+    if (pending.length === 0) return;
+    const s = this.d.settings.all();
+    const log = this.d.logger;
+    log.info(
+      { jobId, round, waiting: pending.length, names: pending.slice(0, 20).map((x) => x.name) },
+      'wake retry round for machines that did not answer yet',
+    );
+    try {
+      const ifaces = await this.usableInterfaces(s, {}, jobId);
+      if (ifaces.length === 0) {
+        log.warn({ jobId, round }, 'wake retry round skipped: no usable network interface');
+      } else {
+        await this.send(job, pending, ifaces, s, round);
+      }
+    } catch (e) {
+      log.warn({ jobId, round, err: e }, 'wake retry round could not send');
+    }
+    if (!this.d.relay || !s['wake.peerRelay']) return;
+    if (job.dryRun) {
+      log.info({ jobId, round }, 'dry-run: neighbours are not asked to send the magic packet');
+      return;
+    }
+    try {
+      const r = this.d.relay.request(
+        jobId,
+        round,
+        pending.map((x) => ({ deviceId: x.deviceId, mac: x.mac, ip: x.ip, roomId: x.roomId })),
+      );
+      if (r.requested > 0) {
+        log.info(
+          { jobId, round, requests: r.requested, peers: r.peers.slice(0, 20) },
+          'asked awake neighbours to send the magic packet',
+        );
+      } else {
+        log.info({ jobId, round }, 'no awake neighbour with a recent agent to relay the packet');
+      }
+    } catch (e) {
+      log.warn({ jobId, round, err: e }, 'could not ask neighbours to relay the magic packet');
     }
   }
 
@@ -290,14 +395,27 @@ export class JobRunner {
     );
 
     const interval = this.d.settings.get('wake.verifyIntervalSeconds') * 1000;
+    const maxRounds = this.d.settings.get('wake.retryRounds');
+    const retryEvery = this.d.settings.get('wake.retryIntervalSeconds') * 1000;
     // M3-F1: bound the loop by elapsed timer time too. A backwards wall-clock jump (NTP) must not
     // stretch the window and keep these devices locked in an "active job".
     const windowMs = Math.max(0, verifyUntil - clock.now());
     let elapsed = 0;
+    let round = 0;
+    let sinceRetry = 0;
     while (waiting().length > 0 && clock.now() < verifyUntil && elapsed < windowMs) {
+      if (round < maxRounds && sinceRetry >= retryEvery) {
+        round++;
+        sinceRetry = 0;
+        const t = clock.now();
+        await this.retry(jobId, round);
+        elapsed += Math.max(0, clock.now() - t);
+        if (waiting().length === 0 || clock.now() >= verifyUntil || elapsed >= windowMs) break;
+      }
       const step = Math.min(interval, windowMs - elapsed);
       await clock.sleep(step);
       elapsed += step;
+      sinceRetry += step;
       const pending = waiting();
       const alive = await this.d.verifier.check(pending).catch(() => new Set<number>());
       const now = clock.now();
@@ -346,6 +464,51 @@ export class JobRunner {
     });
     this.publish(jobId);
     const final = this.d.jobs.get(jobId);
-    if (final) this.d.onFinished?.(final);
+    if (final) {
+      try {
+        this.logOutcome(final);
+      } catch (e) {
+        this.d.logger.error({ jobId, err: e }, 'could not log the wake job outcome');
+      }
+      this.d.onFinished?.(final);
+    }
+  }
+
+  /**
+   * FR-704.2: one line per finished job, at warn when machines did not wake, naming them and the
+   * send errors seen, so the Logs page tells what went wrong without opening the packet log.
+   */
+  private logOutcome(job: StoredJob) {
+    const devices = this.d.jobs.devices(job.id);
+    const names = (r: DeviceResult) =>
+      devices
+        .filter((x) => x.result === r)
+        .slice(0, 30)
+        .map((x) => x.name);
+    const packets = this.d.jobs.packets(job.id, 5000);
+    const errors = new Map<string, number>();
+    for (const p of packets) {
+      if (p.outcome !== 'error') continue;
+      const key = `${p.srcIp}>${p.dstIp}: ${p.error ?? 'erro'}`;
+      errors.set(key, (errors.get(key) ?? 0) + 1);
+    }
+    const data = {
+      jobId: job.id,
+      source: job.source,
+      target: job.targetLabel,
+      state: job.state,
+      error: job.error,
+      dryRun: job.dryRun,
+      ...job.summary,
+      retryRounds: packets.reduce((m, p) => Math.max(m, p.round ?? 0), 0),
+      relayedPackets: packets.filter((p) => p.via).length,
+      noResponseNames: names('nao_respondeu'),
+      sendFailedNames: names('falha_no_envio'),
+      unverifiedNames: names('nao_verificado'),
+      sendErrors: Object.fromEntries([...errors].slice(0, 10)),
+    };
+    const bad = job.state !== 'concluido' || job.summary.noResponse + job.summary.sendFailed > 0;
+    if (bad) this.d.logger.warn(data, 'wake job finished with machines that did not turn on');
+    else this.d.logger.info(data, 'wake job finished');
   }
 }

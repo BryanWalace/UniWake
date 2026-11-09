@@ -138,10 +138,15 @@ describe('restore (FR-014)', () => {
   });
 });
 
-/** Undoes the newest migration (008_field_fixes) so the next start has one pending. */
+/** Undoes the newest migration (010_insist) so the next start has one pending. */
 const UNDO_LATEST = [
-  'DELETE FROM schema_migrations WHERE version = 9',
-  'DROP TABLE agent_health',
+  'DELETE FROM schema_migrations WHERE version = 10',
+  'DROP TABLE wake_relays',
+  'ALTER TABLE packet_log DROP COLUMN round',
+  'ALTER TABLE packet_log DROP COLUMN via',
+  'ALTER TABLE agent_health DROP COLUMN wol_json',
+  'ALTER TABLE agent_health DROP COLUMN escalations_json',
+  'ALTER TABLE agent_health DROP COLUMN errors_json',
 ].join(';\n');
 
 describe('restore and pre-migration backups on a real hub', () => {

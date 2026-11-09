@@ -218,11 +218,33 @@ export class SqliteJobsRepo implements JobsRepo {
   logPackets(rows: readonly PacketLogRow[]): void {
     for (const r of rows) {
       this.db.run(
-        `INSERT INTO packet_log (job_id, device_id, mac, src_ip, dst_ip, port, repeat, at, outcome, error)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [r.jobId, r.deviceId, r.mac, r.srcIp, r.dstIp, r.port, r.repeat, r.at, r.outcome, r.error],
+        `INSERT INTO packet_log (job_id, device_id, mac, src_ip, dst_ip, port, repeat, at, outcome, error, round, via)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          r.jobId,
+          r.deviceId,
+          r.mac,
+          r.srcIp,
+          r.dstIp,
+          r.port,
+          r.repeat,
+          r.at,
+          r.outcome,
+          r.error,
+          r.round ?? 0,
+          r.via ?? null,
+        ],
       );
     }
+  }
+
+  hasRelayPacket(jobId: number, deviceId: number, via: string, at: number): boolean {
+    return (
+      this.db.get(
+        'SELECT 1 AS x FROM packet_log WHERE job_id = ? AND device_id = ? AND via = ? AND at = ? LIMIT 1',
+        [jobId, deviceId, via, at],
+      ) !== undefined
+    );
   }
 
   packets(jobId: number, limit: number): PacketLogRow[] {
@@ -238,6 +260,8 @@ export class SqliteJobsRepo implements JobsRepo {
         at: number;
         outcome: PacketLogRow['outcome'];
         error: string | null;
+        round: number;
+        via: string | null;
       }>('SELECT * FROM packet_log WHERE job_id = ? ORDER BY id LIMIT ?', [jobId, limit])
       .map((r) => ({
         jobId: r.job_id,
@@ -250,6 +274,8 @@ export class SqliteJobsRepo implements JobsRepo {
         at: r.at,
         outcome: r.outcome,
         error: r.error,
+        round: r.round,
+        via: r.via,
       }));
   }
 
