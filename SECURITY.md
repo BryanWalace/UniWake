@@ -48,9 +48,8 @@ que exigem desligar recursos de segurança do próprio UniWake.
 
 | Versão | Recebe correções de segurança |
 |---|---|
-| 1.7.x (em teste, ainda não publicada) | ✅ assim que for publicada |
-| 1.6.x (mais recente publicada) | ✅ |
-| 1.5.x e anteriores | ❌ — atualize para a mais recente |
+| 1.7.x (mais recente) | ✅ |
+| 1.6.x e anteriores | ❌ — atualize para a mais recente |
 
 Correções de segurança saem na versão mais recente publicada em
 [Releases](https://github.com/BryanWalace/UniWake/releases). O UniWake se atualiza sozinho dentro da

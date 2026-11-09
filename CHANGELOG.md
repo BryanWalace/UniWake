@@ -7,9 +7,9 @@ Todas as mudanças importantes do UniWake, da mais nova para a mais antiga. O fo
 
 ## [Não publicado]
 
-A 1.7.0 abaixo está na `dev`, aguardando o teste no laboratório.
+Nada por enquanto.
 
-## [1.7.0] — ainda não publicada
+## [1.7.0] — 2026-11-09
 
 Ligar e desligar garantidos. [Notas completas](specs/releases/v1.7.0.md).
 

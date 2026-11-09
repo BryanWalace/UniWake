@@ -24,7 +24,7 @@ body:
     attributes:
       label: Versão do UniWake
       description: Aparece em Saúde do sistema (o link “Relatar problema” do painel já preenche).
-      placeholder: '1.2.0'
+      placeholder: '1.7.0'
     validations:
       required: true
 
@@ -97,6 +97,8 @@ body:
       description: |
         No painel, como administrador: menu **Logs** › filtre pelo horário do problema › copie as linhas (ou **Baixar**).
         Os arquivos ficam em `C:\ProgramData\UniWake\logs`. Revise e troque IPs, MACs e nomes reais antes de colar.
+        Problema numa máquina do laboratório (não ligou, não desligou): cole também as últimas linhas de
+        `C:\ProgramData\UniWake\agent\data\agent.log` dessa máquina (ou a lista "Erros recentes do agente" da página dela).
       render: text
 
   - type: textarea
