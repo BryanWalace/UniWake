@@ -9,9 +9,22 @@ Todas as mudanças importantes do UniWake, da mais nova para a mais antiga. O fo
 
 Nada por enquanto.
 
+## [1.7.1] — 2026-11-09
+
+Correção de segurança das dependências; traz todas as novidades da 1.7.0, cujo instalador não chegou
+a ser publicado. [Notas completas](specs/releases/v1.7.1.md).
+
+### Segurança
+- Dependências do serviço atualizadas para corrigir avisos de segurança publicados depois da 1.7.0:
+  `fastify` 5.12.8 (validação de cabeçalhos), `zod` 4.6.7 (consumo de memória ao validar listas
+  grandes), `@fastify/static` 10.1.10 (`glob`/`minimatch`) e `fast-uri` 3.1.9/4.2.3. Sem mudança de
+  uso. Esses avisos travavam a verificação do CI e impediram a publicação do instalador da 1.7.0.
+
 ## [1.7.0] — 2026-11-09
 
-Ligar e desligar garantidos. [Notas completas](specs/releases/v1.7.0.md).
+Ligar e desligar garantidos. [Notas completas](specs/releases/v1.7.0.md). A tag foi criada, mas o
+instalador não foi publicado (a verificação de segurança das dependências barrou); estas novidades
+chegam pela **1.7.1**.
 
 ### Adicionado
 - **Novas tentativas para quem não ligou**: durante a verificação, as máquinas que ainda não
