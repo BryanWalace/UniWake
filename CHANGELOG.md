@@ -7,7 +7,11 @@ Todas as mudanças importantes do UniWake, da mais nova para a mais antiga. O fo
 
 ## [Não publicado]
 
-Nada por enquanto.
+### Segurança
+- Dependências do serviço atualizadas para corrigir avisos de segurança publicados depois da 1.7.0:
+  `fastify` 5.12.8 (validação de cabeçalhos), `zod` 4.6.7 (consumo de memória ao validar listas
+  grandes), `@fastify/static` 10.1.10 (`glob`/`minimatch`) e `fast-uri` 3.1.9/4.2.3. Sem mudança de
+  uso. Esses avisos travavam a verificação do CI e impediram a publicação do instalador da 1.7.0.
 
 ## [1.7.0] — 2026-11-09
 
