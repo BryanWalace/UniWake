@@ -9,7 +9,8 @@ $script:UwAgentSystemFunctions = @(
   'Get-UwFreezeInfo', 'Get-UwPowerInfo', 'Invoke-UwShutdown', 'Register-UwWakeTask',
   'Start-UwWarningTask', 'Test-UwAgentFolder', 'Register-UwRepairTask', 'Get-UwAntivirusRaw',
   'Get-UwHibernateInfo', 'Get-UwSleepKind', 'Set-UwSleepTimeout', 'Set-UwKeepAwake',
-  'Add-UwResumeTrigger'
+  'Add-UwResumeTrigger', 'Invoke-UwCimShutdown', 'Invoke-UwStopComputer', 'Send-UwMagicPacket',
+  'Get-UwWolAdapter', 'Get-UwWolState', 'Set-UwWolSetting'
 )
 
 # Fake clock (UTC ms) shared by the mocks; Wait-UwSecond advances it instantly.
@@ -43,6 +44,17 @@ function Register-UwFakeAgent {
   Mock Add-UwResumeTrigger { $script:UwFake.ResumeTrigger++ }
   Mock Set-UwKeepAwake { [void]$script:UwFake.KeepAwake.Add([bool]$On) }
   Mock Set-UwSleepTimeout { [void]$script:UwFake.SleepCalls.Add(@{ standby = $StandbyMinutes; hibernate = $HibernateMinutes; hibernation = $Hibernation }) }
+  # v1.7.0: fallbacks, relay and Wake-on-LAN only record what they were asked; the adapter is fine.
+  $script:UwFake.Cim = New-Object System.Collections.ArrayList
+  $script:UwFake.StopComputer = New-Object System.Collections.ArrayList
+  $script:UwFake.Relayed = New-Object System.Collections.ArrayList
+  $script:UwFake.WolSets = New-Object System.Collections.ArrayList
+  Mock Invoke-UwCimShutdown { [void]$script:UwFake.Cim.Add($Flags); 0 }
+  Mock Invoke-UwStopComputer { [void]$script:UwFake.StopComputer.Add([bool]$Restart) }
+  Mock Send-UwMagicPacket { [void]$script:UwFake.Relayed.Add(@{ Mac = $Mac; Ports = @($Ports) }); 6 * @($Ports).Count }
+  Mock Get-UwWolAdapter { @{ Name = 'Ethernet'; Description = 'Intel(R) Ethernet Connection I219-LM' } }
+  Mock Get-UwWolState { @{ magic = 'Enabled'; armed = $true; hiberboot = 0; advanced = @() } }
+  Mock Set-UwWolSetting { [void]$script:UwFake.WolSets.Add(@{ Item = $Item; Keyword = $Keyword; Value = $Value }) }
   if ($Root) {
     $script:UwAgentDir = Join-Path $Root 'agent'
     $script:UwDataDir = Join-Path $Root 'agent\data'

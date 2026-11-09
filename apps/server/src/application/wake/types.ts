@@ -41,6 +41,10 @@ export interface PacketLogRow {
   at: number;
   outcome: 'sent' | 'error' | 'dry_run';
   error: string | null;
+  /** v1.7.0 (FR-701): 0 = first attempt, 1.. = the retry rounds. Absent = 0. */
+  round?: number;
+  /** v1.7.0 (FR-701.3): the awake lab PC that sent it on the hub's request; absent = this hub. */
+  via?: string | null;
 }
 
 export interface JobDeviceRow extends WakeJobDevice {
@@ -77,6 +81,8 @@ export interface JobsRepo {
   ): void;
   markSent(jobId: number, deviceIds: readonly number[], at: number): void;
   logPackets(rows: readonly PacketLogRow[]): void;
+  /** FR-701.3: true when a relayed packet with this job, machine, sender and time is already logged. */
+  hasRelayPacket?(jobId: number, deviceId: number, via: string, at: number): boolean;
   packets(jobId: number, limit: number): PacketLogRow[];
   /** Devices still waiting in jobs that are not finished (SR-11). */
   activeDeviceJobs(): Map<number, number>;

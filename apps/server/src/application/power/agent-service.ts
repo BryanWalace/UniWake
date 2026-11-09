@@ -113,6 +113,12 @@ export interface StoredHealth {
   antivirusAt: number | null;
   alert: { file: string; at: number } | null;
   power: NonNullable<AgentHealth['power']> | null;
+  /** v1.7.0 (FR-702): the last Wake-on-LAN check of the machine. */
+  wol?: NonNullable<AgentHealth['wol']> | null;
+  /** v1.7.0 (FR-703.2): the last forced shutdowns/restarts (newest last). */
+  escalations?: NonNullable<AgentHealth['escalations']>;
+  /** v1.7.0 (FR-704.3): the last agent errors (newest last). */
+  errors?: NonNullable<AgentHealth['errors']>;
   receivedAt: number;
 }
 
@@ -145,6 +151,13 @@ export interface AgentServiceDeps {
   onHealth?: (deviceId: number, before: StoredHealth | null, now: AgentHealth, at: number) => void;
   /** v1.6.0 (FR-603.4): an alert of the repair task. */
   onAlert?: (deviceId: number, alert: AgentAlert) => void;
+  /** v1.7.0 (FR-701.3): relay requests for this PC and what it reports it sent. */
+  relay?: {
+    forAgent(deviceId: number): CheckinAnswer['wake'];
+    onReported(deviceId: number, reports: NonNullable<AgentHealth['relays']>): void;
+  };
+  /** v1.7.0 (FR-704.2): the machine's name for log lines (a log with only ids helps nobody). */
+  deviceName?: (deviceId: number) => string | null;
 }
 
 const COARSE_MS = 30 * 60_000;
@@ -228,8 +241,9 @@ export class AgentService {
       this.d.store.ackOrders(deviceId, req.ackedOrders, now, hub.instanceId);
       const acked: string[] = [];
       for (const r of req.reports) {
-        this.d.store.insertReport(deviceId, r, now);
+        const fresh = this.d.store.insertReport(deviceId, r, now);
         acked.push(r.uuid);
+        if (fresh) this.logReport(deviceId, r);
         if (r.order !== null) {
           // ADR-053: the occurrence already ran from the agenda: the order is done, not failed.
           const state =
@@ -300,6 +314,18 @@ export class AgentService {
       } catch (e) {
         this.d.logger?.error({ err: e, deviceId }, 'agent health notice failed');
       }
+      this.logHealth(deviceId, before, req.health);
+      try {
+        this.d.relay?.onReported(deviceId, req.health.relays ?? []);
+      } catch (e) {
+        this.d.logger?.error({ err: e, deviceId }, 'could not record relayed magic packets');
+      }
+    }
+    let wake: CheckinAnswer['wake'];
+    try {
+      wake = this.d.relay?.forAgent(deviceId);
+    } catch (e) {
+      this.d.logger?.error({ err: e, deviceId }, 'could not read relay requests');
     }
     const agenda = this.d.agenda.forDevice(deviceId);
     if (!agenda) throw new AppError('AGENT_TOKEN_INVALID'); // device deleted meanwhile
@@ -356,8 +382,61 @@ export class AgentService {
       ackReports,
       newToken,
       features: ['health'],
-      power: { preventSleep: this.d.settings.get('power.preventSleep') },
+      power: {
+        preventSleep: this.d.settings.get('power.preventSleep'),
+        keepWakeOnLan: this.d.settings.get('power.keepWakeOnLan'),
+      },
+      ...(wake ? { wake } : {}),
     };
+  }
+
+  private who(deviceId: number) {
+    return { deviceId, device: this.d.deviceName?.(deviceId) ?? null };
+  }
+
+  /** FR-704.2: a report that did not run as planned is a warning in the hub log, once. */
+  private logReport(deviceId: number, r: AgentReport) {
+    const data = {
+      ...this.who(deviceId),
+      action: r.action,
+      outcome: r.outcome,
+      reason: r.reason,
+      detail: r.detail,
+      order: r.order,
+      occurrence: r.occurrence,
+    };
+    if (r.outcome === 'failed') this.d.logger?.warn(data, 'agent could not shut the machine down');
+    else if (r.outcome === 'done') this.d.logger?.info(data, 'agent ran the shutdown');
+    else this.d.logger?.info(data, 'agent did not run the shutdown');
+  }
+
+  /**
+   * FR-704.2/704.3: agent errors, forced shutdowns and Wake-on-LAN settings that a driver turned
+   * off (or that could not be turned back on) go to the hub log with the machine's name.
+   */
+  private logHealth(deviceId: number, before: StoredHealth | null, h: AgentHealth) {
+    const who = this.who(deviceId);
+    for (const e of h.errors ?? []) {
+      this.d.logger?.warn({ ...who, at: e.at, where: e.where, error: e.message }, 'agent error');
+    }
+    for (const x of h.escalations ?? []) {
+      this.d.logger?.warn(
+        { ...who, at: x.at, action: x.action, attempt: x.attempt, method: x.method, code: x.code },
+        'agent forced the shutdown: the machine was still on',
+      );
+    }
+    if (h.wol && h.wol.at !== before?.wol?.at) {
+      const bad = h.wol.items.filter((i) => i.state === 'fixed' || i.state === 'failed');
+      if (bad.length > 0) {
+        const failed = bad.some((i) => i.state === 'failed');
+        this.d.logger?.[failed ? 'warn' : 'info'](
+          { ...who, trigger: h.wol.trigger, adapter: h.wol.adapter, items: bad },
+          failed
+            ? 'Wake-on-LAN settings of the machine could not be turned back on'
+            : 'agent turned Wake-on-LAN settings back on',
+        );
+      }
+    }
   }
 
   /** FR-603.4: the repair task of this machine could not restore its agent. */

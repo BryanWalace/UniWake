@@ -4,7 +4,9 @@ import {
   AGENT_READINESS_LABELS,
   type AgentHealthView,
   type DeviceAgentInfo,
+  ESCALATION_METHOD_LABEL,
   UPDATE_OUTCOME_LABEL,
+  WOL_ITEM_LABEL,
   FREEZE_STATE_LABELS,
   type FreezeState,
 } from '@uniwake/shared';
@@ -174,6 +176,78 @@ function AgentAlerts({ health: h }: { health: AgentHealthView | null }) {
   );
 }
 
+const WOL_TRIGGER = {
+  boot: 'ao iniciar',
+  periodic: 'na conferência periódica',
+  before_shutdown: 'antes de desligar',
+} as const;
+
+/** v1.7.0 (FR-702.2): "Ligar pela rede" as the agent last checked it. */
+export function wolText(w: NonNullable<AgentHealthView['wol']>): string {
+  const when = `${WOL_TRIGGER[w.trigger]}, ${formatDateTime(w.at)}`;
+  if (w.adapter === null) return `nenhuma placa com fio conectada (${when})`;
+  const failed = w.items.filter((i) => i.state === 'failed');
+  const fixed = w.items.filter((i) => i.state === 'fixed');
+  const parts: string[] = [];
+  if (failed.length > 0) {
+    parts.push(
+      `não foi possível ativar: ${failed.map((i) => `${WOL_ITEM_LABEL[i.item]}${i.detail ? ` (${i.detail})` : ''}`).join('; ')}`,
+    );
+  }
+  if (fixed.length > 0)
+    parts.push(`reativado: ${fixed.map((i) => WOL_ITEM_LABEL[i.item]).join(', ')}`);
+  if (parts.length === 0) parts.push('tudo ativado');
+  return `${parts.join(' · ')} (${when})`;
+}
+
+/** v1.7.0 (FR-703.3, FR-704.3): forced shutdowns and the last errors of the agent log. */
+function AgentProblems({ health: h }: { health: AgentHealthView | null }) {
+  const escalations = [...(h?.escalations ?? [])].reverse();
+  const errors = [...(h?.errors ?? [])].reverse();
+  if (escalations.length === 0 && errors.length === 0) return null;
+  return (
+    <div className="space-y-2 text-sm">
+      {escalations.length > 0 && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-950">
+          <p className="font-semibold">Desligamentos que o agente teve de forçar</p>
+          <p>
+            A máquina continuava ligada alguns minutos depois do horário (alguém cancelou, um
+            programa ou uma atualização segurou o Windows).
+          </p>
+          <ul className="ml-5 list-disc">
+            {escalations.slice(0, 5).map((x) => (
+              <li key={`${x.at}:${x.attempt}`}>
+                {formatDateTime(x.at)} — {x.action === 'restart' ? 'reiniciar' : 'desligar'},
+                tentativa {x.attempt}: {ESCALATION_METHOD_LABEL[x.method]}
+                {x.code !== null && x.code !== 0 ? ` (código ${x.code})` : ''}
+                {x.detail ? ` — ${x.detail}` : ''}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {errors.length > 0 && (
+        <details className="rounded-md border border-slate-200 bg-slate-50 p-2">
+          <summary className="cursor-pointer font-semibold">
+            Erros recentes do agente ({errors.length})
+          </summary>
+          <ul className="mt-1 ml-5 list-disc">
+            {errors.map((e) => (
+              <li key={`${e.at}:${e.where}:${e.message}`}>
+                {formatDateTime(e.at)} — <span className="font-medium">{e.where}</span>: {e.message}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-slate-700">
+            O registro completo fica na máquina, em{' '}
+            <code>C:\ProgramData\UniWake\agent\data\agent.log</code>.
+          </p>
+        </details>
+      )}
+    </div>
+  );
+}
+
 function AgentDetails({ agent: a }: { agent: DeviceAgentInfo }) {
   const offsetMin = a.clockOffsetMs === null ? 0 : Math.round(a.clockOffsetMs / 60_000);
   const rows: [string, string][] = [
@@ -247,6 +321,7 @@ function AgentDetails({ agent: a }: { agent: DeviceAgentInfo }) {
       ]);
     }
   }
+  if (h?.wol) rows.push(['Ligar pela rede', wolText(h.wol)]);
   if (Math.abs(offsetMin) >= 2) {
     rows.push([
       'Relógio da máquina',
@@ -293,6 +368,7 @@ function AgentDetails({ agent: a }: { agent: DeviceAgentInfo }) {
         </div>
       )}
       <AgentAlerts health={h} />
+      <AgentProblems health={h} />
       {a.readiness !== 'needs_preparation' && (
         <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
           {rows.map(([k, v]) => (

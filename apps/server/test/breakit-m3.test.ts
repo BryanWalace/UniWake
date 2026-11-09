@@ -108,7 +108,8 @@ describe('M3-D: malformed requests', () => {
 describe('M3-D: scale (NFR-01)', () => {
   it('a 500-device job sends and logs every packet quickly in CPU time', async () => {
     const { h, room, wake, job } = await setup(500);
-    h.services.settings.update({ 'wake.confirmThreshold': 1000 }, null);
+    // The first attempt only (v1.7.0 retry rounds would multiply the count; wake-insist tests them).
+    h.services.settings.update({ 'wake.confirmThreshold': 1000, 'wake.retryRounds': 0 }, null);
     const started = performance.now();
     const { jobId } = (await wake({ target: { type: 'rooms', roomIds: [room] } })).json<{
       jobId: number;

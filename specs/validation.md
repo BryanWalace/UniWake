@@ -350,3 +350,30 @@ on after it is no longer shut down (`was_off`), the panel shows that case as "es
 window keeps one `alive` file, and `-RemoveAgent` also removes "UniWake Reparo".
 
 Verdict: no open CRITICAL/MAJOR. Merged `dev` → `main` on the owner's request (2026-10-18); **no tag**.
+
+## v1.8 (product 1.7.0 "Ligar e desligar garantidos", spec §6f) — V8-T01
+
+Date: 2026-11-08. Every §6f AC has an automated test (`npm run check:trace`: 238/238).
+
+| AC | Evidence |
+|---|---|
+| AC-701-01 | `wake-insist.test.ts`: rounds 0..3 one minute apart, unicast from round 1, 66 packets; stop after the machine answers |
+| AC-701-02 | `wake-insist.test.ts`: `unicastRoutes` subnet/gateway/APIPA/loopback |
+| AC-701-03 | `wake-insist.test.ts`: only the 1.8.0 neighbour of the room is asked, once, in the signed answer; report → packet log once with `via`; dry-run and setting off |
+| AC-701-04 | `agent-insist.Tests.ps1`: valid MACs broadcast on the given ports, invalid skipped, send error noted |
+| AC-702-01 | `agent-insist.Tests.ps1`: items turned back on, failed with reason, no wired adapter, due at boot/6 h/before shutdown |
+| AC-702-02 | `agent-insist-hub.test.ts` + `device-page.test.tsx`: stored, shown, logged once, kept when absent |
+| AC-703-01 | `agent-insist.Tests.ps1` + `agent-executor.Tests.ps1`: 1190/1115, CIM, Stop-Computer, restart flags, all failing → failed with every reason |
+| AC-703-02 | `agent-insist.Tests.ps1`: full run sequence (grace, 3 forced attempts, give up), new boot, unknown boot, no heartbeat (Fast Startup), restart |
+| AC-703-03 | `agent-insist-hub.test.ts` + `device-page.test.tsx`: last 10 kept, shown, warn per attempt |
+| AC-704-01 | `crash-guard.test.ts`: fatal line read by the Logs reader + exit 1; rejection logged without exit; unclean stop on a real hub |
+| AC-704-02 | `wake-insist.test.ts` + `agent-insist-hub.test.ts`: wake outcome warn with names; agent errors, failed report once |
+| AC-704-03 | `agent-insist.Tests.ps1`: log lines, rotation, last 10 to the hub, clearing by count, once per hour, hub down once |
+
+Package-level: `npm run verify` green (lint, format, typecheck, 1060+ tests with coverage, perf, deps,
+docs, trace); `scripts/test-ps.ps1` 142 Pester tests + PSScriptAnalyzer clean.
+
+### Not verified (field)
+- CIM `Win32Shutdown` as SYSTEM on the lab model (Stop-Computer follows if it fails).
+- Relay through a neighbour across the college's real switches/VLANs.
+- `Set-NetAdapterAdvancedProperty -NoRestart` on the lab NIC driver (takes effect at the next boot).

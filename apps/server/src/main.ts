@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { resolvePrepareScriptPath } from './adapters/prepare-script';
 import { resolveAgentScriptsDir } from './adapters/agent-scripts';
+import { installProcessGuards } from './adapters/crash-guard';
 import { GitHubReleaseSource } from './adapters/github-release-source';
 import { resolveOuiPath } from './adapters/oui-file';
 import { GitHubTimeCheck } from './adapters/github-time';
@@ -160,6 +161,8 @@ export async function main(argv: readonly string[], opts: MainOptions = {}): Pro
           }),
     });
     await hub.start();
+    // FR-704.1 (ADR-066): nothing that goes wrong in the process is lost any more.
+    installProcessGuards(process, hub.logger, hub.crashGuard, (code) => process.exit(code));
 
     await new Promise<void>((resolve) => {
       let stopping = false;

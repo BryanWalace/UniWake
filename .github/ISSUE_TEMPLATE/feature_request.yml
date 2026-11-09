@@ -43,4 +43,4 @@ body:
     id: version
     attributes:
       label: Versão do UniWake que você usa
-      placeholder: '1.2.0'
+      placeholder: '1.7.0'

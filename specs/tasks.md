@@ -516,3 +516,42 @@ Owner request 2026-10-16 after the v1.5.0 field log; Phase 15.
 |---|---|---|---|
 | [x] V7-T01 | Walk the §6e ACs; package smoke with the real PowerShell agent; `validation.md` §v1.7. | FR-601..605 | validation |
 | [x] V7-T02 | Owner checklist (pt-BR, NEXT.md): exclusions, update/repair, antivirus, hibernation. | — | checklist |
+
+# v1.7.0 "Ligar e desligar garantidos" (spec §6f, ADR-063..066)
+Owner request 2026-11-08 ("garantir que ligue e desligue; o log não capta os erros"); Phase 17.
+
+## M31 — A wake that insists
+| ID | Task | Refs | Tests | Done when |
+|---|---|---|---|---|
+| [x] M31-T01 | Retry rounds in the verification window, round in the packet log (migration 010), unicast to the last IP from round 1. | FR-701.1, FR-701.2; ADR-063 | AC-701-01, AC-701-02 | — |
+| [x] M31-T02 | Relay through awake agents: peer choice, `wake_relays`, `wake` in the signed answer, `health.relays` into the packet log. | FR-701.3; ADR-063 | AC-701-03 | — |
+| [x] M31-T03 | Agent 1.8.0: broadcast the requested MACs and report them. | FR-701.3 | AC-701-04 (Pester) | — |
+| [x] M31-T04 | Job page: attempt and neighbour per packet; settings in Configurações → Ligar. | FR-701.4 | typecheck/UI | — |
+| [x] M31-R | Review → `specs/reviews/M31-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+
+## M32 — Wake-on-LAN kept armed
+| ID | Task | Refs | Tests | Done when |
+|---|---|---|---|---|
+| [x] M32-T01 | Agent: check and turn back on the NIC wake settings and Fast Startup (boot, 6 h, before shutdown). | FR-702.1; ADR-065 | AC-702-01 (Pester) | — |
+| [x] M32-T02 | Hub: store, show ("Ligar pela rede") and log the check; `power.keepWakeOnLan`. | FR-702.2 | AC-702-02 | — |
+
+## M33 — A shutdown that insists
+| ID | Task | Refs | Tests | Done when |
+|---|---|---|---|---|
+| [x] M33-T01 | Agent: fallback chain (1190/1115, CIM, Stop-Computer). | FR-703.1; ADR-064 | AC-703-01 (Pester) | — |
+| [x] M33-T02 | Agent: watchdog that forces a shutdown that did not happen. | FR-703.2; ADR-064 | AC-703-02 (Pester) | — |
+| [x] M33-T03 | Hub: forced shutdowns stored, shown and logged. | FR-703.3 | AC-703-03 | — |
+
+## M34 — Errors are never silent
+| ID | Task | Refs | Tests | Done when |
+|---|---|---|---|---|
+| [x] M34-T01 | Hub process guards, synchronous fatal line, unclean-stop marker with the service error log. | FR-704.1; ADR-066 | AC-704-01 | — |
+| [x] M34-T02 | Hub log lines: wake outcome, retry rounds, relays, agent reports, errors, escalations, WoL. | FR-704.2 | AC-704-02 | — |
+| [x] M34-T03 | Agent log, former silent catches, errors to the hub, hub down/up. | FR-704.3; ADR-066 | AC-704-03 (Pester) | — |
+| [x] M34-R | Review of M32–M34 → `specs/reviews/M34-review.md`. | §9 DoD | — | no open CRITICAL/MAJOR |
+
+## Phase 18 — Validate v1.7.0
+| ID | Task | Refs | Evidence |
+|---|---|---|---|
+| [x] V8-T01 | Walk the §6f ACs (Vitest + Pester); `validation.md` §v1.8. | FR-701..704 | validation |
+| [x] V8-T02 | Owner checklist (pt-BR, NEXT.md): wake retries and neighbours, WoL kept armed, forced shutdown, logs. | — | checklist |

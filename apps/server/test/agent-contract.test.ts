@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   agendaSchema,
+  agentHealthSchema,
   agentOrderSchema,
   checkinAnswerSchema,
   checkinRequestSchema,
@@ -23,6 +24,30 @@ const fixture = (name: string): Record<string, unknown> =>
 
 const request = () => fixture('checkin-request.json');
 const answer = () => fixture('checkin-answer.json');
+
+describe('agent contract v1.8.0 health (spec §6f)', () => {
+  it('the 1.8.0 health fixture keeps every new field (relays, wol, escalations, errors) and a 1.6.0 health still parses', () => {
+    const h = fixture('checkin-health-v18.json');
+    const parsed = agentHealthSchema.parse(h);
+    expect(parsed).toEqual(h);
+    expect(agentHealthSchema.safeParse(fixture('checkin-health.json')).success).toBe(true);
+    expect(checkinRequestSchema.safeParse({ ...request(), health: h }).success).toBe(true);
+  });
+
+  it('the answer may carry neighbour MACs to wake (canonical form only) and keepWakeOnLan', () => {
+    const a = answer();
+    const wake = { ports: [9, 7], macs: ['00:AA:00:00:00:01'] };
+    expect(checkinAnswerSchema.safeParse({ ...a, wake }).success).toBe(true);
+    expect(
+      checkinAnswerSchema.safeParse({ ...a, wake: { ports: [9], macs: ['00-aa-00-00-00-01'] } })
+        .success,
+    ).toBe(false);
+    expect(
+      checkinAnswerSchema.safeParse({ ...a, power: { preventSleep: false, keepWakeOnLan: true } })
+        .success,
+    ).toBe(true);
+  });
+});
 
 describe('agent contract fixtures (protocol 1)', () => {
   it('the request and answer fixtures follow the contract', () => {

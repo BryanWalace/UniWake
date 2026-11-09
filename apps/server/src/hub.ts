@@ -11,6 +11,7 @@ import { NodeFileSystem } from './adapters/node-fs';
 import { OuiFile } from './adapters/oui-file';
 import { PrepareScriptFile } from './adapters/prepare-script';
 import { createFileLogger } from './adapters/logger';
+import { CrashGuard } from './adapters/crash-guard';
 import { JsonConfigFile } from './adapters/config-file';
 import { applyPendingRestore, snapshotBefore } from './db/backups';
 import { baselineChangeLog, changeLog, configureChangeLog } from './db/sync/change-log';
@@ -109,6 +110,8 @@ export interface HubOptions {
 }
 
 export interface Hub {
+  /** v1.7.0 (FR-704.1): the unclean-stop marker and the synchronous fatal log line. */
+  readonly crashGuard: CrashGuard;
   readonly db: Db;
   readonly services: Services;
   readonly panel: FastifyInstance;
@@ -399,6 +402,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
 
   let started = false;
   let demoAgents: DemoAgentsService | null = null;
+  const crashGuard = new CrashGuard(paths.logs);
 
   async function listen(app: FastifyInstance, name: string, host: string, port: number) {
     try {
@@ -416,6 +420,7 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
   }
 
   const hub: Hub = {
+    crashGuard,
     db,
     services,
     panel: panel,
@@ -472,6 +477,15 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
         }
         if (seeded) logger.info({ ...seeded }, 'demo data seeded');
       }
+      // FR-704.1: the previous run did not stop cleanly (crash, power cut, killed): say so.
+      const previous = crashGuard.previousRun();
+      if (previous) {
+        logger.warn(
+          { ...previous, serviceLog: join(paths.logs, 'service') },
+          'the previous run of the hub did not stop cleanly (crash, power cut or killed)',
+        );
+      }
+      crashGuard.markRunning(APP_VERSION, clock.now());
       services.runner.recover();
       services.testWol.recover();
       // Before the first scheduler tick: team mode changes how missed runs are handled (FR-204.2).
@@ -525,7 +539,10 @@ export async function createHub(opts: HubOptions): Promise<Hub> {
       await sender.close();
       icmpHelper?.close();
       db.close();
-      if (started) logger.info({}, 'UniWake hub stopped');
+      if (started) {
+        logger.info({}, 'UniWake hub stopped');
+        crashGuard.markStopped();
+      }
       started = false;
       await fileLogger?.close();
     },

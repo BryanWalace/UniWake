@@ -74,6 +74,8 @@ describe('wake engine end to end (FR-003)', () => {
 
   it('AC-003-02 / AC-003-12 every device gets limited + subnet broadcast on ports 9 and 7, 3 repeats, all logged', async () => {
     const w = await world();
+    // The first attempt only; the v1.7.0 retry rounds have their own tests (wake-insist).
+    w.h.services.settings.update({ 'wake.retryRounds': 0 }, null);
     const { jobId } = (
       await wake(w, { target: { type: 'devices', deviceIds: [w.A[0]!.id] } })
     ).json<{ jobId: number }>();

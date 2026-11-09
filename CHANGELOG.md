@@ -9,6 +9,36 @@ Todas as mudanças importantes do UniWake, da mais nova para a mais antiga. O fo
 
 Nada por enquanto.
 
+## [1.7.0] — 2026-11-09
+
+Ligar e desligar garantidos. [Notas completas](specs/releases/v1.7.0.md).
+
+### Adicionado
+- **Novas tentativas para quem não ligou**: durante a verificação, as máquinas que ainda não
+  responderam recebem o pacote de novo a cada minuto (até 3 vezes), agora também com um envio direto
+  ao último IP conhecido. Configurável em **Configurações → Ligar**.
+- **Máquinas vizinhas mandam o pacote**: até 3 máquinas preparadas e ligadas da mesma sala (ou da
+  mesma rede) recebem o pedido na consulta seguinte e mandam o pacote de ligar de dentro da rede delas
+  — passa por roteadores e switches que bloqueiam o pacote vindo do PC do UniWake.
+- O agente **reativa o "ligar pela rede"** (Magic Packet, ligar a partir do desligamento, Ethernet
+  com eficiência energética desligada, Inicialização rápida desligada) ao iniciar, a cada 6 horas e
+  logo antes de cada desligamento; a página da máquina mostra o resultado em **Ligar pela rede**.
+- **Desligamento que insiste**: se o Windows recusar o desligamento (por exemplo, código 1190 — já
+  havia um desligamento agendado), o agente cancela e pede de novo, ou usa outro caminho (CIM,
+  Stop-Computer). Se a máquina continuar ligada 3 minutos depois do horário, o agente **força o
+  desligamento** (até 3 tentativas) e a página da máquina lista em "Desligamentos que o agente teve de
+  forçar".
+- **Erros que aparecem**: o agente grava `agent.log` na máquina e manda os últimos erros ao UniWake
+  (página da máquina → "Erros recentes do agente" e **Logs**). O **Logs** do serviço registra cada
+  ligação com as máquinas que não ligaram e o motivo, cada nova tentativa, os relatórios de
+  desligamento que falharam e as falhas do próprio serviço (inclusive quando ele parou de repente).
+- A página da ligação mostra a **tentativa** de cada pacote e quais saíram por uma máquina vizinha.
+
+### Alterado
+- O agente das máquinas passa para a versão **1.8.0** (chega sozinho às máquinas preparadas).
+- Uma falha no aviso do Windows (sem a janela do UniWake) não cancela mais o desligamento: ele
+  acontece no horário.
+
 ## [1.6.0] — 2026-10-18
 
 Máquinas que se atualizam e avisam. [Notas completas](specs/releases/v1.6.0.md).

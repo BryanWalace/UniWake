@@ -183,6 +183,33 @@ export const SETTING_DEFS = {
     min: 1,
     max: 60,
   }),
+  // v1.7.0 (FR-701, ADR-063): a wake insists on the machines that did not answer yet.
+  'wake.retryRounds': def(int(0, 10), 3, {
+    group: 'wake',
+    scope: 'shared',
+    label: 'Novas tentativas para quem não ligou',
+    help: 'Durante a verificação, as máquinas que ainda não responderam recebem o pacote de novo (com unicast para o último IP e pelas máquinas vizinhas já ligadas). 0 = só a primeira tentativa.',
+    input: 'number',
+    unit: 'tentativas',
+    min: 0,
+    max: 10,
+  }),
+  'wake.retryIntervalSeconds': def(int(15, 600), 60, {
+    group: 'wake',
+    scope: 'shared',
+    label: 'Intervalo entre as novas tentativas',
+    input: 'number',
+    unit: 's',
+    min: 15,
+    max: 600,
+  }),
+  'wake.peerRelay': def(z.boolean(), true, {
+    group: 'wake',
+    scope: 'shared',
+    label: 'Pedir às máquinas vizinhas já ligadas que também enviem o pacote',
+    help: 'Nas novas tentativas, até 3 máquinas preparadas e ligadas da mesma sala (ou da mesma rede) enviam o pacote de dentro da rede delas. Ajuda quando o roteador ou o switch bloqueia o pacote vindo do PC do UniWake.',
+    input: 'boolean',
+  }),
   'wake.dryRun': def(z.boolean(), false, {
     group: 'wake',
     scope: 'machine',
@@ -439,6 +466,14 @@ export const SETTING_DEFS = {
     scope: 'shared',
     label: 'Impedir suspensão e hibernação nas máquinas',
     help: 'O agente desliga a suspensão e a hibernação automáticas (na tomada) e a hibernação do Windows, o que também desliga a Inicialização rápida. Ao desmarcar, os valores de antes voltam.',
+    input: 'boolean',
+  }),
+  // v1.7.0 (FR-702, ADR-065): the agent keeps the Wake-on-LAN settings the preparation made.
+  'power.keepWakeOnLan': def(z.boolean(), true, {
+    group: 'power',
+    scope: 'shared',
+    label: 'Manter o "ligar pela rede" ativado nas máquinas',
+    help: 'Ao iniciar, a cada 6 horas e logo antes de cada desligamento, o agente confere a placa de rede (Magic Packet, ligar a partir do desligamento, Ethernet com eficiência energética desligada) e a Inicialização rápida, e reativa o que uma atualização de driver ou do Windows desligou.',
     input: 'boolean',
   }),
   // Enrollment

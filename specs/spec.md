@@ -1,12 +1,12 @@
 # UniWake — Specification
 
-Version: **1.7** · Date: 2026-10-17 · Owner: Architect
+Version: **1.8** · Date: 2026-11-08 · Owner: Architect
 History: v0.1 draft → reviewed in `specs/reviews/phase-1-*.md` → consolidated as v1.0 → v1.1
 (Phase 2: AC-001-13/14, FR-004.7) → v1.2 (Phase 6, `specs/reviews/phase-6-*.md`: FR-017 sync-ready
 data from `.agents/07-roadmap-features.md` §A, AC-005-12, FR-012/FR-014 additions) → v1.3 (Phase 7,
 `specs/reviews/phase-7-*.md`: §6a v1.2 Modo equipe, FR-201..207) → v1.4 (Phase 9,
 `specs/reviews/phase-9-*.md`: §6b v1.3 Desligar, FR-301..311, replaces RM-2) → v1.5 (Phase 11,
-`specs/reviews/phase-11-*.md`: §6c v1.4 Backup e migração, FR-401..407) → v1.6 (Phase 13, field fixes: §6d FR-501..504) → v1.7 (Phase 15: §6e product v1.6, FR-601..605).
+`specs/reviews/phase-11-*.md`: §6c v1.4 Backup e migração, FR-401..407) → v1.6 (Phase 13, field fixes: §6d FR-501..504) → v1.7 (Phase 15: §6e product v1.6, FR-601..605) → v1.8 (Phase 17: §6f product v1.7, FR-701..704, ADR-063..066).
 Sources: `.agents/01-project-brief.md`, `.agents/07-roadmap-features.md`, `specs/constitution.md`, `specs/improvements.md`,
 `specs/decisions.md`.
 
@@ -1401,6 +1401,107 @@ Fast Startup), saving the previous values, and restores them when the setting is
   none.
 - AC-605-03: Given `power.preventSleep` turned on and then off, Then the agent applies the AC timeouts
   and hibernation off, then restores the saved values (powercfg calls asserted, nothing real run).
+
+## 6f. v1.7 "Ligar e desligar garantidos" (ADR-063..066)
+
+Owner request 2026-11-08: "it turns on some computers and others not", "I want turning on — and the
+scheduled shutdown — to be guaranteed: if one way did not work, use another until it works", and "the
+log does not seem to catch the errors, I am blind". Research: the wake-up proxy of Configuration
+Manager (an awake peer of the subnet sends the packet), unicast WoL to the last IP, retry bursts for
+NICs and switch ports that arm late (EEE/Green Ethernet), driver updates that reset WoL settings,
+`shutdown.exe` exit codes 1190/1115, and Node 24 exiting on unhandled rejections without a log line.
+Program version 1.7.0; agent 1.8.0.
+
+### FR-701 A wake insists until the machine answers
+**FR-701.1** While a wake job verifies, the machines still waiting get retry rounds every
+`wake.retryIntervalSeconds` (default 60 s, 15–600), up to `wake.retryRounds` (default 3, 0–10),
+staggered as the first attempt. Every packet records its round (0 = first). A round that cannot send
+(no interface, socket error) is logged and never fails the job; a machine that answers gets no further
+round.
+**FR-701.2** From round 1 every machine with a last known IPv4 also gets a unicast to it — from the
+interface on its subnet, else from an interface with a gateway; never to loopback or APIPA.
+**FR-701.3** "Pedir às máquinas vizinhas" (`wake.peerRelay`, default on): from round 1, up to 3 ready
+lab PCs whose agent is 1.8.0 or later and checked in during the last 3 minutes — same room first, then
+the same /24 as the target's last IP, freshest first — get the target's MAC in their next signed
+check-in answer (`wake: {ports, macs}`, ≤ 50 canonical MACs, each request delivered once, expiring
+after 2 minutes). The agent broadcasts the magic packet from each interface with a gateway (limited
+and subnet broadcast, 3 times per port) and reports `health.relays` (`mac`, `at`, `sent`, `error`); the
+hub logs each in the job's packet log with `via` = that PC (once, even if the report is re-sent). Never
+in dry-run or demo mode.
+**FR-701.4** The job page shows each packet's attempt and, for relayed ones, the neighbour.
+
+### FR-702 Machines keep Wake-on-LAN armed
+**FR-702.1** At start-up (a new boot time), every 6 hours and right before each shutdown/restart it
+runs, the agent checks the wired adapter with the default route — power management "Magic Packet",
+the device armed for wake, Fast Startup off, and the advanced properties Wake on Magic Packet and
+Shutdown Wake-On-LAN (on) and EEE/Green Ethernet (off) — and turns back on what is off, without
+restarting the adapter. Each item is `ok`, `fixed`, `failed` (with the reason) or `unsupported`; no
+wired adapter is an error. Setting `power.keepWakeOnLan` (default on) travels in the signed answer.
+**FR-702.2** The hub keeps the last check per machine (a check without `wol` keeps it), the device
+page shows "Ligar pela rede" (all on / turned back on / could not turn on + reason), and the hub logs
+turned-on items at info and failed ones at warn, once per check.
+
+### FR-703 A shutdown insists until the machine is off
+**FR-703.1** `shutdown.exe` exit 1190 (a shutdown already scheduled) → `shutdown /a` and once more;
+1115 (already shutting down) is done. Any other failure of the final shutdown falls back to CIM
+`Win32Shutdown` forced, then `Stop-Computer`/`Restart-Computer -Force`; the report detail names the
+method and the codes. When every method fails the report is `failed` with all reasons. The native
+warning (no window) does not fall back: the shutdown happens at its time through the chain.
+**FR-703.2** After a run reported done, the agent watches it: the same boot time 3 minutes after the
+shutdown time → forced (attempt 1 `shutdown /f /t 0`, 2 CIM forced power-off/reboot, 3
+`Stop-Computer -Force`), one attempt per run, never after 30 minutes; a new boot time ends the watch,
+an unknown boot time never forces. Each attempt goes to the agent log and to `health.escalations`.
+**FR-703.3** The hub appends the forced shutdowns (the last 10), logs each at warn with the machine
+name, and the device page lists them.
+
+### FR-704 Errors are never silent
+**FR-704.1** Hub process: an unhandled promise rejection is logged at error and the hub keeps running;
+an uncaught exception is written synchronously as a `fatal` line to `uniwake.log` before exiting 1 (the
+service restarts it); Node warnings are logged. A start after a run that did not stop cleanly logs it
+at warn with the last lines of the service wrapper's error log.
+**FR-704.2** Hub log lines with the machine's name: each finished wake job (warn when machines did not
+turn on: names, retry rounds, relayed packets, send errors), each retry round and relay request,
+agent reports (`failed` at warn with the detail, once), agent errors, forced shutdowns and WoL changes.
+**FR-704.3** Agent: `agent\data\agent.log` (512 KB + one previous file); every error the agent used to
+swallow is an `ERRO` line; the last 10 errors go to the hub in `health.errors` and are cleared only
+after a hub took them (errors logged meanwhile stay); the hub keeps the last 20 per machine for the
+device page ("Erros recentes do agente"). A hub that stops answering is logged once, and again when it
+answers.
+
+### Acceptance criteria
+- AC-701-01: Given a machine that never answers and the defaults, Then it gets rounds 0..3 one minute
+  apart, round 0 only broadcasts and rounds 1..3 also the unicast to its IP, all in the packet log;
+  given it answers after round 1, Then no round 2 is sent.
+- AC-701-02: Given interfaces on and off the machine's subnet, Then the unicast leaves from the one on
+  its subnet (or the gateway interface for a routed address) and never goes to APIPA or loopback.
+- AC-701-03: Given an awake 1.8.0 agent in the target's room, a 1.7.0 agent in the room and a 1.8.0
+  agent in another room and network, Then only the first gets the MAC, once, in its signed answer, and
+  its report lands in the packet log once with `via`; with dry-run or `wake.peerRelay` off, nobody is
+  asked.
+- AC-701-04 (Pester): Given an answer with `wake`, Then the agent broadcasts each valid MAC on the
+  given ports, skips invalid ones and notes each (with its error when the send fails) for the next
+  check-in.
+- AC-702-01 (Pester): Given a driver that turned the settings off, Then the agent turns them back on
+  and reports each item; a setting it cannot change is `failed` with the reason and an error for the
+  hub; no wired adapter is an error; the check runs at a new boot, after 6 h and before a shutdown.
+- AC-702-02: Given a WoL check with a fixed and a failed item, Then the hub stores and shows it, logs
+  it once at warn with the machine name, and a later health without `wol` keeps it.
+- AC-703-01 (Pester): Given exit 1190, Then the agent cancels and asks again; 1115 is done; another
+  code falls back to CIM, then Stop-Computer (restart flags for a restart); without the fallback flag
+  nothing is forced.
+- AC-703-02 (Pester): Given a done shutdown and the same boot time, Then nothing happens for 3 minutes,
+  then one forced attempt per run (shutdown /f, CIM 12, Stop-Computer) and then it gives up; a new
+  boot time ends it; an unknown boot time never forces; a restart is forced with /r.
+- AC-703-03: Given escalations in two check-ins, Then the hub keeps the last 10, shows them and logs
+  each at warn with the machine name.
+- AC-704-01: Given an uncaught exception, Then a fatal line is written synchronously (the Logs page
+  reads it) and the exit code is 1; an unhandled rejection is logged and nothing exits; a hub whose
+  previous run left its marker logs "did not stop cleanly" with the service error log's last lines.
+- AC-704-02: Given a wake that leaves a machine off, agent errors and a failed report, Then the hub log
+  has the warn lines with the machine names, the error texts and the report detail (once).
+- AC-704-03 (Pester): Given errors, Then `agent.log` has the lines, the last 10 go in the next
+  check-in, a hub that took them clears only those, the log rotates past its size, and a hub that
+  stops answering is logged once.
 
 ## 7. Non-functional requirements
 | ID | Requirement | Measure / test |

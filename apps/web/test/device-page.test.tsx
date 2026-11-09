@@ -724,3 +724,58 @@ describe('"Impedir suspensão e hibernação" on the device page (v1.6.0, FR-605
     expect(card).toHaveTextContent('Hibernação (na tomada)desativada');
   });
 });
+
+describe('device page: Wake-on-LAN, forced shutdowns and agent errors (v1.7.0, FR-702.2, FR-703.3, FR-704.3)', () => {
+  it('AC-702-02 / AC-703-03 shows "Ligar pela rede", the forced shutdowns and the recent agent errors', async () => {
+    deviceApi().on('GET', '/api/devices/5/agent', {
+      body: {
+        deviceId: 5,
+        readiness: 'ready',
+        agentVersion: '1.8.0',
+        lastCheckin: at(9),
+        health: {
+          installLevel: 3,
+          update: null,
+          repairs: [],
+          antivirus: null,
+          alert: null,
+          power: null,
+          receivedAt: at(9),
+          wol: {
+            at: at(8),
+            adapter: 'Intel(R) Ethernet Connection I219-LM',
+            trigger: 'before_shutdown',
+            items: [
+              { item: 'magic_packet', state: 'fixed', detail: null },
+              { item: 'advanced_eee', state: 'failed', detail: 'Acesso negado' },
+            ],
+          },
+          escalations: [
+            {
+              at: at(7),
+              action: 'shutdown',
+              id: null,
+              attempt: 2,
+              method: 'cim_force',
+              code: 0,
+              detail: null,
+            },
+          ],
+          errors: [{ at: at(6), where: 'desligar', message: 'shutdown.exe saiu com código 5' }],
+        },
+      },
+    });
+    renderApp('/dispositivos/5');
+    const card = await screen.findByRole('region', { name: 'Desligamento remoto' });
+    await within(card).findByText('Ligar pela rede');
+    expect(card).toHaveTextContent(
+      'não foi possível ativar: Ethernet com eficiência energética desligada (Acesso negado)',
+    );
+    expect(card).toHaveTextContent('reativado: Placa pode ligar o computador (Magic Packet)');
+    expect(card).toHaveTextContent('antes de desligar');
+    expect(card).toHaveTextContent('Desligamentos que o agente teve de forçar');
+    expect(card).toHaveTextContent('tentativa 2: desligamento forçado pelo Windows (CIM)');
+    expect(card).toHaveTextContent('Erros recentes do agente (1)');
+    expect(card).toHaveTextContent('desligar: shutdown.exe saiu com código 5');
+  });
+});

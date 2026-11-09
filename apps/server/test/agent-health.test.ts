@@ -81,9 +81,12 @@ describe('agent health on the hub (FR-603.1, FR-603.5)', () => {
     expect(plain.statusCode).toBe(200);
     expect(plain.json<CheckinAnswer>().features).toEqual(['health']);
     // FR-605.3: the power plan choice travels in the signed answer (off by default).
-    expect(plain.json<CheckinAnswer>().power).toEqual({ preventSleep: false });
+    expect(plain.json<CheckinAnswer>().power).toEqual({ preventSleep: false, keepWakeOnLan: true });
     s.settings.update({ 'power.preventSleep': true }, null);
-    expect((await checkin()).json<CheckinAnswer>().power).toEqual({ preventSleep: true });
+    expect((await checkin()).json<CheckinAnswer>().power).toEqual({
+      preventSleep: true,
+      keepWakeOnLan: true,
+    });
     expect(readHealth(s.db, pc)).toBeNull();
 
     const r = await checkin({ health: HEALTH });

@@ -18,7 +18,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$script:UwAgentVersion = '1.7.0'
+$script:UwAgentVersion = '1.8.0'
 # Install steps this script applies on the machine itself (FR-603.3, ADR-059): Invoke-UwSelfInstall.
 $script:UwInstallLevel = 3
 # Windows error codes of a write refused by the antivirus (ERROR_VIRUS_INFECTED, ERROR_VIRUS_DELETED).
@@ -42,6 +42,21 @@ $script:UwMaxReportsPerCheckin = 50
 # hub that answered last lists itself first, so it is tried first.
 $script:UwHttpTimeoutMs = 5000
 $script:UwMaxHubAttempts = 3
+
+# v1.7.0 (spec §6f, ADR-064/065/066).
+# The local log (FR-704.3): errors and power actions, at most 512 KB plus one previous file.
+$script:UwLogMaxBytes = 512KB
+$script:UwMaxPendingErrors = 10
+$script:UwMaxPendingRelays = 50
+# Forced shutdown (FR-703.2): still on this long after the shutdown time → force it, up to 3 times
+# (one per run), never later than 30 minutes after it.
+$script:UwWatchGraceMs = 3L * 60000
+$script:UwWatchGiveUpMs = 30L * 60000
+$script:UwWatchMaxAttempts = 3
+# Wake-on-LAN check (FR-702.1): at start-up, every 6 hours and right before a shutdown.
+$script:UwWolEveryMs = 6L * 3600000
+# The health state the log adds errors to (set by Invoke-UwRun).
+$script:UwHealthRef = $null
 
 # ------------------------------------------------------------------ signatures (ADR-044)
 
@@ -188,6 +203,68 @@ function Format-UwTime {
   [OutputType([string])]
   param([Parameter(Mandatory)][long]$Ms)
   [DateTimeOffset]::FromUnixTimeMilliseconds($Ms).ToLocalTime().ToString('HH:mm')
+}
+
+# ------------------------------------------------------------------ local log (v1.7.0, FR-704.3, ADR-066)
+
+<#
+  One line in C:\ProgramData\UniWake\agent\data\agent.log ("2026-11-08T10:00:00Z ERRO [onde] texto").
+  Past 512 KB the file becomes agent.log.1 (one previous file kept). Errors are also queued for the
+  hub (health.errors, the last 10). Never throws: a log that fails must not stop a shutdown.
+#>
+function Write-UwLog {
+  [CmdletBinding()]
+  param(
+    [ValidateSet('info', 'error')][string]$Level = 'info',
+    [Parameter(Mandatory)][string]$Where,
+    [Parameter(Mandatory)][AllowEmptyString()][string]$Message
+  )
+  try {
+    $text = ($Message -replace '\s+', ' ').Trim()
+    if ($text.Length -gt 300) { $text = $text.Substring(0, 300) }
+    if (-not $text) { $text = '(sem detalhe)' }
+    $where = $Where
+    if ($where.Length -gt 40) { $where = $where.Substring(0, 40) }
+    $now = $null
+    try { $now = Get-UwUtcNow } catch { $now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() }
+    $stamp = [DateTimeOffset]::FromUnixTimeMilliseconds([long]$now).UtcDateTime.ToString('yyyy-MM-ddTHH:mm:ssZ')
+    $tag = 'INFO'
+    if ($Level -eq 'error') { $tag = 'ERRO' }
+    $path = Join-Path $script:UwDataDir 'agent.log'
+    if (-not (Test-Path -LiteralPath $script:UwDataDir)) { New-Item -ItemType Directory -Force -Path $script:UwDataDir | Out-Null }
+    if ((Test-Path -LiteralPath $path) -and (Get-Item -LiteralPath $path).Length -gt $script:UwLogMaxBytes) {
+      Move-Item -LiteralPath $path -Destination "$path.1" -Force
+    }
+    if ($Level -eq 'error' -and $null -ne $script:UwHealthRef -and $script:UwHealthRef.ContainsKey('errorSeen')) {
+      # The same error at most once an hour (a step failing every minute must not flood the hub).
+      $key = "$where|$text"
+      $seen = $script:UwHealthRef.errorSeen
+      if ($seen.ContainsKey($key) -and ([long]$now - [long]$seen[$key]) -lt 3600000L) { return }
+      $seen[$key] = [long]$now
+      if ($seen.Count -gt 50) {
+        foreach ($k in @($seen.Keys | Sort-Object { $seen[$_] } | Select-Object -First ($seen.Count - 50))) { $seen.Remove($k) }
+      }
+    }
+    [System.IO.File]::AppendAllText($path, "$stamp $tag [$where] $text`r`n", (New-Object System.Text.UTF8Encoding($false)))
+    if ($Level -eq 'error' -and $null -ne $script:UwHealthRef) {
+      $q = $script:UwHealthRef.pendingErrors
+      [void]$q.Add([ordered]@{ at = [long]$now; where = $where; message = $text })
+      while ($q.Count -gt $script:UwMaxPendingErrors) { $q.RemoveAt(0) }
+    }
+  } catch {
+    Write-Verbose "log: $_"
+  }
+}
+
+# The text of an error record or exception, for the log.
+function Get-UwErrorText {
+  [CmdletBinding()]
+  [OutputType([string])]
+  param($ErrorRecord)
+  if ($null -eq $ErrorRecord) { return '' }
+  if ($ErrorRecord -is [System.Management.Automation.ErrorRecord]) { return [string]$ErrorRecord.Exception.Message }
+  if ($ErrorRecord -is [System.Exception]) { return [string]$ErrorRecord.Message }
+  return [string]$ErrorRecord
 }
 
 # ------------------------------------------------------------------ system access (mocked in tests)
@@ -411,7 +488,7 @@ function Get-UwHibernateInfo {
   $props = $null
   try {
     $props = Get-ItemProperty -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\Power' -ErrorAction Stop
-  } catch { Write-Verbose "Power: $_" }
+  } catch { Write-UwLog -Level error -Where 'Power' -Message (Get-UwErrorText $_) }
   $enabled = ConvertTo-UwHibernateEnabled -Enabled (Get-UwProp $props 'HibernateEnabled') -Default (Get-UwProp $props 'HibernateEnabledDefault')
   $idle = ConvertFrom-UwPowercfgOutput -Lines @(& powercfg.exe /QUERY SCHEME_CURRENT SUB_SLEEP HIBERNATEIDLE 2>$null)
   $minutes = $null
@@ -537,6 +614,128 @@ function Invoke-UwShutdown {
   return $LASTEXITCODE
 }
 
+# FR-703 fallback (ADR-064): Win32Shutdown through CIM. Flags: 1 shut down, 2 restart, 4 force, 8 power off.
+function Invoke-UwCimShutdown {
+  [CmdletBinding()]
+  [OutputType([int])]
+  param([Parameter(Mandatory)][int]$Flags)
+  Assert-UwRealSystem 'Invoke-UwCimShutdown'
+  $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+  $r = Invoke-CimMethod -InputObject $os -MethodName Win32Shutdown -Arguments @{ Flags = $Flags; Reserved = 0 } -ErrorAction Stop
+  return [int]$r.ReturnValue
+}
+
+# FR-703 last fallback (ADR-064): the PowerShell cmdlets, forced.
+function Invoke-UwStopComputer {
+  [CmdletBinding()]
+  param([switch]$Restart)
+  Assert-UwRealSystem 'Invoke-UwStopComputer'
+  if ($Restart) { Restart-Computer -Force -ErrorAction Stop } else { Stop-Computer -Force -ErrorAction Stop }
+}
+
+# FR-701.3 (ADR-063): broadcasts one magic packet from every IPv4 interface that has a gateway, to
+# 255.255.255.255 and that interface's subnet broadcast, 3 times per port. Returns datagrams sent.
+function Send-UwMagicPacket {
+  [CmdletBinding()]
+  [OutputType([int])]
+  param([Parameter(Mandatory)][string]$Mac, [Parameter(Mandatory)][int[]]$Ports)
+  Assert-UwRealSystem 'Send-UwMagicPacket'
+  $packet = ConvertTo-UwMagicPacket -Mac $Mac
+  $sent = 0
+  $lastError = $null
+  foreach ($nic in [System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces()) {
+    if ($nic.OperationalStatus -ne 'Up' -or $nic.NetworkInterfaceType -eq 'Loopback') { continue }
+    $props = $nic.GetIPProperties()
+    if (@($props.GatewayAddresses | Where-Object { $_.Address.AddressFamily -eq 'InterNetwork' }).Count -eq 0) { continue }
+    foreach ($ua in $props.UnicastAddresses) {
+      if ($ua.Address.AddressFamily -ne 'InterNetwork') { continue }
+      $local = [string]$ua.Address
+      if ($local.StartsWith('169.254.') -or $local.StartsWith('127.')) { continue }
+      $targets = @('255.255.255.255')
+      $b = Get-UwSubnetBroadcast -Address $local -Mask ([string]$ua.IPv4Mask)
+      if ($b) { $targets += $b }
+      $udp = $null
+      try {
+        $udp = New-Object System.Net.Sockets.UdpClient (New-Object System.Net.IPEndPoint ([System.Net.IPAddress]::Parse($local)), 0)
+        $udp.EnableBroadcast = $true
+        foreach ($t in $targets) {
+          foreach ($port in $Ports) {
+            for ($i = 0; $i -lt 3; $i++) {
+              [void]$udp.Send($packet, $packet.Length, $t, $port)
+              $sent++
+            }
+          }
+        }
+      } catch {
+        $lastError = Get-UwErrorText $_
+      } finally {
+        if ($null -ne $udp) { $udp.Close() }
+      }
+    }
+  }
+  if ($sent -eq 0 -and $lastError) { throw $lastError }
+  return $sent
+}
+
+# FR-702.1 (ADR-065): the connected wired adapter (the one with the default route first); $null when none.
+function Get-UwWolAdapter {
+  [CmdletBinding()]
+  param()
+  Assert-UwRealSystem 'Get-UwWolAdapter'
+  $skip = 'Wi-?Fi|Wireless|WLAN|802\.11|Bluetooth|Virtual|VPN|TAP-|Hyper-V|VMware|VirtualBox|Loopback'
+  $routes = @(Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue | Sort-Object -Property RouteMetric | ForEach-Object { $_.ifIndex })
+  $wired = @(Get-NetAdapter -Physical -ErrorAction Stop | Where-Object {
+      $_.Status -eq 'Up' -and $_.NdisPhysicalMedium -eq 14 -and $_.InterfaceDescription -notmatch $skip
+    } | Sort-Object -Property ifIndex)
+  $chosen = @(@($wired | Where-Object { $routes -contains $_.ifIndex }) + $wired | Select-Object -First 1)
+  if ($chosen.Count -eq 0) { return $null }
+  return @{ Name = [string]$chosen[0].Name; Description = [string]$chosen[0].InterfaceDescription }
+}
+
+# FR-702.1: what Windows says about that adapter's wake settings and Fast Startup.
+function Get-UwWolState {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)][hashtable]$Adapter)
+  Assert-UwRealSystem 'Get-UwWolState'
+  $magic = $null
+  try { $magic = [string](Get-NetAdapterPowerManagement -Name $Adapter.Name -ErrorAction Stop).WakeOnMagicPacket } catch { $magic = $null }
+  $armed = @(& powercfg.exe /devicequery wake_armed 2>$null) -contains $Adapter.Description
+  $hb = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power' -Name HiberbootEnabled -ErrorAction SilentlyContinue
+  $hiberboot = 0
+  if ($null -ne $hb) { $hiberboot = [int]$hb.HiberbootEnabled }
+  $advanced = @(Get-NetAdapterAdvancedProperty -Name $Adapter.Name -AllProperties -ErrorAction SilentlyContinue | ForEach-Object {
+      @{
+        Keyword = [string]$_.RegistryKeyword; Display = [string]$_.DisplayName; Value = "$(@($_.RegistryValue)[0])"
+        ValidDisplay = @($_.ValidDisplayValues); ValidRegistry = @($_.ValidRegistryValues)
+      }
+    })
+  return @{ magic = $magic; armed = $armed; hiberboot = $hiberboot; advanced = $advanced }
+}
+
+# FR-702.1: turns one setting back on (advanced properties take effect at the next start of the driver).
+function Set-UwWolSetting {
+  [CmdletBinding(SupportsShouldProcess = $true)]
+  param(
+    [Parameter(Mandatory)][hashtable]$Adapter,
+    [Parameter(Mandatory)][ValidateSet('magic_packet', 'device_wake', 'fast_startup', 'advanced')][string]$Item,
+    [string]$Keyword = '',
+    [string]$Value = ''
+  )
+  Assert-UwRealSystem 'Set-UwWolSetting'
+  if (-not $PSCmdlet.ShouldProcess($Adapter.Name, "Ligar pela rede: $Item $Keyword")) { return }
+  switch ($Item) {
+    'magic_packet' { Set-NetAdapterPowerManagement -Name $Adapter.Name -WakeOnMagicPacket Enabled -NoRestart -ErrorAction Stop }
+    'device_wake' {
+      & powercfg.exe /deviceenablewake $Adapter.Description | Out-Null
+      if ($LASTEXITCODE -ne 0) { throw "powercfg /deviceenablewake terminou com código $LASTEXITCODE" }
+    }
+    'fast_startup' {
+      Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power' -Name HiberbootEnabled -Value 0 -Type DWord -ErrorAction Stop
+    }
+    'advanced' { Set-NetAdapterAdvancedProperty -Name $Adapter.Name -RegistryKeyword $Keyword -RegistryValue $Value -NoRestart -ErrorAction Stop }
+  }
+}
+
 # Rewrites "UniWake Despertar": one-time triggers that wake the PC before each item (ADR-045).
 function Register-UwWakeTask {
   [CmdletBinding()]
@@ -642,6 +841,8 @@ function Read-UwState {
     agendaVersion = [string](Get-UwProp $raw 'agendaVersion' '')
     orders        = [System.Collections.ArrayList]@(Get-UwProp $raw 'orders' @())
     acked         = [System.Collections.ArrayList]@(Get-UwProp $raw 'acked' @())
+    # v1.7.0 (FR-703.2): the last shutdown/restart run, until a new boot time confirms it.
+    watch         = Get-UwProp $raw 'watch'
   }
 }
 
@@ -659,6 +860,7 @@ function Save-UwState {
       agendaVersion = $State.agendaVersion
       orders        = @($State.orders)
       acked         = @($State.acked)
+      watch         = $State.watch
     })
 }
 
@@ -687,7 +889,26 @@ function Read-UwHealthState {
     lastResume     = Get-UwProp $raw 'lastResume'
     preventSleep   = Get-UwProp $raw 'preventSleep'
     sleepSaved     = Get-UwProp $raw 'sleepSaved'
+    # v1.7.0 (spec §6f): events kept until a hub took them, and the last Wake-on-LAN check.
+    pendingErrors  = [System.Collections.ArrayList]@(@(Get-UwProp $raw 'pendingErrors' @()) | Select-Object -Last $script:UwMaxPendingErrors)
+    relays         = [System.Collections.ArrayList]@(@(Get-UwProp $raw 'relays' @()) | Select-Object -Last $script:UwMaxPendingRelays)
+    escalations    = [System.Collections.ArrayList]@(@(Get-UwProp $raw 'escalations' @()) | Select-Object -Last 10)
+    wol            = Get-UwProp $raw 'wol'
+    wolAt          = [long](Get-UwProp $raw 'wolAt' 0)
+    wolBoot        = [long](Get-UwProp $raw 'wolBoot' 0)
+    hubDownSince   = [long](Get-UwProp $raw 'hubDownSince' 0)
+    errorSeen      = (ConvertTo-UwLongMap (Get-UwProp $raw 'errorSeen'))
   }
+}
+
+# A JSON object of numbers (read back from health.json) as a hashtable.
+function ConvertTo-UwLongMap {
+  [CmdletBinding()]
+  [OutputType([hashtable])]
+  param($Object)
+  $map = @{}
+  if ($null -ne $Object) { foreach ($p in $Object.PSObject.Properties) { $map[$p.Name] = [long]$p.Value } }
+  return $map
 }
 
 function Save-UwHealthState {
@@ -707,6 +928,14 @@ function Save-UwHealthState {
       lastResume     = $Health.lastResume
       preventSleep   = $Health.preventSleep
       sleepSaved     = $Health.sleepSaved
+      pendingErrors  = @($Health.pendingErrors)
+      relays         = @($Health.relays)
+      escalations    = @($Health.escalations)
+      wol            = $Health.wol
+      wolAt          = [long]$Health.wolAt
+      wolBoot        = [long]$Health.wolBoot
+      hubDownSince   = [long]$Health.hubDownSince
+      errorSeen      = $Health.errorSeen
     })
 }
 
@@ -735,6 +964,11 @@ function Get-UwHealthReport {
     repairs      = @($Repairs | Select-Object -Last 10)
     antivirus    = $Antivirus
     power        = $power
+    # v1.7.0 (FR-701.3, FR-702, FR-703.2, FR-704.3); a v1.6.0 hub drops these fields.
+    relays       = @(Get-UwProp $Health 'relays' @())
+    wol          = Get-UwProp $Health 'wol'
+    escalations  = @(Get-UwProp $Health 'escalations' @())
+    errors       = @(Get-UwProp $Health 'pendingErrors' @())
   }
 }
 
@@ -1153,13 +1387,23 @@ function Invoke-UwExecution {
     [Parameter(Mandatory)][hashtable]$State,
     [Parameter(Mandatory)]$Messages,
     [Parameter(Mandatory)][scriptblock]$Poll,
-    [Parameter(Mandatory)][hashtable]$Freeze
+    [Parameter(Mandatory)][hashtable]$Freeze,
+    # v1.7.0 (FR-702.1): Wake-on-LAN is checked right before the PC goes off, when set.
+    [hashtable]$Health = $null,
+    [bool]$KeepWol = $false
   )
-  try { Set-UwKeepAwake -On $true } catch { Write-Verbose "manter acordado: $_" }
+  if ($KeepWol -and $null -ne $Health) {
+    try {
+      [void](Invoke-UwWolCheck -Trigger 'before_shutdown' -Health $Health -Now ((Get-UwUtcNow) + $State.offsetMs))
+    } catch { Write-UwLog -Level error -Where 'ligar pela rede' -Message (Get-UwErrorText $_) }
+  }
+  [void]$PSBoundParameters.Remove('Health')
+  [void]$PSBoundParameters.Remove('KeepWol')
+  try { Set-UwKeepAwake -On $true } catch { Write-UwLog -Level error -Where 'manter acordado' -Message (Get-UwErrorText $_) }
   try {
     return Invoke-UwExecutionStep @PSBoundParameters
   } finally {
-    try { Set-UwKeepAwake -On $false } catch { Write-Verbose "manter acordado: $_" }
+    try { Set-UwKeepAwake -On $false } catch { Write-UwLog -Level error -Where 'manter acordado' -Message (Get-UwErrorText $_) }
   }
 }
 
@@ -1183,8 +1427,6 @@ function Invoke-UwExecutionStep {
   $seen = @{}
   $native = $false
   $window = $false
-  $flag = '/s'
-  if ($Job.Action -eq 'restart') { $flag = '/r' }
   $report = @{
     Occurrence = $Job.Occurrence; Order = $Job.Order; Action = $Job.Action; PlannedAt = $Job.PlannedAt
     Session = $session; WasAsleep = [bool]$Job.WasAsleep; LateMinutes = $Job.LateMinutes; FreezeState = $Freeze.state
@@ -1193,7 +1435,7 @@ function Invoke-UwExecutionStep {
   if ($session.loggedOn) {
     Write-UwUiRequest -Path $ui.Request -Request (Format-UwUiRequest -RequestId $requestId -Job $Job -T $T `
         -PostponesLeft $postponesLeft -State $State -Messages $Messages)
-    try { Start-UwWarningTask } catch { Write-Verbose "warning task: $_" }
+    try { Start-UwWarningTask } catch { Write-UwLog -Level error -Where 'warning task' -Message (Get-UwErrorText $_) }
     # The window proves it is up with an "alive" response within 20 s; otherwise the native warning.
     for ($i = 0; $i -lt 20 -and -not $window; $i++) {
       foreach ($r in (Read-UwUiResponse -Folder $ui.Response -RequestId $requestId -Seen $seen)) {
@@ -1205,14 +1447,15 @@ function Invoke-UwExecutionStep {
       $left = ($T - ((Get-UwUtcNow) + $State.offsetMs)) / 1000
       $seconds = [int][Math]::Max(30, [Math]::Min(600, $left))
       $comment = Get-UwShutdownComment -Messages $Messages -Time (Format-UwTime ($T - $State.offsetMs))
-      $code = Invoke-UwShutdown -Arguments @($flag, '/t', [string]$seconds, '/c', $comment)
+      $r = Invoke-UwPowerCommand -Action $Job.Action -Seconds $seconds -Comment $comment
       Write-UwUiRequest -Path $ui.Request -Request $null
-      if ($code -ne 0) {
-        return Format-UwReport @report -Outcome 'failed' -Reason 'error' -NativeWarning $true `
-          -Detail "shutdown.exe saiu com código $code"
+      if ($r.Ok) {
+        $native = $true
+        $T = (Get-UwUtcNow) + $State.offsetMs + $seconds * 1000L
+      } else {
+        # FR-703.1: no warning could be shown; the shutdown still happens at its time (with fallbacks).
+        Write-UwLog -Level error -Where 'aviso' -Message "o aviso do Windows não abriu ($($r.Detail)); o desligamento segue no horário"
       }
-      $native = $true
-      $T = (Get-UwUtcNow) + $State.offsetMs + $seconds * 1000L
     }
   }
 
@@ -1243,7 +1486,7 @@ function Invoke-UwExecutionStep {
       break
     }
     if ($now - $lastPoll -ge 30000) {
-      try { [void](& $Poll) } catch { Write-Verbose "poll: $_" }
+      try { [void](& $Poll) } catch { Write-UwLog -Level error -Where 'consulta' -Message (Get-UwErrorText $_) }
       $lastPoll = (Get-UwUtcNow) + $State.offsetMs
     }
     Wait-UwSecond 2
@@ -1255,12 +1498,13 @@ function Invoke-UwExecutionStep {
       -Postpones $postpones -NativeWarning $true
   }
   $comment = Get-UwShutdownComment -Messages $Messages -Time (Format-UwTime ($T - $State.offsetMs))
-  $code = Invoke-UwShutdown -Arguments @($flag, '/t', '30', '/c', $comment)
-  if ($code -ne 0) {
-    return Format-UwReport @report -Outcome 'failed' -Reason 'error' -Postpones $postpones `
-      -Detail "shutdown.exe saiu com código $code"
+  # FR-703.1 (ADR-064): shutdown.exe, then CIM, then Stop-Computer until one of them takes it.
+  $r = Invoke-UwPowerCommand -Action $Job.Action -Seconds 30 -Comment $comment -Fallback
+  if (-not $r.Ok) {
+    return Format-UwReport @report -Outcome 'failed' -Reason 'error' -Postpones $postpones -Detail $r.Detail
   }
-  return Format-UwReport @report -Outcome 'done' -ExecutedAt ((Get-UwUtcNow) + $State.offsetMs) -Postpones $postpones
+  Write-UwLog -Where 'desligar' -Message "$($Job.Action) pedido ao Windows ($($r.Method))"
+  return Format-UwReport @report -Outcome 'done' -ExecutedAt ((Get-UwUtcNow) + $State.offsetMs) -Postpones $postpones -Detail $r.Detail
 }
 
 function Format-UwUiRequest {
@@ -1281,6 +1525,328 @@ function Format-UwUiRequest {
     postponeMinutes = [int]$Job.Policy.postponeMinutes
     message         = Format-UwWarning -Messages $Messages -Time (Format-UwTime ($T - $State.offsetMs)) -PostponesLeft $PostponesLeft
   }
+}
+
+# ------------------------------------------------------------------ v1.7.0: insist (spec §6f, ADR-063..065)
+
+# The 102-byte magic packet: 6 × 0xFF, then 16 × the MAC.
+function ConvertTo-UwMagicPacket {
+  [CmdletBinding()]
+  [OutputType([byte[]])]
+  param([Parameter(Mandatory)][string]$Mac)
+  if ($Mac -notmatch '^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$') { throw "MAC inválido: $Mac" }
+  $mb = [byte[]]@($Mac.Split(':') | ForEach-Object { [Convert]::ToByte($_, 16) })
+  $p = New-Object byte[] 102
+  for ($i = 0; $i -lt 6; $i++) { $p[$i] = 0xFF }
+  for ($k = 0; $k -lt 16; $k++) { [Array]::Copy($mb, 0, $p, 6 + $k * 6, 6) }
+  return , $p
+}
+
+# 10.0.3.41 / 255.255.255.0 → 10.0.3.255; $null for /31, /32 or anything unparsable.
+function Get-UwSubnetBroadcast {
+  [CmdletBinding()]
+  param([string]$Address, [string]$Mask)
+  try {
+    $a = [System.Net.IPAddress]::Parse($Address).GetAddressBytes()
+    $m = [System.Net.IPAddress]::Parse($Mask).GetAddressBytes()
+  } catch { return $null }
+  if ($a.Length -ne 4 -or $m.Length -ne 4) { return $null }
+  if ($m[3] -ge 254 -and $m[0] -eq 255 -and $m[1] -eq 255 -and $m[2] -eq 255) { return $null }
+  $b = New-Object byte[] 4
+  for ($i = 0; $i -lt 4; $i++) { $b[$i] = [byte](($a[$i] -band $m[$i]) -bor (255 -bxor $m[$i])) }
+  return ([System.Net.IPAddress]::new($b)).ToString()
+}
+
+<#
+  FR-701.3 (ADR-063): the hub asked this PC, in its signed answer, to broadcast the magic packet for
+  neighbours that did not wake. Each MAC sent is noted for the next check-in (health.relays).
+#>
+function Invoke-UwRelay {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)]$Answer, [Parameter(Mandatory)][hashtable]$Health, [Parameter(Mandatory)][long]$Now)
+  $wake = Get-UwProp $Answer 'wake'
+  if ($null -eq $wake) { return 0 }
+  $ports = @(@(Get-UwProp $wake 'ports' @()) | ForEach-Object { [int]$_ } | Where-Object { $_ -ge 1 -and $_ -le 65535 } | Select-Object -First 4)
+  if ($ports.Count -eq 0) { $ports = @(9) }
+  $n = 0
+  foreach ($mac in @(@(Get-UwProp $wake 'macs' @()) | Select-Object -First 50)) {
+    $m = [string]$mac
+    if ($m -notmatch '^[0-9A-F]{2}(:[0-9A-F]{2}){5}$') { continue }
+    $sent = 0
+    $err = $null
+    try {
+      $sent = [int](Send-UwMagicPacket -Mac $m -Ports ([int[]]$ports))
+    } catch {
+      $err = Get-UwErrorText $_
+      if ($err.Length -gt 200) { $err = $err.Substring(0, 200) }
+      Write-UwLog -Level error -Where 'ligar vizinha' -Message "$m`: $err"
+    }
+    [void]$Health.relays.Add([ordered]@{ mac = $m; at = $Now; sent = $sent; error = $err })
+    while ($Health.relays.Count -gt $script:UwMaxPendingRelays) { $Health.relays.RemoveAt(0) }
+    $n++
+  }
+  if ($n -gt 0) { Write-UwLog -Where 'ligar vizinha' -Message "pacote de ligar enviado para $n máquina(s) a pedido do UniWake" }
+  return $n
+}
+
+<#
+  FR-703.1 (ADR-064): shutdown.exe first. 1190 = a shutdown was already scheduled in Windows (by a
+  user, an update or another tool): it is cancelled and asked again, once. 1115 = Windows is already
+  shutting down: done. With -Fallback, when shutdown.exe still fails: CIM Win32Shutdown (forced),
+  then Stop-Computer/Restart-Computer -Force. Returns @{ Ok; Method; Detail }.
+#>
+function Invoke-UwPowerCommand {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][ValidateSet('shutdown', 'restart')][string]$Action,
+    [Parameter(Mandatory)][int]$Seconds,
+    [string]$Comment = '',
+    [switch]$Fallback
+  )
+  $flag = '/s'
+  if ($Action -eq 'restart') { $flag = '/r' }
+  $argv = @($flag, '/t', [string]$Seconds)
+  if ($Comment) { $argv += @('/c', $Comment) }
+  $problems = New-Object System.Collections.ArrayList
+  $code = Invoke-UwShutdown -Arguments $argv
+  if ($code -eq 1190) {
+    Write-UwLog -Where 'desligar' -Message 'já havia um desligamento agendado no Windows (código 1190): cancelado e pedido de novo'
+    [void](Invoke-UwShutdown -Arguments @('/a'))
+    $code = Invoke-UwShutdown -Arguments $argv
+  }
+  if ($code -eq 0) { return @{ Ok = $true; Method = 'shutdown'; Detail = $null } }
+  if ($code -eq 1115) { return @{ Ok = $true; Method = 'shutdown'; Detail = 'o Windows já estava desligando (código 1115)' } }
+  [void]$problems.Add("shutdown.exe saiu com código $code")
+  Write-UwLog -Level error -Where 'desligar' -Message $problems[0]
+  if (-not $Fallback) { return @{ Ok = $false; Method = $null; Detail = ($problems -join '; ') } }
+  $flags = 5
+  if ($Action -eq 'restart') { $flags = 6 }
+  try {
+    $rv = Invoke-UwCimShutdown -Flags $flags
+    if ($rv -eq 0) { return @{ Ok = $true; Method = 'cim'; Detail = "desligado via CIM ($($problems -join '; '))" } }
+    [void]$problems.Add("CIM Win32Shutdown retornou $rv")
+  } catch {
+    [void]$problems.Add("CIM: $(Get-UwErrorText $_)")
+  }
+  Write-UwLog -Level error -Where 'desligar' -Message $problems[$problems.Count - 1]
+  try {
+    Invoke-UwStopComputer -Restart:($Action -eq 'restart')
+    return @{ Ok = $true; Method = 'stop_computer'; Detail = "desligado via Stop-Computer ($($problems -join '; '))" }
+  } catch {
+    [void]$problems.Add("Stop-Computer: $(Get-UwErrorText $_)")
+  }
+  Write-UwLog -Level error -Where 'desligar' -Message $problems[$problems.Count - 1]
+  return @{ Ok = $false; Method = $null; Detail = ($problems -join '; ') }
+}
+
+<#
+  FR-703.2 (ADR-064): after a shutdown/restart the agent ran, `$State.watch` remembers it. A run that
+  finds the same boot time 3 minutes after the shutdown time (someone ran `shutdown /a`, an app or an
+  update held Windows) forces it: shutdown.exe /f /t 0, then CIM forced power-off, then Stop-Computer
+  — one attempt per run, at most 3, never later than 30 minutes after. A new boot time ends it.
+  Returns 'none', 'done', 'unknown', 'waiting', 'forced' or 'gave_up'.
+#>
+function Invoke-UwWatchdog {
+  [CmdletBinding()]
+  [OutputType([string])]
+  param(
+    [Parameter(Mandatory)][hashtable]$State,
+    $Boot,
+    [Parameter(Mandatory)][long]$Now,
+    [hashtable]$Health = $null,
+    # The agent did not run for a while (no heartbeat): the PC was off or asleep. With Fast Startup a
+    # PC turned back on keeps its boot time, so this alone also ends the watch.
+    [bool]$WasDown = $false
+  )
+  $w = $State.watch
+  if ($null -eq $w) { return 'none' }
+  $action = [string](Get-UwProp $w 'action' 'shutdown')
+  $at = [long](Get-UwProp $w 'at' 0)
+  $wBoot = Get-UwProp $w 'boot'
+  if ($null -eq $Boot -or $null -eq $wBoot) { $State.watch = $null; return 'unknown' }
+  if ([long]$Boot -ne [long]$wBoot -or $WasDown) {
+    Write-UwLog -Where 'vigia' -Message "o computador desligou/reiniciou como pedido ($action)"
+    $State.watch = $null
+    return 'done'
+  }
+  if ($Now -lt $at + $script:UwWatchGraceMs) { return 'waiting' }
+  $attempts = [int](Get-UwProp $w 'attempts' 0)
+  if ($attempts -ge $script:UwWatchMaxAttempts -or $Now -gt $at + $script:UwWatchGiveUpMs) {
+    Write-UwLog -Level error -Where 'vigia' -Message "continua ligado depois de $attempts tentativa(s) de forçar ($action); desisti"
+    $State.watch = $null
+    return 'gave_up'
+  }
+  $attempts++
+  $method = 'shutdown_force'
+  $code = $null
+  $detail = $null
+  try {
+    if ($attempts -eq 1) {
+      $flag = '/s'
+      if ($action -eq 'restart') { $flag = '/r' }
+      $code = Invoke-UwShutdown -Arguments @($flag, '/f', '/t', '0')
+      if ($code -eq 1190) {
+        [void](Invoke-UwShutdown -Arguments @('/a'))
+        $code = Invoke-UwShutdown -Arguments @($flag, '/f', '/t', '0')
+      }
+    } elseif ($attempts -eq 2) {
+      $method = 'cim_force'
+      $flags = 12
+      if ($action -eq 'restart') { $flags = 6 }
+      $code = Invoke-UwCimShutdown -Flags $flags
+    } else {
+      $method = 'stop_computer'
+      Invoke-UwStopComputer -Restart:($action -eq 'restart')
+      $code = 0
+    }
+  } catch {
+    $detail = Get-UwErrorText $_
+    if ($detail.Length -gt 200) { $detail = $detail.Substring(0, 200) }
+  }
+  $minutes = [int][Math]::Floor(($Now - $at) / $script:UwMinute)
+  $text = "continuava ligado $minutes min depois do horário: tentativa $attempts de forçar ($method)"
+  if ($null -ne $code -and $code -ne 0) { $text += ", código $code" }
+  if ($detail) { $text += ": $detail" }
+  Write-UwLog -Level error -Where 'vigia' -Message $text
+  if ($null -ne $Health) {
+    [void]$Health.escalations.Add([ordered]@{
+        at = $Now; action = $action; id = (Get-UwProp $w 'id'); attempt = $attempts; method = $method
+        code = $code; detail = $detail
+      })
+    while ($Health.escalations.Count -gt 10) { $Health.escalations.RemoveAt(0) }
+  }
+  $State.watch = [ordered]@{ id = (Get-UwProp $w 'id'); action = $action; at = $at; boot = $wBoot; attempts = $attempts }
+  return 'forced'
+}
+
+# FR-702.1: advanced properties the agent keeps, as in the preparation (FR-007.1 step 4).
+$script:UwWolTargets = @(
+  @{ Item = 'advanced_magic'; Want = 'on'; Keywords = @('*WakeOnMagicPacket'); Display = 'Wake on Magic Packet$|^Magic Packet' },
+  @{
+    Item = 'advanced_s5'; Want = 'on'; Keywords = @('S5WakeOnLan', '*S5WakeOnLan', 'WakeFromS5', 'EnablePME')
+    Display = 'Shutdown Wake|Wake from (power.?off|S5)|power off state|Enable PME'
+  },
+  @{
+    Item = 'advanced_eee'; Want = 'off'; Keywords = @('*EEE', 'EEE', 'AdvancedEEE', 'EEELinkAdvertisement', 'EnableGreenEthernet', '*GreenEthernet')
+    Display = 'Energy.?Efficient|Green Ethernet|\bEEE\b'
+  }
+)
+
+# The registry value that means on/off for a property, or $null when it cannot be told.
+function Get-UwWolWanted {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)][hashtable]$Property, [Parameter(Mandatory)][string]$Want)
+  $pattern = '^(Disabled|Off|Desativado|Desativada|Desabilitado|Desabilitada|Desligado|Desligada)$'
+  if ($Want -eq 'on') { $pattern = '^(Enabled|On|Ativado|Ativada|Habilitado|Habilitada|Ligado|Ligada)$' }
+  $display = @($Property.ValidDisplay)
+  $values = @($Property.ValidRegistry)
+  for ($i = 0; $i -lt $display.Count -and $i -lt $values.Count; $i++) {
+    if ("$($display[$i])" -match $pattern) { return "$($values[$i])" }
+  }
+  $fallback = '0'
+  if ($Want -eq 'on') { $fallback = '1' }
+  if ($values -contains $fallback) { return $fallback }
+  return $null
+}
+
+# 'boot' (first run since start-up), 'periodic' (6 h since the last check) or $null.
+function Test-UwWolDue {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)][hashtable]$Health, $Boot, [Parameter(Mandatory)][long]$Now)
+  if ($null -ne $Boot -and [long]$Health.wolBoot -ne [long]$Boot) { return 'boot' }
+  if ($Now - [long]$Health.wolAt -ge $script:UwWolEveryMs) { return 'periodic' }
+  return $null
+}
+
+<#
+  FR-702.1 (ADR-065): checks the wired adapter's Wake-on-LAN settings — "wake on Magic Packet", the
+  device armed for wake, Fast Startup off, and the advanced properties Wake on Magic Packet, Shutdown
+  Wake-On-LAN and EEE/Green Ethernet off — and turns back on what a driver update, a Windows update or
+  a person turned off. The result goes in `$Health.wol` for the hub (device page, log).
+#>
+function Invoke-UwWolCheck {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][ValidateSet('boot', 'periodic', 'before_shutdown')][string]$Trigger,
+    [Parameter(Mandatory)][hashtable]$Health,
+    [Parameter(Mandatory)][long]$Now,
+    $Boot = $null
+  )
+  $Health.wolAt = $Now
+  if ($null -ne $Boot) { $Health.wolBoot = [long]$Boot }
+  $items = New-Object System.Collections.ArrayList
+  $adapter = $null
+  try { $adapter = Get-UwWolAdapter } catch { Write-UwLog -Level error -Where 'ligar pela rede' -Message (Get-UwErrorText $_) }
+  if ($null -eq $adapter) {
+    $Health.wol = [ordered]@{ at = $Now; adapter = $null; trigger = $Trigger; items = @() }
+    Write-UwLog -Level error -Where 'ligar pela rede' -Message 'nenhuma placa de rede com fio conectada: o computador não liga pela rede'
+    return $Health.wol
+  }
+  $st = Get-UwWolState -Adapter $adapter
+  $fix = {
+    param([string]$Item, [string]$SetItem, [string]$Keyword = '', [string]$Value = '')
+    try {
+      Set-UwWolSetting -Adapter $adapter -Item $SetItem -Keyword $Keyword -Value $Value
+      [void]$items.Add([ordered]@{ item = $Item; state = 'fixed'; detail = $null })
+    } catch {
+      $e = Get-UwErrorText $_
+      if ($e.Length -gt 200) { $e = $e.Substring(0, 200) }
+      [void]$items.Add([ordered]@{ item = $Item; state = 'failed'; detail = $e })
+    }
+  }
+  $magic = [string]$st.magic
+  if (-not $magic -or $magic -eq 'Unsupported') {
+    [void]$items.Add([ordered]@{ item = 'magic_packet'; state = 'unsupported'; detail = $null })
+  } elseif ($magic -eq 'Enabled') {
+    [void]$items.Add([ordered]@{ item = 'magic_packet'; state = 'ok'; detail = $null })
+  } else { & $fix 'magic_packet' 'magic_packet' }
+  if ($st.armed) {
+    [void]$items.Add([ordered]@{ item = 'device_wake'; state = 'ok'; detail = $null })
+  } elseif ($magic -eq 'Unsupported') {
+    [void]$items.Add([ordered]@{ item = 'device_wake'; state = 'unsupported'; detail = $null })
+  } else { & $fix 'device_wake' 'device_wake' }
+  if ([int]$st.hiberboot -eq 0) {
+    [void]$items.Add([ordered]@{ item = 'fast_startup'; state = 'ok'; detail = $null })
+  } else { & $fix 'fast_startup' 'fast_startup' }
+  foreach ($t in $script:UwWolTargets) {
+    $props = @(@($st.advanced) | Where-Object { $t.Keywords -contains $_.Keyword -or "$($_.Display)" -match $t.Display })
+    if ($props.Count -eq 0) {
+      [void]$items.Add([ordered]@{ item = $t.Item; state = 'unsupported'; detail = $null })
+      continue
+    }
+    $changes = @()
+    $manual = @()
+    foreach ($p in $props) {
+      $wanted = Get-UwWolWanted -Property $p -Want $t.Want
+      if ($null -eq $wanted) { $manual += $p.Display; continue }
+      if ("$($p.Value)" -ne $wanted) { $changes += @{ Keyword = $p.Keyword; Value = $wanted } }
+    }
+    if ($changes.Count -eq 0 -and $manual.Count -gt 0) {
+      [void]$items.Add([ordered]@{ item = $t.Item; state = 'failed'; detail = ('ajuste manualmente: {0}' -f ($manual -join ', ')) })
+      continue
+    }
+    if ($changes.Count -eq 0) {
+      [void]$items.Add([ordered]@{ item = $t.Item; state = 'ok'; detail = $null })
+      continue
+    }
+    $before = $items.Count
+    foreach ($c in $changes) {
+      & $fix $t.Item 'advanced' $c.Keyword $c.Value
+      if ($items[$items.Count - 1].state -eq 'failed') { break }
+    }
+    # One line per item: the last outcome of its changes.
+    $last = $items[$items.Count - 1]
+    while ($items.Count -gt $before) { $items.RemoveAt($items.Count - 1) }
+    [void]$items.Add($last)
+  }
+  $desc = [string]$adapter.Description
+  if ($desc.Length -gt 120) { $desc = $desc.Substring(0, 120) }
+  $Health.wol = [ordered]@{ at = $Now; adapter = $desc; trigger = $Trigger; items = @($items) }
+  $fixed = @($items | Where-Object { $_.state -eq 'fixed' } | ForEach-Object { $_.item })
+  $failed = @($items | Where-Object { $_.state -eq 'failed' } | ForEach-Object { "$($_.item) ($($_.detail))" })
+  if ($fixed.Count -gt 0) { Write-UwLog -Where 'ligar pela rede' -Message ("religado: {0}" -f ($fixed -join ', ')) }
+  if ($failed.Count -gt 0) { Write-UwLog -Level error -Where 'ligar pela rede' -Message ("não consegui religar: {0}" -f ($failed -join '; ')) }
+  return $Health.wol
 }
 
 # ------------------------------------------------------------------ self-update (ADR-044)
@@ -1395,7 +1961,7 @@ function Get-UwAntivirusRaw {
   try {
     $products = @(Get-CimInstance -Namespace 'root/SecurityCenter2' -ClassName 'AntiVirusProduct' -ErrorAction Stop |
         ForEach-Object { @{ name = [string]$_.displayName; state = [long]$_.productState } })
-  } catch { Write-Verbose "Central de Segurança: $_" } # Windows Server has no Security Center
+  } catch { Write-UwLog -Where 'Central de Segurança' -Message (Get-UwErrorText $_) } # Windows Server has no Security Center
   $detections = @()
   if (Get-Command -Name 'Get-MpThreatDetection' -ErrorAction SilentlyContinue) {
     try {
@@ -1404,7 +1970,7 @@ function Get-UwAntivirusRaw {
       $detections = @(Get-MpThreatDetection -ErrorAction Stop | ForEach-Object {
           @{ at = $_.InitialDetectionTime; resources = @($_.Resources); threat = $names[[string]$_.ThreatID]; status = [int]$_.ThreatStatusID }
         })
-    } catch { Write-Verbose "Defender: $_" }
+    } catch { Write-UwLog -Level error -Where 'Defender' -Message (Get-UwErrorText $_) }
   }
   @{ products = $products; detections = $detections }
 }
@@ -1723,14 +2289,16 @@ function Invoke-UwRun {
     Health = (Read-UwHealthState $paths.Health); Antivirus = $null; AntivirusHash = $null
     Repairs = @(Read-UwRepairNote -Path (Join-Path $script:UwAgentDir 'repairs.log'))
   }
+  # FR-704.3: errors from here on also go to the hub.
+  $script:UwHealthRef = $ctx.Health
   $resume = Get-UwResume -LastBeat $lastBeat -Boot $ctx.Boot -Now (Get-UwUtcNow)
   if ($null -ne $resume) { $ctx.Health.lastResume = $resume }
   $ctx.Hibernate = $null
-  try { $ctx.Hibernate = Get-UwHibernateInfo } catch { Write-Verbose "hibernação: $_" }
+  try { $ctx.Hibernate = Get-UwHibernateInfo } catch { Write-UwLog -Level error -Where 'hibernação' -Message (Get-UwErrorText $_) }
   try {
     $av = Get-UwAntivirusReport -Health $ctx.Health -Now (Get-UwUtcNow) -Force:(Test-UwAntivirusDue -Health $ctx.Health -Repairs $ctx.Repairs)
     if ($null -ne $av) { $ctx.Antivirus = $av.Report; $ctx.AntivirusHash = $av.Hash }
-  } catch { Write-Verbose "antivirus: $_" }
+  } catch { Write-UwLog -Level error -Where 'antivirus' -Message (Get-UwErrorText $_) }
   # FR-308.4: data kept in a folder that survives freezing (ThawSpace, UWF exclusion) when configured.
   $persistent = Get-UwProp $config 'persistentPath'
   $ctx.Freeze = @{ product = $ctx.Freeze.product; state = $ctx.Freeze.state; persistent = [bool]$persistent }
@@ -1739,41 +2307,90 @@ function Invoke-UwRun {
   $poll = { Invoke-UwPoll -Context $script:UwPollContext }
 
   $first = & $poll
-  if ($null -ne $first -and $first.ContainsKey('Unauthorized')) { return 4 }
+  if ($null -ne $first -and $first.ContainsKey('Unauthorized')) {
+    Write-UwLog -Level error -Where 'consulta' -Message 'o UniWake recusou o token desta máquina (revogado?): prepare a máquina de novo'
+    return 4
+  }
+  # FR-704.3: a hub that stops answering is logged once, and again when it is back.
+  if ($null -eq $first) {
+    if ([long]$ctx.Health.hubDownSince -eq 0) {
+      $ctx.Health.hubDownSince = Get-UwUtcNow
+      $urls = @(@(Get-UwProp $config 'hubs' @()) | ForEach-Object { @($_.urls) }) -join ', '
+      Write-UwLog -Level error -Where 'consulta' -Message "nenhum UniWake respondeu ($urls); a agenda local continua valendo"
+      Save-UwHealthState $paths.Health $ctx.Health
+    }
+  } elseif ([long]$ctx.Health.hubDownSince -ne 0) {
+    $minutes = [int][Math]::Floor(((Get-UwUtcNow) - [long]$ctx.Health.hubDownSince) / $script:UwMinute)
+    Write-UwLog -Where 'consulta' -Message "voltou a falar com o UniWake depois de $minutes min"
+    $ctx.Health.hubDownSince = 0
+    Save-UwHealthState $paths.Health $ctx.Health
+  }
   if ($null -ne $ctx.Last) {
     try {
       [void](Sync-UwScript -Scripts $ctx.Last.Answer.scripts -HubUrl $ctx.Last.Url -Health $ctx.Health)
-    } catch { Write-Verbose "update: $_" }
+    } catch { Write-UwLog -Level error -Where 'update' -Message (Get-UwErrorText $_) }
     try {
       Invoke-UwSelfInstall -Scripts $ctx.Last.Answer.scripts -Paths $paths -Health $ctx.Health -Now (Get-UwUtcNow)
-    } catch { Write-Verbose "self-install: $_" }
+    } catch { Write-UwLog -Level error -Where 'self-install' -Message (Get-UwErrorText $_) }
     try {
       $prevent = [bool](Get-UwProp (Get-UwProp $ctx.Last.Answer 'power') 'preventSleep' $false)
       Invoke-UwSleepPolicy -Prevent $prevent -Health $ctx.Health -Now (Get-UwUtcNow) -Power $ctx.Power -Hibernate $ctx.Hibernate
-    } catch { Write-Verbose "energia: $_" }
+    } catch { Write-UwLog -Level error -Where 'energia' -Message (Get-UwErrorText $_) }
     Save-UwHealthState $paths.Health $ctx.Health
+  }
+  # FR-702.1 (ADR-065): Wake-on-LAN settings kept on (setting "power.keepWakeOnLan", on by default).
+  $keepWol = $true
+  if ($null -ne $ctx.Last) { $keepWol = [bool](Get-UwProp (Get-UwProp $ctx.Last.Answer 'power') 'keepWakeOnLan' $true) }
+  if ($keepWol) {
+    try {
+      $due = Test-UwWolDue -Health $ctx.Health -Boot $ctx.Boot -Now (Get-UwUtcNow)
+      if ($due) {
+        [void](Invoke-UwWolCheck -Trigger $due -Health $ctx.Health -Now ((Get-UwUtcNow) + $state.offsetMs) -Boot $ctx.Boot)
+        Save-UwHealthState $paths.Health $ctx.Health
+      }
+    } catch { Write-UwLog -Level error -Where 'ligar pela rede' -Message (Get-UwErrorText $_) }
   }
   # Also with the hub unreachable: a copy restored by "UniWake Reparo" needs it as well.
   try {
-    if (Repair-UwWarningAccess) { Write-Verbose 'aviso: leitura pelos usuários restaurada' }
-  } catch { Write-Verbose "aviso: $_" }
+    if (Repair-UwWarningAccess) { Write-UwLog -Where 'aviso' -Message 'leitura pelos usuários restaurada' }
+  } catch { Write-UwLog -Level error -Where 'aviso' -Message (Get-UwErrorText $_) }
   $messages = $script:UwDefaultMessages
   if ($null -ne $ctx.Last) { $messages = $ctx.Last.Answer.message }
 
   $now = (Get-UwUtcNow) + $state.offsetMs
+  # FR-703.2 (ADR-064): a shutdown that did not happen is forced before anything else runs.
+  $wasDown = $null -ne $lastBeat -and ((Get-UwUtcNow) - [long]$lastBeat) -gt $script:UwSleepGapMs
+  $watch = Invoke-UwWatchdog -State $state -Boot $ctx.Boot -Now $now -Health $ctx.Health -WasDown $wasDown
+  if ($watch -ne 'none' -and $watch -ne 'waiting') {
+    Save-UwState $paths.State $state $now
+    Save-UwHealthState $paths.Health $ctx.Health
+  }
+  if ($watch -eq 'forced') { return 0 }
   $job = Get-UwNextJob -State $state -Paths $paths -Now $now -Boot $ctx.Boot -LastBeat $lastBeat `
     -Session $ctx.Session -Freeze $ctx.Freeze
   if ($null -ne $job) {
     $id = $job.Occurrence
     if ($job.Kind -eq 'order') { $id = $job.Order }
-    $report = Invoke-UwExecution -Job $job -State $state -Messages $messages -Poll $poll -Freeze $ctx.Freeze
+    $report = Invoke-UwExecution -Job $job -State $state -Messages $messages -Poll $poll -Freeze $ctx.Freeze `
+      -Health $ctx.Health -KeepWol $keepWol
     $state.doneIds[[string]$id] = (Get-UwUtcNow) + $state.offsetMs
+    # The run was alive all along (the warning can take minutes): the next one must not see a gap.
+    Save-UwJson $paths.Heartbeat ([ordered]@{ at = (Get-UwUtcNow) })
+    if ($null -ne $report -and $report.outcome -eq 'done') {
+      # FR-703.2: the next runs check that the PC really went off (or restarted).
+      $state.watch = [ordered]@{
+        id = [string]$id; action = $job.Action; at = [long]$report.executedAt + 30000L; boot = $ctx.Boot; attempts = 0
+      }
+    } elseif ($null -ne $report -and $report.outcome -eq 'failed') {
+      Write-UwLog -Level error -Where 'desligar' -Message "não consegui $($job.Action): $($report.detail)"
+    }
     foreach ($o in @($state.orders | Where-Object { $_.uuid -eq $job.Order })) { [void]$state.orders.Remove($o) }
     if ($null -ne $report) {
       Add-UwReport $paths.Reports $report
       Save-UwState $paths.State $state ((Get-UwUtcNow) + $state.offsetMs)
-      try { [void](& $poll) } catch { Write-Verbose "final report: $_" } # best effort before Windows stops
+      try { [void](& $poll) } catch { Write-UwLog -Level error -Where 'relatório final' -Message (Get-UwErrorText $_) } # best effort before Windows stops
     }
+    Save-UwHealthState $paths.Health $ctx.Health
   }
   Save-UwState $paths.State $state ((Get-UwUtcNow) + $state.offsetMs)
   return 0
@@ -1802,6 +2419,11 @@ function Invoke-UwPoll {
   }
   $features = @{}
   if ($null -ne $health) { $features = $health.hubFeatures }
+  # v1.7.0: how many queued events this check-in carries; a hub that takes them clears that many.
+  $sent = @{ pendingErrors = 0; relays = 0; escalations = 0 }
+  if ($null -ne $health) {
+    foreach ($k in @($sent.Keys)) { if ($health.ContainsKey($k) -and $null -ne $health[$k]) { $sent[$k] = $health[$k].Count } }
+  }
   $result = Invoke-UwCheckin -Config $cfg -Token $token -Request $request -Health $report -Features $features
   if ($null -eq $result -or $result.ContainsKey('Unauthorized')) { return $result }
   if ($null -ne $health) {
@@ -1813,10 +2435,24 @@ function Invoke-UwPoll {
       $health.avSentAt = [long]$result.Answer.serverTime
       $Context.Antivirus = $null
     }
+    if ($result.SentHealth) {
+      foreach ($k in @($sent.Keys)) {
+        $list = $health[$k]
+        for ($i = 0; $i -lt $sent[$k] -and $list.Count -gt 0; $i++) { $list.RemoveAt(0) }
+      }
+    }
     Save-UwHealthState $paths.Health $health
   }
   $extra = Invoke-UwAnswer -Result $result -State $Context.State -Paths $paths -Config $cfg -SentAcks ([string[]]$acks)
   foreach ($r in $extra) { Add-UwReport $paths.Reports $r }
+  if ($null -ne $health) {
+    # FR-701.3: neighbours to wake, asked in this (verified) answer.
+    try {
+      if ((Invoke-UwRelay -Answer $result.Answer -Health $health -Now ([long]$result.Answer.serverTime)) -gt 0) {
+        Save-UwHealthState $paths.Health $health
+      }
+    } catch { Write-UwLog -Level error -Where 'ligar vizinha' -Message (Get-UwErrorText $_) }
+  }
   $Context.Last = $result
   Save-UwState $paths.State $Context.State ([long]$result.Answer.serverTime)
   return $result

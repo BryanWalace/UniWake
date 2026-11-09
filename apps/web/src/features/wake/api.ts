@@ -27,6 +27,10 @@ export interface PacketRow {
   at: number;
   outcome: 'sent' | 'error' | 'dry_run';
   error: string | null;
+  /** v1.7.0 (FR-701): 0 = first attempt. */
+  round?: number;
+  /** v1.7.0 (FR-701.3): the neighbour that sent it (null = this hub). */
+  via?: string | null;
 }
 
 export const previewWake = (req: WakeRequest) => api.post<WakePreview>('/api/wake/preview', req);

@@ -1,11 +1,12 @@
 # UniWake — Constitution
 
-Version: **1.3** · Date: 2026-10-11 · Owner: Architect
+Version: **1.4** · Date: 2026-11-08 · Owner: Architect
 History: v0.1 draft → reviewed in `specs/reviews/phase-0-*.md` → consolidated as v1.0 →
 v1.1 amended by ADR-011 (§2.6), ADR-012 (§6.1), ADR-016 (§4.1, §6.7) in Phase 1.
 v1.2 amended by ADR-030 (§9.1, §10) and ADR-031 (§2.3, §2.4) for the `dev` branch workflow and
 the sync-ready data model.
 v1.3 amended by ADR-042/043 (§2.6, §5, §6.1, §6.3a) for remote shutdown through scheduled tasks.
+v1.4 amended by ADR-063 (§2.6) for wake retry rounds, unicast to the last IP and agents that relay.
 
 This document holds the rules every role must follow for the life of the project. It is
 binding: code, specs and reviews are judged against it. "MUST" is mandatory, "SHOULD" needs a
@@ -88,7 +89,11 @@ written reason to skip. Changes require an ADR that names the section changed (�
 ### 2.6 Network rules
 - Interfaces are read **at send time**, never cached from startup.
 - The sender binds one socket per selected interface's local IPv4 and sends to both the limited
-  broadcast and that interface's subnet-directed broadcast, on UDP 9 and 7.
+  broadcast and that interface's subnet-directed broadcast, on UDP 9 and 7 (plus the room's directed
+  broadcast). Retry rounds for machines that did not answer add a unicast to their last known IPv4
+  (ADR-063).
+- Awake lab PCs may be asked, only through signed check-in answers, to broadcast a magic packet in
+  their own network for neighbours that did not wake (ADR-063); never in dry-run or demo mode.
 - Every packet attempt is recorded in the packet log (P4).
 - LAN surfaces (ADR-005, ADR-011): the **panel listener** (loopback by default) serves UI + full
   API; the **agent listener** (LAN) serves exactly: minimal health, enrollment, the

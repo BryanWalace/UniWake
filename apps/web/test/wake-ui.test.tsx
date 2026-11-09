@@ -239,6 +239,19 @@ describe('history (FR-009, FR-003.6)', () => {
             outcome: 'sent',
             error: null,
           },
+          {
+            deviceId: 1,
+            mac: '00:AA:00:00:00:01',
+            srcIp: '10.0.3.41',
+            dstIp: '255.255.255.255',
+            port: 9,
+            repeat: 0,
+            at: 2,
+            outcome: 'sent',
+            error: null,
+            round: 1,
+            via: 'LAB3-PC02',
+          },
         ],
       });
     const user = userEvent.setup();
@@ -251,7 +264,12 @@ describe('history (FR-009, FR-003.6)', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('cell', { name: 'Acordou' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Mostrar pacotes enviados' }));
-    expect(await screen.findByRole('cell', { name: '255.255.255.255' })).toBeInTheDocument();
+    expect((await screen.findAllByRole('cell', { name: '255.255.255.255' })).length).toBe(2);
+    // v1.7.0 (FR-701.4): the attempt of each packet and the neighbour that sent it.
+    expect(screen.getByRole('columnheader', { name: 'Tentativa' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('cell', { name: 'LAB3-PC02 (vizinha, 10.0.3.41)' }),
+    ).toBeInTheDocument();
   });
 
   it('shows an empty state before the first wake', async () => {
