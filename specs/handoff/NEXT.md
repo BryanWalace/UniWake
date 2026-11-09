@@ -1,8 +1,17 @@
 # NEXT — handoff
 
-Atualizado: 2026-11-08 · Branch de trabalho: **`dev`** (ADR-030).
-**A 1.7.0 "Ligar e desligar garantidos" está na `dev`, aguardando o seu teste.** A `main` continua na
-1.6.0 (tag `v1.6.0`). Nada foi publicado; nenhuma tag nova.
+Atualizado: 2026-11-09 · Branch de trabalho: **`dev`** (ADR-030).
+**A 1.7.0 "Ligar e desligar garantidos" foi para a `main` (`116be88`) e a tag `v1.7.0` foi criada a seu
+pedido em 09/11** ("pode subir a dev para a main e criar a release 1.7.0"). O workflow "Release" publica o
+instalador com o SHA-256; o PC do UniWake se atualiza na janela de manutenção (padrão 03:00–05:00) e as
+máquinas preparadas pegam o agente 1.8.0 na consulta seguinte.
+
+## Próximo passo
+- Confira em GitHub → Actions → "Release" (v1.7.0) e em Releases que o instalador saiu.
+- No dia seguinte: Saúde do sistema mostra `1.7.0`; a página das máquinas mostra **Versão do agente
+  1.8.0** e a linha **"Ligar pela rede"**.
+- Os testes abaixo ("Como testar a v1.7.0") continuam valendo para conferir no laboratório (pule o passo 0:
+  a instalação chega sozinha). Se algo falhar, me mande o que está no fim deste roteiro.
 
 ## v1.7.0 — o que mudou (seu pedido de 08/11)
 
