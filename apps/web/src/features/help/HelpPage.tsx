@@ -105,6 +105,14 @@ export const HELP: Record<HelpTopic, { title: string; summary: string; body: Rea
           Use o MAC da placa cabeada. MACs de Wi-Fi, de máquinas virtuais ou aleatórios (privacidade
           do Wi-Fi) quase nunca ligam o computador.
         </p>
+        <p>
+          Atualizações de driver ou do Windows costumam desfazer esses ajustes. A partir da versão
+          1.7.0, o agente das máquinas preparadas confere e reativa tudo isso sozinho ao iniciar, a
+          cada 6 horas e logo antes de cada desligamento. O resultado aparece na página da máquina,
+          em “Ligar pela rede”: “tudo ativado”, “reativado: …” ou “não foi possível ativar: …”
+          (nesse caso, ajuste à mão como acima ou rode o preparo de novo). Mudanças nas opções
+          avançadas do driver valem a partir da próxima inicialização.
+        </p>
       </>
     ),
   },
@@ -162,6 +170,13 @@ export const HELP: Record<HelpTopic, { title: string; summary: string; body: Rea
             broadcast dirigido no roteador dessa rede.
           </li>
         </Bullets>
+        <p>
+          A partir da versão 1.7.0 há mais duas ajudas, automáticas: as novas tentativas mandam
+          também um pacote direto ao último IP da máquina (muitos roteadores ainda sabem onde ela
+          está), e uma máquina preparada que já está ligada na mesma sala ou rede recebe o pedido
+          para mandar o pacote de dentro da rede dela. Na página da ligação, “Mostrar pacotes
+          enviados” mostra quais saíram por uma máquina vizinha.
+        </p>
         <p>
           Se aparecer “Nenhuma placa de rede disponível”, o computador do UniWake está sem rede:
           confira o cabo e, em Configurações, quais placas o UniWake usa para enviar.
@@ -334,7 +349,17 @@ export const HELP: Record<HelpTopic, { title: string; summary: string; body: Rea
           </li>
           <li>
             “Não confirmou”: a ordem foi executada, mas a máquina continuou respondendo na rede.
-            Alguém pode ter cancelado o desligamento ou um programa impediu o Windows de desligar.
+            Alguém pode ter cancelado o desligamento ou um programa impediu o Windows de desligar. A
+            partir da versão 1.7.0, o agente percebe isso sozinho: se a máquina continuar ligada 3
+            minutos depois do horário, ele força o desligamento (até 3 tentativas, por caminhos
+            diferentes) e a página da máquina lista em “Desligamentos que o agente teve de forçar”.
+          </li>
+          <li>
+            O Windows recusou o desligamento (por exemplo, “código 1190”: já havia outro
+            desligamento agendado): o agente cancela o outro e pede de novo, ou desliga por outro
+            caminho. O motivo aparece no Histórico e em “Erros recentes do agente”, na página da
+            máquina; o registro completo fica na máquina, em{' '}
+            <code>C:\ProgramData\UniWake\agent\data\agent.log</code>.
           </li>
           <li>
             Relógio da máquina muito errado: o UniWake corrige a diferença a cada consulta, mas

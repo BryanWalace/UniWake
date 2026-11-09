@@ -30,6 +30,9 @@ Exemplos do que queremos saber:
   (`C:\ProgramData\UniWake`, tarefas "UniWake", "UniWake Aviso", "UniWake Reparo");
 - **atualização e reparo do agente**: a máquina aceitar um script que não confere com o hash
   assinado pelo UniWake;
+- **máquinas vizinhas que mandam o pacote de ligar** (1.7.0): uma máquina enviar algo além do pacote
+  de ligar, ou aceitar o pedido sem a resposta assinada; o `agent.log` ou os erros enviados ao
+  UniWake conterem nomes de usuário, senhas ou tokens;
 - falhas no cadastro das máquinas (porta 47101) ou no Modo equipe (porta 47102): pareamento sem o
   código, sincronização sem a chave da equipe, PC removido que continua recebendo dados;
 - atualização automática instalando algo que não veio das versões oficiais;
@@ -45,7 +48,8 @@ que exigem desligar recursos de segurança do próprio UniWake.
 
 | Versão | Recebe correções de segurança |
 |---|---|
-| 1.6.x (mais recente) | ✅ |
+| 1.7.x (em teste, ainda não publicada) | ✅ assim que for publicada |
+| 1.6.x (mais recente publicada) | ✅ |
 | 1.5.x e anteriores | ❌ — atualize para a mais recente |
 
 Correções de segurança saem na versão mais recente publicada em

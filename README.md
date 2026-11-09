@@ -70,15 +70,15 @@ cadastro, sincronizando pela rede local.
 
 ## Funcionalidades
 
-- **Ligar pela rede**: Wake-on-LAN por sala, etiqueta ou máquina, com resumo antes de enviar e acompanhamento ao vivo de quem acordou.
+- **Ligar pela rede**: Wake-on-LAN por sala, etiqueta ou máquina, com resumo antes de enviar e acompanhamento ao vivo de quem acordou. Quem não ligou recebe **novas tentativas** (com envio direto ao último IP) e as **máquinas vizinhas já ligadas** mandam o pacote de dentro da própria rede.
 - **Painel em tempo real**: salas com máquinas ligadas, desligadas e desconhecidas; histórico e disponibilidade por dia.
 - **Agendamentos**: dias da semana e horário, feriados, pausa para férias e o "Resultado da manhã".
-- **Desligar e reiniciar**: pela sala, pela máquina ou por agendamento, com aviso na tela para quem está usando e opção de adiar; funciona mesmo com o PC da TI desligado no horário, com máquinas suspensas ou hibernadas, e não desliga quem ligou a máquina depois do horário.
-- **Agente que se cuida**: o agente das máquinas se atualiza e se conserta sozinho, avisa quando o antivírus o bloqueia (lendo o Microsoft Defender) e aparece como "Agente bloqueado" ou "Agente desatualizado".
+- **Desligar e reiniciar**: pela sala, pela máquina ou por agendamento, com aviso na tela para quem está usando e opção de adiar; funciona mesmo com o PC da TI desligado no horário, com máquinas suspensas ou hibernadas, e não desliga quem ligou a máquina depois do horário. Se o Windows recusar o desligamento, o agente tenta outros caminhos; se a máquina continuar ligada 3 minutos depois do horário, ele **força o desligamento**.
+- **Agente que se cuida**: o agente das máquinas se atualiza e se conserta sozinho, avisa quando o antivírus o bloqueia (lendo o Microsoft Defender) e aparece como "Agente bloqueado" ou "Agente desatualizado". Ele também **reativa o "ligar pela rede"** quando uma atualização de driver o desliga e guarda um **registro de erros** que aparece na página da máquina.
 - **Preparar máquinas**: um comando, conferido por SHA-256, ajusta a placa de rede, desliga a Inicialização Rápida, libera o ping e cadastra a máquina na sala.
 - **Descobrir na rede**: encontra os computadores da rede e cadastra vários de uma vez, com o fabricante de cada placa.
 - **Modo equipe**: dois ou mais PCs da TI pareados por um código de 6 dígitos mantêm o mesmo cadastro; cada agendamento roda em um só PC ligado.
-- **Diagnóstico**: taxa de sucesso, "parou de acordar", outra sub-rede, **Testar WoL** e páginas de ajuda.
+- **Diagnóstico**: taxa de sucesso, "parou de acordar", outra sub-rede, **Testar WoL** e páginas de ajuda; o **Logs** diz quais máquinas não ligaram e por quê, e registra até as falhas do próprio serviço.
 - **Usuários e auditoria**: perfis administrador e operador; tudo fica registrado e pode ser exportado em CSV.
 - **Backups**: cópia diária automática, antes de cada atualização, e restauração pelo painel.
 - **Backup e migração**: um arquivo `.uniwake` leva o cadastro para um PC novo (com senha para usuários e chaves), com prévia antes de importar, exportação automática para uma pasta da rede e linha de comando.
@@ -91,6 +91,11 @@ cadastro, sincronizando pela rede local.
 > fica de fora. Veja o [histórico de versões](CHANGELOG.md).
 > Quem já tem o UniWake instalado recebe a atualização sozinho, na janela de manutenção; as máquinas
 > já preparadas pegam o agente novo sozinhas.
+
+> [!TIP]
+> **Em teste para a 1.7.0 ("Ligar e desligar garantidos"):** novas tentativas para quem não ligou,
+> máquinas vizinhas que mandam o pacote de ligar, o agente que reativa o "ligar pela rede" e força o
+> desligamento que não aconteceu, e erros que aparecem no Logs e na página da máquina.
 
 ## Como funciona
 
@@ -572,10 +577,13 @@ senha incorreta ou arquivo danificado.
 
 | Sintoma | O que fazer |
 |---|---|
-| A máquina **não liga** | Abra a máquina em **Dispositivos**, veja o diagnóstico e use **Testar WoL**. |
+| A máquina **não liga** | Abra a máquina em **Dispositivos**, veja o diagnóstico e use **Testar WoL**. Na página da ligação, **Mostrar pacotes enviados** mostra cada tentativa e quais pacotes saíram pelas máquinas vizinhas. Na página da máquina, **Ligar pela rede** mostra o que o agente encontrou desligado na placa de rede. |
+| **Só parte da sala liga** | A partir da 1.7.0 o UniWake tenta de novo, a cada minuto, até 3 vezes, para quem não respondeu, e pede às máquinas já ligadas da sala que mandem o pacote também. Se mesmo assim não liga: confira a BIOS (ErP desligado) e veja no **Logs** a linha "wake job finished with machines that did not turn on". |
+| **Onde ver o que deu errado** | **Logs** (nível "warn" ou "error"): ligações com máquinas que não ligaram, erros enviados pelos agentes, desligamentos forçados e falhas do próprio serviço ("did not stop cleanly"). Em cada máquina, o agente grava `C:\ProgramData\UniWake\agent\data\agent.log`; os últimos erros aparecem em **Erros recentes do agente** na página dela. |
+| **"Desligamentos que o agente teve de forçar"** | A máquina continuava ligada 3 minutos depois do horário (alguém cancelou com `shutdown /a`, um programa ou uma atualização segurou o Windows). O agente forçou e registrou o método usado. |
 | **Inicialização Rápida (Fast Startup)** | Com ela, o Windows hiberna em vez de desligar e a placa não espera o pacote. Rode o comando de preparo de novo (ele desliga) ou: Painel de Controle → Opções de Energia → "Escolher a função dos botões de energia" → desmarque "Ligar inicialização rápida". |
 | **BIOS / ErP** | Wake on LAN precisa estar ativado e **ErP/EuP/Deep Sleep desativado** — veja [a tabela da BIOS](#1-biosuefi-uma-vez-por-modelo). |
-| **"Parou de acordar"** | Uma atualização do Windows reativou a Inicialização Rápida ou mudou a placa de rede: rode o comando de preparo de novo. |
+| **"Parou de acordar"** | Uma atualização do Windows reativou a Inicialização Rápida ou mudou a placa de rede. A partir da 1.7.0 o agente reativa sozinho ao iniciar, a cada 6 horas e antes de cada desligamento (veja **Ligar pela rede** na página da máquina); se aparecer "não foi possível ativar", rode o comando de preparo de novo. |
 | **"Nunca respondeu" / ping bloqueado** | O firewall da máquina bloqueia o ICMP e ela parece desligada: o preparo cria a regra `UniWake-ICMPv4-In`; uma GPO pode bloquear — o UniWake também testa portas TCP (135, 445, 3389). |
 | **O comando de Preparar máquinas falha** ("Não é possível conectar ao servidor remoto") | A máquina não alcança o PC do UniWake na porta **47101**: confira o perfil de rede (Privada/Domínio), o firewall/antivírus do PC do UniWake e firewalls entre as redes; teste com `Test-NetConnection <IP> -Port 47101`. Veja [Portas e firewall](#portas-e-firewall). |
 | **"Dispositivo em outra sub-rede" / VLAN** | O broadcast não atravessa roteadores: veja [Redes diferentes](#redes-diferentes-vlan). |
@@ -607,6 +615,9 @@ de problema (revise IPs e nomes antes de publicar).
 O Magic Packet é um broadcast e **não atravessa roteadores sozinho**. Opções: ligar o PC da TI
 também na rede dessas máquinas, ou informar o **"Broadcast dirigido"** da sala (ex.:
 `10.0.9.255`) em **Salas** e pedir à equipe de rede para permitir broadcast dirigido no roteador.
+A partir da 1.7.0, quando uma máquina preparada da sala já está ligada, ela mesma manda o pacote de
+dentro da rede da sala para as outras (opção "Pedir às máquinas vizinhas já ligadas…" em
+**Configurações → Ligar**), e as novas tentativas mandam também um pacote direto ao último IP.
 
 ## Roadmap
 
@@ -619,6 +630,7 @@ também na rede dessas máquinas, ou informar o **"Broadcast dirigido"** da sala
 | 1.4 | **Backup e migração** em arquivo `.uniwake` (exportar/importar com prévia e senha, em espera até ativar, exportação automática, linha de comando) | publicada (1.4.0) |
 | 1.5 | Desligamento agendado confiável (ordem direta + agenda, conferência 10 min depois), status Ligada/Desligada por vários sinais | publicada (1.5.0) |
 | 1.6 | **Agente que se atualiza e se conserta**, aviso de antivírus, exclusões visíveis no agendamento, máquinas suspensas ou hibernadas, quem desliga antes da hora | publicada (1.6.0) |
+| 1.7 | **Ligar e desligar garantidos**: novas tentativas e máquinas vizinhas para ligar, agente que reativa o "ligar pela rede", plano B e desligamento forçado, erros visíveis no Logs e na página da máquina | em teste na `dev` |
 | — | Reinício agendado, agente por VLAN, notificações (e-mail/Telegram), ferramentas de BIOS dos fabricantes, permissões por sala | ideias |
 
 O que mudou em cada versão está no [CHANGELOG.md](CHANGELOG.md). Sugestões de funções são bem-vindas
