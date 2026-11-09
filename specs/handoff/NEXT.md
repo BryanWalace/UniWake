@@ -1,6 +1,108 @@
 # NEXT — handoff
 
-Atualizado: 2026-10-18 · Branch de trabalho: **`dev`** (ADR-030).
+Atualizado: 2026-11-08 · Branch de trabalho: **`dev`** (ADR-030).
+**A 1.7.0 "Ligar e desligar garantidos" está na `dev`, aguardando o seu teste.** A `main` continua na
+1.6.0 (tag `v1.6.0`). Nada foi publicado; nenhuma tag nova.
+
+## v1.7.0 — o que mudou (seu pedido de 08/11)
+
+Você disse: "liga alguns computadores e outros não", "quero que seja garantido ligar e desligar, com
+outra maneira se a primeira não funcionar" e "o log não está captando bem os erros".
+
+**Ligar que insiste (no PC do UniWake):**
+1. **Novas tentativas**: quem não respondeu recebe o pacote de novo a cada 1 minuto, até 3 vezes
+   (Configurações → Ligar → "Novas tentativas para quem não ligou" / "Intervalo").
+2. Nas novas tentativas vai também um pacote **direto ao último IP** da máquina.
+3. **Máquinas vizinhas**: até 3 máquinas preparadas e já ligadas da mesma sala (ou da mesma rede)
+   recebem o pedido e mandam o pacote de dentro da rede delas (a técnica do "wake-up proxy" do
+   Configuration Manager). Só com o agente 1.8.0; nunca no modo simulação.
+
+**Placa sempre pronta (nas máquinas):** o agente confere e **reativa** sozinho o "ligar pela rede"
+(Magic Packet, ligar a partir do desligamento, Ethernet com eficiência energética desligada,
+Inicialização rápida desligada) ao iniciar, a cada 6 horas e **logo antes de cada desligamento** —
+atualização de driver costuma desligar isso. Página da máquina → **"Ligar pela rede"**.
+
+**Desligar que insiste (nas máquinas):**
+1. Se o Windows recusar (código **1190** = já havia um desligamento agendado): cancela e pede de novo;
+   outros códigos: desliga pelo **CIM** e, se precisar, por **Stop-Computer**.
+2. **Vigia**: se a máquina continuar ligada **3 min** depois do horário (alguém deu `shutdown /a`, um
+   programa ou atualização segurou), o agente **força** (até 3 tentativas, uma por minuto). Página da
+   máquina → **"Desligamentos que o agente teve de forçar"**. Ele não força quem religou a máquina.
+
+**Log que mostra os erros:**
+1. **Logs** do serviço: cada ligação com máquinas que não ligaram (nomes, tentativas, pacotes pelas
+   vizinhas, erros de envio), cada nova tentativa, relatórios de desligamento que falharam (com o
+   motivo), erros dos agentes, desligamentos forçados — sempre com o nome da máquina.
+2. Falhas do próprio serviço: erro não tratado agora é registrado; se o serviço parar de repente, o
+   próximo início escreve **"the previous run of the hub did not stop cleanly"** com as últimas linhas
+   do log de erro do serviço. (Antes isso podia derrubar o serviço sem deixar rastro no Logs.)
+3. Nas máquinas: `C:\ProgramData\UniWake\agent\data\agent.log`; os últimos erros aparecem na página
+   da máquina → **"Erros recentes do agente"**. Os 18 erros que o agente "engolia" agora vão para lá.
+
+Validação: `npm run verify` verde (1060+ testes), 142 testes Pester + PSScriptAnalyzer limpos,
+rastreabilidade 238/238. Revisões: `specs/reviews/M31-review.md`, `M34-review.md`.
+Documentos: spec §6f, ADR-063..066, README, CHANGELOG ("[1.7.0] — ainda não publicada"), SECURITY,
+`specs/releases/v1.7.0.md`.
+
+### Como testar a v1.7.0 (passo a passo)
+
+**0. Instalar a versão de teste no PC do UniWake**
+1. GitHub → **Actions** → último **CI** verde da `dev` → **Artifacts** → **UniWake-Setup-dev**
+   (`UniWake-Setup-1.7.0-dev.N.exe` + `.sha256`). Confira com `Get-FileHash`.
+2. Instale por cima da 1.6.0 (backup automático). **Saúde do sistema**: `1.7.0-dev.N`.
+3. Ligue as máquinas de teste. Em 1–2 min a página de cada uma mostra **Versão do agente 1.8.0** e a
+   linha **"Ligar pela rede"** (ex.: "tudo ativado (ao iniciar, …)").
+
+**1. Novas tentativas e vizinhas (o problema "liga alguns e outros não")**
+1. Deixe **uma máquina da sala ligada** (ela será a vizinha) e desligue as outras pelo Windows.
+2. **Ligar sala**. Abra a ligação em **Histórico** → **Mostrar pacotes enviados**.
+3. Esperado: tentativa 1 (o envio normal); para quem ainda não ligou, tentativas 2, 3, 4 a cada
+   minuto, com uma linha para o IP da máquina; linhas **"NOME (vizinha, IP)"** — a vizinha mandou.
+4. **Logs**: procure "wake retry round", "asked awake neighbours", "a neighbour sent the magic packet"
+   e, no fim, "wake job finished" (ou, em amarelo, "…with machines that did not turn on" com os nomes).
+5. Se uma máquina só ligou na tentativa 2+ ou pela vizinha, a causa provável era a perda do primeiro
+   pacote (EEE no switch, placa que demora) ou o roteador — anote quais para eu ver.
+
+**2. Placa reativada (simula uma atualização de driver)**
+1. Numa máquina de teste: Gerenciador de Dispositivos → placa Ethernet → **Gerenciamento de Energia** →
+   desmarque "Permitir que este dispositivo ative o computador". Reinicie a máquina.
+2. Esperado: em 1–2 min, a página da máquina → **"Ligar pela rede"**: "reativado: Dispositivo
+   autorizado a ligar o computador (ao iniciar, …)" e no Logs "agent turned Wake-on-LAN settings back on".
+
+**3. Desligar que insiste (vigia)** — numa máquina de teste, sem nada aberto que não esteja salvo
+1. Entre na máquina e deixe aberto um PowerShell **como administrador**.
+2. No painel, página da máquina → **Testar agendamento** → 2 minutos. Não clique em "Adiar".
+3. Quando o Windows avisar que vai desligar em menos de um minuto, rode `shutdown /a` (cancela).
+4. Esperado: uns 3–4 minutos depois do horário a máquina desliga sozinha; ao ligá-la de novo, a
+   página mostra **"Desligamentos que o agente teve de forçar"** (tentativa 1: shutdown.exe forçado) e
+   o Logs "agent forced the shutdown: the machine was still on".
+
+**4. Log do agente**
+1. Numa máquina preparada: `Get-Content C:\ProgramData\UniWake\agent\data\agent.log -Tail 30`.
+2. Esperado: linhas `INFO [desligar] …` do teste 3 e `INFO [vigia] …`. Erros aparecem como `ERRO`
+   e também na página da máquina → "Erros recentes do agente".
+
+**5. Falha do serviço (opcional)**
+1. No PC do UniWake, Gerenciador de Tarefas → finalize o processo `node.exe` do UniWake (o serviço
+   volta sozinho em ~10 s).
+2. Esperado: no **Logs**, "the previous run of the hub did not stop cleanly".
+
+**Se algo falhar, me mande:** print da página da ligação (pacotes), da página da máquina (quadro
+"Desligamento remoto" inteiro), as linhas amarelas/vermelhas do **Logs** e as últimas 30 linhas do
+`agent.log` da máquina.
+
+Quando estiver bom, me diga "pode subir a dev para a main" (e se quer a release 1.7.0). As notas já
+estão em `specs/releases/v1.7.0.md`.
+
+**Notas para o agente (próximas sessões):** testes de fumaça do pacote — ligar `wake.dryRun` antes de
+tudo (a retransmissão pelas vizinhas também é desligada no modo simulação). No Git Bash deste PC, a
+ferramenta de shell junta `\\` em `\` dentro de heredocs: escreva scripts com barras invertidas pelo
+editor de arquivos.
+
+---
+
+# Histórico: v1.6.0 (publicada em 18/10)
+
 **A 1.6.0 foi para a `main` (`536f477`) e a tag `v1.6.0` foi criada a seu pedido em 18/10.** O workflow de
 release publica o instalador; o PC do UniWake se atualiza na janela de manutenção e as máquinas pegam o agente
 1.7.0 na consulta seguinte. Confira em GitHub → Actions → "Release" (v1.6.0) e em Releases.
